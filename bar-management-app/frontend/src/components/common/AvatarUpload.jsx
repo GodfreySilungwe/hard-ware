@@ -1,11 +1,15 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 
 const AvatarUpload = ({ currentImage, onImageChange, name }) => {
   const [preview, setPreview] = useState(currentImage || null);
   const fileInputRef = useRef(null);
 
-  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
+  useEffect(() => {
+    setPreview(currentImage || null);
+  }, [currentImage]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: {
       'image/*': ['.jpeg', '.jpg', '.png', '.gif', '.webp']
     },
@@ -14,12 +18,9 @@ const AvatarUpload = ({ currentImage, onImageChange, name }) => {
     onDrop: (acceptedFiles) => {
       const file = acceptedFiles[0];
       if (file) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setPreview(reader.result);
-          onImageChange(reader.result);
-        };
-        reader.readAsDataURL(file);
+        const previewUrl = URL.createObjectURL(file);
+        setPreview(previewUrl);
+        onImageChange(file);
       }
     },
     onDropRejected: (fileRejections) => {

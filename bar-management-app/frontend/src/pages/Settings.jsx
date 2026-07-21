@@ -91,9 +91,35 @@ const Settings = () => {
     }
   };
 
-  const handleAvatarChange = (imageData) => {
-    console.log('Avatar changed:', imageData ? 'Image selected' : 'Image removed');
-    setAvatar(imageData);
+  const handleAvatarChange = async (file) => {
+    if (!file) {
+      setAvatar(null);
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const response = await api.post('/uploads/avatar', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      const uploadedUrl = response.data?.url || response.data?.imageUrl;
+      if (!uploadedUrl) {
+        throw new Error('No image URL returned from server');
+      }
+
+      setAvatar(uploadedUrl);
+      setMessage('✅ Profile photo uploaded successfully');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (err) {
+      console.error('Avatar upload failed:', err);
+      setError('❌ Failed to upload profile photo');
+      setTimeout(() => setError(''), 3000);
+    }
   };
 
   const handleProfileUpdate = async (e) => {

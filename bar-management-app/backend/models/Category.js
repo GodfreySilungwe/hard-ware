@@ -1,23 +1,7 @@
-const mongoose = require('mongoose');
+const BaseModel = require('./baseModel');
 
-const CategorySchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    unique: true,
-    trim: true
-  },
-  description: {
-    type: String,
-    trim: true
-  },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }
-}, {
-  timestamps: true
-});
+class Category extends BaseModel {
+  static entityType = 'category';
+}
 
-const Category = mongoose.model('Category', CategorySchema);
 module.exports = Category;
