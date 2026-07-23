@@ -137,13 +137,66 @@ const POS = () => {
       {error && <div style={styles.error}>{error}</div>}
       {success && <div style={styles.success}>{success}</div>}
 
-      <div style={styles.posLayout}>
+      <style>{`
+        @media (max-width: 768px) {
+          .pos-mobile-stack {
+            grid-template-columns: 1fr !important;
+            gap: 16px !important;
+          }
+          .pos-mobile-product-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            max-height: none !important;
+            padding: 2px 0 !important;
+          }
+          .pos-mobile-category-filter {
+            gap: 6px !important;
+          }
+          .pos-mobile-category-btn {
+            padding: 7px 12px !important;
+            font-size: 12px !important;
+          }
+          .pos-mobile-cart-item {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 8px !important;
+            padding: 10px 0 !important;
+          }
+          .pos-mobile-action-buttons {
+            flex-direction: row !important;
+          }
+          .pos-mobile-payment-options {
+            flex-wrap: wrap !important;
+          }
+          .pos-mobile-payment-btn {
+            flex: 1 1 calc(50% - 6px) !important;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .pos-mobile-product-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .pos-mobile-payment-btn {
+            flex-basis: 100% !important;
+          }
+          .pos-mobile-product-btn {
+            min-height: 108px !important;
+            padding: 10px !important;
+          }
+          .pos-mobile-cart-item-actions {
+            width: 100% !important;
+            justify-content: flex-end !important;
+          }
+        }
+      `}</style>
+
+      <div style={styles.posLayout} className="pos-mobile-stack">
         {/* Left: Product Grid */}
-        <div style={styles.productSection}>
+        <div style={styles.productSection} className="pos-mobile-product-section">
           <UnifiedCard title="Hardware Products">
-            <div style={styles.categoryFilter}>
+            <div style={styles.categoryFilter} className="pos-mobile-category-filter">
               <button
-                className="category-btn"
+                className="category-btn pos-mobile-category-btn"
                 style={{
                   ...styles.categoryBtn,
                   ...(selectedCategory === 'all' ? styles.categoryBtnActive : {})
@@ -155,7 +208,7 @@ const POS = () => {
               {categories.map(cat => (
                 <button
                   key={cat._id}
-                  className="category-btn"
+                  className="category-btn pos-mobile-category-btn"
                   style={{
                     ...styles.categoryBtn,
                     ...(selectedCategory === cat._id ? styles.categoryBtnActive : {})
@@ -167,11 +220,11 @@ const POS = () => {
               ))}
             </div>
 
-            <div style={styles.productGrid}>
+            <div style={styles.productGrid} className="pos-mobile-product-grid">
               {filteredProducts.map((product, index) => (
                 <button
                   key={product._id}
-                  className={`fade-in delay-${(index % 6) + 1}`}
+                  className={`fade-in delay-${(index % 6) + 1} pos-mobile-product-btn`}
                   style={{
                     ...styles.productBtn,
                     ...(product.currentStock <= 0 ? styles.productOutOfStock : {})
@@ -207,7 +260,7 @@ const POS = () => {
         </div>
 
         {/* Right: Cart */}
-        <div style={styles.cartSection}>
+        <div style={styles.cartSection} className="pos-mobile-cart-section">
           <UnifiedCard title={`🛒 Cart (${totalItems} items)`}>
             <div style={styles.customerSection}>
               <select
@@ -229,14 +282,14 @@ const POS = () => {
                 <div style={styles.emptyCart}>🛒 Cart is empty</div>
               ) : (
                 cart.map(item => (
-                  <div key={item._id} style={styles.cartItem}>
+                  <div key={item._id} style={styles.cartItem} className="pos-mobile-cart-item">
                     <div style={styles.cartItemInfo}>
                       <div style={styles.cartItemName}>{item.name}</div>
                       <div style={styles.cartItemPrice}>
                         {formatPriceMK(item.sellingPrice)} x {item.quantity}
                       </div>
                     </div>
-                    <div style={styles.cartItemActions}>
+                    <div style={styles.cartItemActions} className="pos-mobile-cart-item-actions">
                       <button
                         style={styles.cartItemBtn}
                         onClick={() => removeFromCart(item._id)}
@@ -284,9 +337,9 @@ const POS = () => {
 
             <div style={styles.paymentSection}>
               <label style={styles.paymentLabel}>Payment Method:</label>
-              <div style={styles.paymentOptions}>
+              <div style={styles.paymentOptions} className="pos-mobile-payment-options">
                 <button
-                  className="payment-btn"
+                  className="payment-btn pos-mobile-payment-btn"
                   style={{
                     ...styles.paymentBtn,
                     ...(paymentMethod === 'cash' ? styles.paymentBtnActive : {})
@@ -308,7 +361,7 @@ const POS = () => {
                   💵 Cash
                 </button>
                 <button
-                  className="payment-btn"
+                  className="payment-btn pos-mobile-payment-btn"
                   style={{
                     ...styles.paymentBtn,
                     ...(paymentMethod === 'card' ? styles.paymentBtnActive : {})
@@ -330,7 +383,7 @@ const POS = () => {
                   💳 Card
                 </button>
                 <button
-                  className="payment-btn"
+                  className="payment-btn pos-mobile-payment-btn"
                   style={{
                     ...styles.paymentBtn,
                     ...(paymentMethod === 'mobile_money' ? styles.paymentBtnActive : {})
@@ -354,7 +407,7 @@ const POS = () => {
               </div>
             </div>
 
-            <div style={styles.actionButtons}>
+            <div style={styles.actionButtons} className="pos-mobile-action-buttons">
               <button
                 className="btn-modern btn-danger-modern"
                 style={styles.checkoutBtn}
@@ -417,7 +470,8 @@ const styles = {
     gridTemplateColumns: '1fr 380px',
     gap: '20px',
     alignItems: 'start',
-    width: '100%'
+    width: '100%',
+    overflowX: 'hidden'
   },
   productSection: {
     minHeight: '500px',
@@ -440,7 +494,8 @@ const styles = {
     backgroundColor: 'white',
     cursor: 'pointer',
     fontSize: '13px',
-    transition: 'all 0.3s ease'
+    transition: 'all 0.3s ease',
+    minHeight: '38px'
   },
   categoryBtnActive: {
     backgroundColor: '#e94560',
@@ -465,6 +520,7 @@ const styles = {
     transition: 'all 0.3s ease',
     textAlign: 'center',
     width: '100%',
+    minHeight: '120px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
   },
   productOutOfStock: {
@@ -591,13 +647,14 @@ productUnit: {
     gap: '8px'
   },
   paymentBtn: {
-    padding: '8px 12px',
+    padding: '10px 12px',
     borderRadius: '8px',
     border: '1px solid #ddd',
     backgroundColor: 'white',
     cursor: 'pointer',
     fontSize: '13px',
     flex: 1,
+    minHeight: '44px',
     transition: 'all 0.3s ease'
   },
   paymentBtnActive: {
@@ -618,7 +675,8 @@ productUnit: {
     fontSize: '16px',
     fontWeight: '600',
     transition: 'all 0.3s ease',
-    width: '100%'
+    width: '100%',
+    minHeight: '48px'
   },
   checkoutBtnSuccess: {
     backgroundColor: '#2ecc71',

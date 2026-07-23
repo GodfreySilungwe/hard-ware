@@ -56,6 +56,17 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use((req, res, next) => {
+  if (!req.body && req.method !== 'GET' && req.method !== 'HEAD') {
+    try {
+      req.body = req.body || {};
+    } catch (e) {
+      // ignore
+    }
+  }
+  next();
+});
 
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);

@@ -116,8 +116,15 @@ router.post('/register', async (req, res) => {
 // Login
 router.post('/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
-    console.log('Login attempt:', { username, password: password ? '[REDACTED]' : undefined, body: req.body });
+    const body = req.body || {};
+    const username = body.username || body.email || body.userName || body.login;
+    const password = body.password;
+
+    if (!username || !password) {
+      return res.status(400).json({ message: 'Username and password are required' });
+    }
+
+    console.log('Login attempt:', { username, password: password ? '[REDACTED]' : undefined, body });
 
     const user = await User.findOne({ 
       $or: [{ username }, { email: username }] 

@@ -15,7 +15,7 @@ const ReceiptModal = ({ order, onClose }) => {
         <div id="receipt" style={styles.receipt}>
           {/* Header */}
           <div style={styles.header}>
-            <h1 style={styles.barName}>🍸 Bar Manager</h1>
+            <h1 style={styles.barName}>🔧 Hardware Manager</h1>
             <p style={styles.address}>123 Main Street, Lilongwe</p>
             <p style={styles.phone}>📞 +265 999 123 456</p>
             <div style={styles.divider} />
@@ -73,7 +73,7 @@ const ReceiptModal = ({ order, onClose }) => {
           <div style={styles.footer}>
             <p style={styles.thankYou}>Thank you for your business!</p>
             <p style={styles.footerText}>Visit us again 😊</p>
-            <p style={styles.footerText}>Follow us on Facebook: @BarManagerMlw</p>
+            <p style={styles.footerText}>Follow us on Facebook: @HardwareManagerMlw</p>
           </div>
         </div>
 
