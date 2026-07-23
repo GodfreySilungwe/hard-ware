@@ -17,13 +17,14 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../context/AuthContext';
 
-const Sidebar = () => {
+const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, user } = useAuth();
 
   const handleLogout = () => {
     logout();
+    onClose();
     navigate('/login');
   };
   
@@ -53,10 +54,15 @@ const Sidebar = () => {
   });
 
   return (
-    <div style={styles.sidebar}>
+    <div style={{ ...styles.sidebar, ...(window.innerWidth < 900 ? { transform: isMobileOpen ? 'translateX(0)' : 'translateX(-100%)' } : {}) }}>
       <div style={styles.logo}>
         <span style={styles.logoIcon}>🔩</span>
         <span style={styles.logoText}>Hardware Manager</span>
+        {window.innerWidth < 900 && (
+          <button type="button" onClick={onClose} style={styles.closeButton} aria-label="Close menu">
+            ✕
+          </button>
+        )}
       </div>
 
       <nav style={styles.nav}>
@@ -138,6 +144,14 @@ const styles = {
     marginBottom: '30px',
     fontSize: '20px',
     fontWeight: 'bold'
+  },
+  closeButton: {
+    marginLeft: 'auto',
+    border: 'none',
+    background: 'transparent',
+    color: 'white',
+    fontSize: '18px',
+    cursor: 'pointer'
   },
   logoIcon: {
     fontSize: '28px'

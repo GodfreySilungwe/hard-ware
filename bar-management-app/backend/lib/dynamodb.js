@@ -1,9 +1,11 @@
-const { DynamoDBClient, DescribeTableCommand, CreateTableCommand, DeleteTableCommand } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutItemCommand, GetItemCommand, ScanCommand, DeleteItemCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBClient, DescribeTableCommand, CreateTableCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, GetCommand, ScanCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 const crypto = require('crypto');
 
 const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'sampla-hardware-table';
 const region = process.env.AWS_REGION || 'us-east-1';
+const TABLE_CREATION_WAIT_MS = 2000;
+const TABLE_CREATION_MAX_ATTEMPTS = 20;
 
 const client = new DynamoDBClient({ region });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -59,20 +61,21 @@ function fromDynamoItem(item) {
   const record = { ...item };
   delete record.pk;
   delete record.sk;
-  delete record.entityType;
   return normalizeRecord(record);
 }
 
 async function ensureTableExists() {
   try {
-    await client.send(new DescribeTableCommand({ TableName: TABLE_NAME }));
-    return true;
+    const result = await client.send(new DescribeTableCommand({ TableName: TABLE_NAME }));
+    if (result.Table?.TableStatus === 'ACTIVE') {
+      return true;
+    }
   } catch (error) {
     if (error?.name !== 'ResourceNotFoundException') {
-      console.warn('DynamoDB table check skipped:', error.message);
-      return false;
+      throw error;
     }
 
+    console.log(`📦 Creating DynamoDB table ${TABLE_NAME}...`);
     try {
       await client.send(new CreateTableCommand({
         TableName: TABLE_NAME,
@@ -86,31 +89,54 @@ async function ensureTableExists() {
         ],
         BillingMode: 'PAY_PER_REQUEST'
       }));
-
-      return true;
     } catch (createError) {
-      console.warn('DynamoDB table creation skipped:', createError.message);
-      return false;
+      if (createError?.name !== 'ResourceInUseException') {
+        throw createError;
+      }
     }
   }
+
+  for (let attempt = 1; attempt <= TABLE_CREATION_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const result = await client.send(new DescribeTableCommand({ TableName: TABLE_NAME }));
+      if (result.Table?.TableStatus === 'ACTIVE') {
+        return true;
+      }
+    } catch (error) {
+      if (error?.name === 'ResourceNotFoundException') {
+        // Table is still propagating; keep polling.
+      } else {
+        throw error;
+      }
+    }
+
+    if (attempt === TABLE_CREATION_MAX_ATTEMPTS) {
+      throw new Error(`DynamoDB table ${TABLE_NAME} did not become active in time`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, TABLE_CREATION_WAIT_MS));
+  }
+
+  return false;
 }
 
 async function listEntities(entityType) {
   await ensureTableExists();
+  // Use strongly consistent reads to ensure newly created users are visible
+  // immediately after creation (helps during register -> login flow)
   const result = await docClient.send(new ScanCommand({
     TableName: TABLE_NAME,
-    FilterExpression: 'entityType = :entityType',
-    ExpressionAttributeValues: {
-      ':entityType': String(entityType).toLowerCase()
-    }
+    ConsistentRead: true
   }));
 
-  return (result.Items || []).map(fromDynamoItem);
+  return (result.Items || [])
+    .map(fromDynamoItem)
+    .filter((record) => record && record.entityType === String(entityType).toLowerCase());
 }
 
 async function getEntity(entityType, id) {
   await ensureTableExists();
-  const result = await docClient.send(new GetItemCommand({
+  const result = await docClient.send(new GetCommand({
     TableName: TABLE_NAME,
     Key: {
       pk: String(entityType).toUpperCase(),
@@ -124,7 +150,7 @@ async function getEntity(entityType, id) {
 async function createEntity(entityType, data) {
   await ensureTableExists();
   const item = toDynamoItem(entityType, data);
-  await docClient.send(new PutItemCommand({
+  await docClient.send(new PutCommand({
     TableName: TABLE_NAME,
     Item: item
   }));
@@ -145,7 +171,7 @@ async function updateEntity(entityType, id, updates) {
   };
 
   const item = toDynamoItem(entityType, updated);
-  await docClient.send(new PutItemCommand({
+  await docClient.send(new PutCommand({
     TableName: TABLE_NAME,
     Item: item
   }));
@@ -158,7 +184,7 @@ async function deleteEntity(entityType, id) {
   const existing = await getEntity(entityType, id);
   if (!existing) return null;
 
-  await docClient.send(new DeleteItemCommand({
+  await docClient.send(new DeleteCommand({
     TableName: TABLE_NAME,
     Key: {
       pk: String(entityType).toUpperCase(),

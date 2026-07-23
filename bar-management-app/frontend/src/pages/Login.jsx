@@ -10,15 +10,15 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   // Redirect if already logged in
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/');
+    if (!authLoading && isAuthenticated) {
+      navigate('/', { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [authLoading, isAuthenticated, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,9 +27,7 @@ const Login = () => {
 
     try {
       const result = await login(username, password);
-      if (result.success) {
-        navigate('/');
-      } else {
+      if (!result.success) {
         setError(result.error || 'Login failed');
       }
     } catch (err) {

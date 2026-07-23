@@ -33,8 +33,9 @@ export const AuthProvider = ({ children }) => {
           setUser(null);
         }
       }
-      setLoading(false);
     };
+
+    setLoading(false);
     loadUser();
   }, [token]);
 
@@ -43,13 +44,14 @@ export const AuthProvider = ({ children }) => {
     try {
       setError(null);
       const res = await api.post('/auth/login', { username, password });
-      const { token, user } = res.data;
-      setToken(token);
-      setUser(user);
-      return { success: true };
+      const { token: authToken, user: authUser } = res.data;
+      setToken(authToken);
+      setUser(authUser);
+      return { success: true, token: authToken, user: authUser };
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed');
-      return { success: false, error: err.response?.data?.message };
+      const errorMessage = err.response?.data?.message || 'Login failed';
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
     }
   };
 
@@ -58,13 +60,14 @@ export const AuthProvider = ({ children }) => {
     try {
       setError(null);
       const res = await api.post('/auth/register', userData);
-      const { token, user } = res.data;
-      setToken(token);
-      setUser(user);
-      return { success: true };
+      const { token: authToken, user: authUser } = res.data;
+      setToken(authToken);
+      setUser(authUser);
+      return { success: true, token: authToken, user: authUser };
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed');
-      return { success: false, error: err.response?.data?.message };
+      const errorMessage = err.response?.data?.message || 'Registration failed';
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
     }
   };
 
@@ -84,7 +87,7 @@ export const AuthProvider = ({ children }) => {
       login,
       register,
       logout,
-      isAuthenticated: !!user && !!token,
+      isAuthenticated: Boolean(token),
       isOwner: user?.role === 'owner',
       isSales: user?.role === 'sales'
     }}>

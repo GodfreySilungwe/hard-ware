@@ -168,10 +168,15 @@ class BaseModel {
 
   async save() {
     const data = this.toJSON();
-    if (this._id || this.id) {
-      const updated = await dynamodb.updateEntity(this.constructor.entityType, this._id || this.id, data);
-      Object.assign(this, updated);
-      return this;
+    const existingId = this._id || this.id;
+
+    if (existingId) {
+      const existing = await dynamodb.getEntity(this.constructor.entityType, existingId);
+      if (existing) {
+        const updated = await dynamodb.updateEntity(this.constructor.entityType, existingId, data);
+        Object.assign(this, updated);
+        return this;
+      }
     }
 
     const created = await dynamodb.createEntity(this.constructor.entityType, data);

@@ -12,12 +12,26 @@ dotenv.config();
 
 const app = express();
 
-const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || `${process.env.CORS_ORIGIN || 'http://localhost:5173'},https://d9ygk9rkc9xij.cloudfront.net`).split(',').map(origin => origin.trim()).filter(Boolean);
+// Simple request logger to help diagnose CloudFront / API Gateway path issues
+app.use((req, res, next) => {
+  try {
+    console.log('➡️ Incoming request:', req.method, req.originalUrl || req.url);
+    console.log('   headers:', {
+      host: req.headers.host,
+      'x-forwarded-for': req.headers['x-forwarded-for'],
+      referer: req.headers.referer
+    });
+  } catch (e) {
+    // ignore logging errors
+  }
+  next();
+});
 
-// Middleware
-app.use(cors({
+const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || `${process.env.CORS_ORIGIN || 'http://localhost:5173'},http://127.0.0.1:5173,http://localhost:3000,https://d9ygk9rkc9xij.cloudfront.net`).split(',').map(origin => origin.trim()).filter(Boolean);
+
+const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.cloudfront.net')) {
       callback(null, true);
       return;
     }
@@ -27,7 +41,20 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
+};
+
+// Middleware
+app.use(cors(corsOptions));
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    return res.sendStatus(204);
+  }
+  next();
+});
 app.use(express.json({ limit: '10mb' }));
 
 app.use('/api/suppliers', supplierRoutes);
@@ -51,29 +78,104 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/uploads', uploadRoutes);
 
+// Root info route
+app.get('/', (req, res) => {
+  res.json({ message: 'API root. Use /api/auth/login or /api/health' });
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Backend is running!', table: process.env.DYNAMODB_TABLE_NAME || 'sampla-hardware-table' });
 });
 
 let server;
-async function init() {
+async function startServer() {
   await ensureTableExists();
-}
+  await require('./routes/auth').ensureDefaultOwnerUser();
 
-init().catch((error) => {
-  console.error('❌ DynamoDB initialization error:', error.message);
-});
-
-const PORT = process.env.PORT || 5000;
-if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
   server = app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
   });
 }
 
+if (require.main === module) {
+  startServer().catch((error) => {
+    console.error('❌ Server startup error:', error.message);
+    process.exit(1);
+  });
+}
+
 const lambdaServer = awsServerlessExpress.createServer(app);
+function normalizeLambdaEvent(event) {
+  if (!event.path) {
+    event.path = event.rawPath || event.requestContext?.http?.path || event.path;
+  }
+
+  if (!event.httpMethod) {
+    event.httpMethod = event.requestContext?.http?.method || event.httpMethod;
+  }
+
+  if (!event.headers) {
+    event.headers = {};
+  }
+
+  if (!event.queryStringParameters && event.rawQueryString) {
+    const params = new URLSearchParams(event.rawQueryString);
+    const query = {};
+
+    for (const [key, value] of params.entries()) {
+      if (query[key] !== undefined) {
+        query[key] = Array.isArray(query[key]) ? [...query[key], value] : [query[key], value];
+      } else {
+        query[key] = value;
+      }
+    }
+
+    event.queryStringParameters = query;
+  }
+
+  return event;
+}
+
+async function handler(event, context) {
+  await ensureTableExists();
+  await require('./routes/auth').ensureDefaultOwnerUser();
+  context.callbackWaitsForEmptyEventLoop = false;
+  normalizeLambdaEvent(event);
+  console.log('Lambda event normalized:', {
+    path: event.path,
+    httpMethod: event.httpMethod,
+    rawPath: event.rawPath,
+    rawQueryString: event.rawQueryString,
+    queryStringParameters: event.queryStringParameters
+  });
+
+  try {
+    const resp = await awsServerlessExpress.proxy(lambdaServer, event, context, 'PROMISE').promise;
+    return resp;
+  } catch (error) {
+    console.error('Lambda proxy error:', error && error.stack ? error.stack : error);
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: error?.message || 'Internal server error' })
+    };
+  }
+}
+
 module.exports = {
   app,
-  handler: (event, context) => awsServerlessExpress.proxy(lambdaServer, event, context)
+  handler
 };
+
+// Express catch-all for non-matching routes (return JSON instead of HTML)
+app.use((req, res) => {
+  res.status(404).json({ message: 'Not Found' });
+});
+
+// Global Express error handler
+app.use((err, req, res, next) => {
+  console.error('Express error:', err && err.stack ? err.stack : err);
+  res.status(500).json({ message: err?.message || 'Internal server error' });
+});
