@@ -1,22 +1,26 @@
 const express = require('express');
 const router = express.Router();
 const Category = require('../models/Category');
+const { protect } = require('../middleware/auth');
 
 // Get all categories
-router.get('/', async (req, res) => {
+router.get('/', protect, async (req, res) => {
   try {
-    const categories = await Category.find().sort({ name: 1 });
-    res.json(categories);
+    const categories = await Category.find({}, req).sort({ name: 1 });
+    res.json(categories.filter((category) => !req.user?.tenantId || category.tenantId === req.user.tenantId));
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
 // Get single category
-router.get('/:id', async (req, res) => {
+router.get('/:id', protect, async (req, res) => {
   try {
-    const category = await Category.findById(req.params.id);
+    const category = await Category.findById(req.params.id, req);
     if (!category) {
+      return res.status(404).json({ message: 'Category not found' });
+    }
+    if (req.user?.tenantId && category.tenantId && category.tenantId !== req.user.tenantId) {
       return res.status(404).json({ message: 'Category not found' });
     }
     res.json(category);
@@ -26,10 +30,10 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create category
-router.post('/', async (req, res) => {
+router.post('/', protect, async (req, res) => {
   try {
     const { name, description } = req.body;
-    const category = new Category({ name, description });
+    const category = new Category({ name, description, tenantId: req.user?.tenantId || req.body?.tenantId || null });
     await category.save();
     res.status(201).json(category);
   } catch (error) {
@@ -41,13 +45,14 @@ router.post('/', async (req, res) => {
 });
 
 // Update category
-router.put('/:id', async (req, res) => {
+router.put('/:id', protect, async (req, res) => {
   try {
     const { name, description } = req.body;
     const category = await Category.findByIdAndUpdate(
       req.params.id,
       { name, description },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
+      req
     );
     if (!category) {
       return res.status(404).json({ message: 'Category not found' });
@@ -59,9 +64,9 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete category
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', protect, async (req, res) => {
   try {
-    const category = await Category.findByIdAndDelete(req.params.id);
+    const category = await Category.findByIdAndDelete(req.params.id, req);
     if (!category) {
       return res.status(404).json({ message: 'Category not found' });
     }

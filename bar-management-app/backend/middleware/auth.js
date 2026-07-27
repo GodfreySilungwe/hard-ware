@@ -1,6 +1,8 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+const jwtSecret = process.env.JWT_SECRET || 'secret_key';
+
 // Verify JWT token
 const protect = async (req, res, next) => {
   let token;
@@ -14,14 +16,17 @@ const protect = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret_key');
-    const user = await User.findById(decoded.id).select('-password');
-    
+    const decoded = jwt.verify(token, jwtSecret);
+    const user = await User.findById(decoded.id);
+
     if (!user) {
       return res.status(401).json({ message: 'User not found' });
     }
-    
-    req.user = user;
+
+    const safeUser = { ...user };
+    delete safeUser.password;
+
+    req.user = safeUser;
     next();
   } catch (error) {
     console.error('Auth error:', error);
@@ -47,4 +52,13 @@ const isSalesOrOwner = (req, res, next) => {
   }
 };
 
-module.exports = { protect, isOwner, isSalesOrOwner };
+// Check if user is a hardware manager or owner
+const isHardwareManagerOrOwner = (req, res, next) => {
+  if (req.user && (req.user.role === 'hardware-manager' || req.user.role === 'owner')) {
+    next();
+  } else {
+    res.status(403).json({ message: 'Hardware manager or owner access required' });
+  }
+};
+
+module.exports = { protect, isOwner, isSalesOrOwner, isHardwareManagerOrOwner };

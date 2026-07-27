@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const Product = require('../models/Product');
+const { protect } = require('../middleware/auth');
 
 // Get all products
-router.get('/', async (req, res) => {
+router.get('/', protect, async (req, res) => {
   try {
-    const products = await Product.find().populate('category', 'name');
-    res.json(products);
+    const products = await Product.find({}, req).populate('category', 'name');
+    res.json(products.filter((product) => !req.user?.tenantId || product.tenantId === req.user.tenantId));
   } catch (error) {
     console.error('Error fetching products:', error);
     res.status(500).json({ message: error.message });
@@ -14,14 +15,15 @@ router.get('/', async (req, res) => {
 });
 
 // Get low stock products
-router.get('/low-stock', async (req, res) => {
+router.get('/low-stock', protect, async (req, res) => {
   try {
     const products = await Product.find({
       $expr: {
         $lte: ['$currentStock', '$lowStockThreshold']
       }
-    }).populate('category', 'name');
-    res.json(products);
+    }, req).populate('category', 'name');
+    const scopedProducts = (products || []).filter((product) => !req.user?.tenantId || product.tenantId === req.user.tenantId);
+    res.json(scopedProducts);
   } catch (error) {
     console.error('Error fetching low stock:', error);
     res.status(500).json({ message: error.message });
@@ -29,10 +31,13 @@ router.get('/low-stock', async (req, res) => {
 });
 
 // Get single product
-router.get('/:id', async (req, res) => {
+router.get('/:id', protect, async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id).populate('category', 'name');
+    const product = await Product.findById(req.params.id, req).populate('category', 'name');
     if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+    if (req.user?.tenantId && product.tenantId && product.tenantId !== req.user.tenantId) {
       return res.status(404).json({ message: 'Product not found' });
     }
     res.json(product);
@@ -43,9 +48,12 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create product
-router.post('/', async (req, res) => {
+router.post('/', protect, async (req, res) => {
   try {
-    const product = new Product(req.body);
+    const product = new Product({
+      ...req.body,
+      tenantId: req.user?.tenantId || req.body?.tenantId || null
+    });
     await product.save();
     res.status(201).json(product);
   } catch (error) {
@@ -55,13 +63,13 @@ router.post('/', async (req, res) => {
 });
 
 // Update product - FIXED
-router.put('/:id', async (req, res) => {
+router.put('/:id', protect, async (req, res) => {
   try {
-    console.log('Updating product:', req.params.id);
-    console.log('Update data:', req.body);
-    
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id, req);
     if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+    if (req.user?.tenantId && product.tenantId && product.tenantId !== req.user.tenantId) {
       return res.status(404).json({ message: 'Product not found' });
     }
 
@@ -85,9 +93,9 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete product
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', protect, async (req, res) => {
   try {
-    const product = await Product.findByIdAndDelete(req.params.id);
+    const product = await Product.findByIdAndDelete(req.params.id, req);
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }

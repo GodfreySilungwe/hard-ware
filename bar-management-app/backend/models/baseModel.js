@@ -1,9 +1,10 @@
 const dynamodb = require('../lib/dynamodb');
 
 class QueryBuilder {
-  constructor(model, query = {}) {
+  constructor(model, query = {}, req = null) {
     this.model = model;
     this.query = query;
+    this.req = req;
     this.populatePaths = [];
     this.sortConfig = null;
   }
@@ -27,7 +28,7 @@ class QueryBuilder {
   }
 
   async exec() {
-    const records = await this.model._find(this.query);
+    const records = await this.model._find(this.query, this.req);
     let results = [...records];
 
     if (this.sortConfig) {
@@ -62,17 +63,40 @@ class BaseModel {
     }
   }
 
+  static getTenantScope(req) {
+    const user = req?.user;
+    if (user?.role === 'owner') {
+      return null;
+    }
+
+    const tenantId = user?.tenantId || req?.body?.tenantId || req?.query?.tenantId || null;
+    return tenantId ? { tenantId } : null;
+  }
+
+  static applyTenantFilter(query = {}, req = null) {
+    const tenantScope = this.getTenantScope(req);
+    if (!tenantScope) {
+      return query;
+    }
+
+    return {
+      ...query,
+      tenantId: tenantScope.tenantId
+    };
+  }
+
   static entityType = 'item';
 
-  static _find(query = {}) {
+  static _find(query = {}, req = null) {
     const entityType = this.entityType;
     return dynamodb.listEntities(entityType).then((records) => {
-      if (!query || Object.keys(query).length === 0) {
+      const scopedQuery = this.applyTenantFilter(query, req);
+      if (!scopedQuery || Object.keys(scopedQuery).length === 0) {
         return records;
       }
 
       return records.filter((record) => {
-        return Object.entries(query).every(([key, value]) => {
+        return Object.entries(scopedQuery).every(([key, value]) => {
           if (key === '$or') {
             return value.some((condition) => Object.entries(condition).every(([subKey, subValue]) => record[subKey] === subValue));
           }
@@ -100,29 +124,38 @@ class BaseModel {
     });
   }
 
-  static find(query = {}) {
-    return new QueryBuilder(this, query);
+  static find(query = {}, req = null) {
+    return new QueryBuilder(this, query, req);
   }
 
-  static async findById(id) {
+  static async findById(id, req = null) {
     const item = await dynamodb.getEntity(this.entityType, id);
-    return item ? new this(item) : null;
+    if (!item) {
+      return null;
+    }
+
+    const tenantScope = this.getTenantScope(req);
+    if (tenantScope && item.tenantId && item.tenantId !== tenantScope.tenantId) {
+      return null;
+    }
+
+    return new this(item);
   }
 
-  static async findOne(query = {}) {
-    const records = await this._find(query);
+  static async findOne(query = {}, req = null) {
+    const records = await this._find(query, req);
     return records[0] ? new this(records[0]) : null;
   }
 
-  static async findByIdAndDelete(id) {
-    const existing = await this.findById(id);
+  static async findByIdAndDelete(id, req = null) {
+    const existing = await this.findById(id, req);
     if (!existing) return null;
     await existing.delete();
     return existing;
   }
 
-  static async findByIdAndUpdate(id, updates, options = {}) {
-    const existing = await this.findById(id);
+  static async findByIdAndUpdate(id, updates, options = {}, req = null) {
+    const existing = await this.findById(id, req);
     if (!existing) return null;
     Object.assign(existing, updates);
     await existing.save();

@@ -1,22 +1,26 @@
 const express = require('express');
 const router = express.Router();
 const Customer = require('../models/Customer');
+const { protect } = require('../middleware/auth');
 
 // Get all customers
-router.get('/', async (req, res) => {
+router.get('/', protect, async (req, res) => {
   try {
-    const customers = await Customer.find().sort({ name: 1 });
-    res.json(customers);
+    const customers = await Customer.find({}, req).sort({ name: 1 });
+    res.json(customers.filter((customer) => !req.user?.tenantId || customer.tenantId === req.user.tenantId));
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
 // Get single customer
-router.get('/:id', async (req, res) => {
+router.get('/:id', protect, async (req, res) => {
   try {
-    const customer = await Customer.findById(req.params.id);
+    const customer = await Customer.findById(req.params.id, req);
     if (!customer) {
+      return res.status(404).json({ message: 'Customer not found' });
+    }
+    if (req.user?.tenantId && customer.tenantId && customer.tenantId !== req.user.tenantId) {
       return res.status(404).json({ message: 'Customer not found' });
     }
     res.json(customer);
@@ -26,10 +30,10 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create customer
-router.post('/', async (req, res) => {
+router.post('/', protect, async (req, res) => {
   try {
     const { name, phone, gender } = req.body;
-    const customer = new Customer({ name, phone, gender });
+    const customer = new Customer({ name, phone, gender, tenantId: req.user?.tenantId || req.body?.tenantId || null });
     await customer.save();
     res.status(201).json(customer);
   } catch (error) {
@@ -41,12 +45,13 @@ router.post('/', async (req, res) => {
 });
 
 // Update customer
-router.put('/:id', async (req, res) => {
+router.put('/:id', protect, async (req, res) => {
   try {
     const customer = await Customer.findByIdAndUpdate(
       req.params.id,
       req.body,
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
+      req
     );
     if (!customer) {
       return res.status(404).json({ message: 'Customer not found' });
@@ -58,9 +63,9 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete customer
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', protect, async (req, res) => {
   try {
-    const customer = await Customer.findByIdAndDelete(req.params.id);
+    const customer = await Customer.findByIdAndDelete(req.params.id, req);
     if (!customer) {
       return res.status(404).json({ message: 'Customer not found' });
     }

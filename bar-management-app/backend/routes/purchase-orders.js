@@ -3,11 +3,12 @@ const router = express.Router();
 const PurchaseOrder = require('../models/PurchaseOrder');
 const Supplier = require('../models/Supplier');
 const Product = require('../models/Product');
+const { protect } = require('../middleware/auth');
 
 // Get all purchase orders
-router.get('/', async (req, res) => {
+router.get('/', protect, async (req, res) => {
   try {
-    const orders = await PurchaseOrder.find()
+    const orders = await PurchaseOrder.find({}, req)
       .populate('supplier', 'name')
       .populate('items.product', 'name')
       .sort({ createdAt: -1 });
@@ -19,9 +20,9 @@ router.get('/', async (req, res) => {
 });
 
 // Get single purchase order
-router.get('/:id', async (req, res) => {
+router.get('/:id', protect, async (req, res) => {
   try {
-    const order = await PurchaseOrder.findById(req.params.id)
+    const order = await PurchaseOrder.findById(req.params.id, req)
       .populate('supplier', 'name phone email')
       .populate('items.product', 'name');
     if (!order) {
@@ -35,12 +36,12 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create purchase order
-router.post('/', async (req, res) => {
+router.post('/', protect, async (req, res) => {
   try {
     const { supplier, items, expectedDelivery, notes } = req.body;
 
     // Check supplier exists
-    const supplierExists = await Supplier.findById(supplier);
+    const supplierExists = await Supplier.findById(supplier, req);
     if (!supplierExists) {
       return res.status(404).json({ message: 'Supplier not found' });
     }
@@ -72,7 +73,8 @@ router.post('/', async (req, res) => {
       totalAmount,
       expectedDelivery,
       notes,
-      status: 'pending'
+      status: 'pending',
+      tenantId: req.user?.tenantId || req.body?.tenantId || null
     });
 
     await order.save();
@@ -84,10 +86,10 @@ router.post('/', async (req, res) => {
 });
 
 // Update purchase order status
-router.put('/:id/status', async (req, res) => {
+router.put('/:id/status', protect, async (req, res) => {
   try {
     const { status } = req.body;
-    const order = await PurchaseOrder.findById(req.params.id);
+    const order = await PurchaseOrder.findById(req.params.id, req);
     
     if (!order) {
       return res.status(404).json({ message: 'Purchase order not found' });
@@ -101,7 +103,7 @@ router.put('/:id/status', async (req, res) => {
       
       // Update product stock
       for (const item of order.items) {
-        const product = await Product.findById(item.product);
+        const product = await Product.findById(item.product, req);
         if (product) {
           product.currentStock += item.quantity;
           await product.save();
@@ -118,9 +120,9 @@ router.put('/:id/status', async (req, res) => {
 });
 
 // Delete purchase order
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', protect, async (req, res) => {
   try {
-    const order = await PurchaseOrder.findByIdAndDelete(req.params.id);
+    const order = await PurchaseOrder.findByIdAndDelete(req.params.id, req);
     if (!order) {
       return res.status(404).json({ message: 'Purchase order not found' });
     }

@@ -2,11 +2,12 @@ const express = require('express');
 const router = express.Router();
 const InventoryAdjustment = require('../models/InventoryAdjustment');
 const Product = require('../models/Product');
+const { protect } = require('../middleware/auth');
 
 // Get all adjustments
-router.get('/', async (req, res) => {
+router.get('/', protect, async (req, res) => {
   try {
-    const adjustments = await InventoryAdjustment.find()
+    const adjustments = await InventoryAdjustment.find({}, req)
       .populate('product', 'name')
       .sort({ createdAt: -1 });
     res.json(adjustments);
@@ -17,12 +18,12 @@ router.get('/', async (req, res) => {
 });
 
 // Create adjustment
-router.post('/', async (req, res) => {
+router.post('/', protect, async (req, res) => {
   try {
     const { product, type, quantity, reason } = req.body;
 
     // Get current product stock
-    const productData = await Product.findById(product);
+    const productData = await Product.findById(product, req);
     if (!productData) {
       return res.status(404).json({ message: 'Product not found' });
     }
@@ -53,7 +54,8 @@ router.post('/', async (req, res) => {
       quantity,
       reason,
       previousStock: productData.currentStock,
-      newStock
+      newStock,
+      tenantId: req.user?.tenantId || req.body?.tenantId || null
     });
 
     await adjustment.save();
@@ -70,11 +72,11 @@ router.post('/', async (req, res) => {
 });
 
 // Get adjustments by product
-router.get('/product/:productId', async (req, res) => {
+router.get('/product/:productId', protect, async (req, res) => {
   try {
     const adjustments = await InventoryAdjustment.find({
       product: req.params.productId
-    }).sort({ createdAt: -1 });
+    }, req).sort({ createdAt: -1 });
     res.json(adjustments);
   } catch (error) {
     console.error('Error fetching product adjustments:', error);
@@ -83,7 +85,7 @@ router.get('/product/:productId', async (req, res) => {
 });
 
 // Get summary stats
-router.get('/summary', async (req, res) => {
+router.get('/summary', protect, async (req, res) => {
   try {
     const stats = await InventoryAdjustment.aggregate([
       {

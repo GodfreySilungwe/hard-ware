@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const path = require('path');
+const fs = require('fs');
 const awsServerlessExpress = require('aws-serverless-express');
 const inventoryRoutes = require('./routes/inventory');
 const exportRoutes = require('./routes/export');
@@ -98,6 +100,25 @@ app.get('/', (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Backend is running!', table: process.env.DYNAMODB_TABLE_NAME || 'sampla-hardware-table' });
 });
+
+const frontendDistPath = path.resolve(__dirname, '../frontend/dist');
+const frontendIndexPath = path.join(frontendDistPath, 'index.html');
+
+if (fs.existsSync(frontendIndexPath)) {
+  app.use(express.static(frontendDistPath));
+
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) {
+      return next();
+    }
+
+    if (req.path.includes('.')) {
+      return next();
+    }
+
+    res.sendFile(frontendIndexPath);
+  });
+}
 
 let server;
 async function startServer() {

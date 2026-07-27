@@ -3,11 +3,12 @@ const router = express.Router();
 const Supplier = require('../models/Supplier');
 const PurchaseOrder = require('../models/PurchaseOrder');
 const Product = require('../models/Product');
+const { protect } = require('../middleware/auth');
 
 // Get all suppliers
-router.get('/', async (req, res) => {
+router.get('/', protect, async (req, res) => {
   try {
-    const suppliers = await Supplier.find().sort({ name: 1 });
+    const suppliers = await Supplier.find({}, req).sort({ name: 1 });
     res.json(suppliers);
   } catch (error) {
     console.error('Error fetching suppliers:', error);
@@ -16,9 +17,9 @@ router.get('/', async (req, res) => {
 });
 
 // Get single supplier
-router.get('/:id', async (req, res) => {
+router.get('/:id', protect, async (req, res) => {
   try {
-    const supplier = await Supplier.findById(req.params.id).populate('products', 'name');
+    const supplier = await Supplier.findById(req.params.id, req).populate('products', 'name');
     if (!supplier) {
       return res.status(404).json({ message: 'Supplier not found' });
     }
@@ -30,9 +31,9 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create supplier
-router.post('/', async (req, res) => {
+router.post('/', protect, async (req, res) => {
   try {
-    const supplier = new Supplier(req.body);
+    const supplier = new Supplier({ ...req.body, tenantId: req.user?.tenantId || req.body?.tenantId || null });
     await supplier.save();
     res.status(201).json(supplier);
   } catch (error) {
@@ -42,12 +43,13 @@ router.post('/', async (req, res) => {
 });
 
 // Update supplier
-router.put('/:id', async (req, res) => {
+router.put('/:id', protect, async (req, res) => {
   try {
     const supplier = await Supplier.findByIdAndUpdate(
       req.params.id,
       req.body,
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
+      req
     );
     if (!supplier) {
       return res.status(404).json({ message: 'Supplier not found' });
@@ -60,9 +62,9 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete supplier
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', protect, async (req, res) => {
   try {
-    const supplier = await Supplier.findByIdAndDelete(req.params.id);
+    const supplier = await Supplier.findByIdAndDelete(req.params.id, req);
     if (!supplier) {
       return res.status(404).json({ message: 'Supplier not found' });
     }
@@ -74,9 +76,9 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Get supplier purchase orders
-router.get('/:id/orders', async (req, res) => {
+router.get('/:id/orders', protect, async (req, res) => {
   try {
-    const orders = await PurchaseOrder.find({ supplier: req.params.id })
+    const orders = await PurchaseOrder.find({ supplier: req.params.id }, req)
       .populate('items.product', 'name')
       .sort({ createdAt: -1 });
     res.json(orders);

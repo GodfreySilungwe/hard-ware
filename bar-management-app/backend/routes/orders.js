@@ -3,11 +3,13 @@ const router = express.Router();
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
+const { protect, isHardwareManagerOrOwner } = require('../middleware/auth');
+const { applyOrderReversal } = require('../lib/orderReversal');
 
 // Get all orders
-router.get('/', async (req, res) => {
+router.get('/', protect, async (req, res) => {
   try {
-    const orders = await Order.find()
+    const orders = await Order.find({}, req)
       .populate('customer', 'name phone')
       .populate('items.product', 'name')
       .sort({ createdAt: -1 });
@@ -19,14 +21,14 @@ router.get('/', async (req, res) => {
 });
 
 // Get today's orders (for dashboard)
-router.get('/today', async (req, res) => {
+router.get('/today', protect, async (req, res) => {
   try {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     
     const orders = await Order.find({
       createdAt: { $gte: startOfDay }
-    });
+    }, req);
     
     const totalSales = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
     const totalProfit = orders.reduce((sum, o) => sum + (o.profit || 0), 0);
@@ -44,7 +46,7 @@ router.get('/today', async (req, res) => {
 });
 
 // Create order (POS)
-router.post('/', async (req, res) => {
+router.post('/', protect, async (req, res) => {
   try {
     const { customer, items, paymentMethod } = req.body;
 
@@ -58,7 +60,7 @@ router.post('/', async (req, res) => {
 
     // Process each item
     for (const item of items) {
-      const product = await Product.findById(item.product);
+      const product = await Product.findById(item.product, req);
       
       if (!product) {
         return res.status(404).json({ message: `Product not found: ${item.product}` });
@@ -89,7 +91,7 @@ router.post('/', async (req, res) => {
 
     // Update customer total spent
     if (customer) {
-      const customerDoc = await Customer.findById(customer);
+      const customerDoc = await Customer.findById(customer, req);
       if (customerDoc) {
         customerDoc.totalSpent += totalAmount;
         customerDoc.loyaltyPoints += Math.floor(totalAmount / 100);
@@ -104,7 +106,9 @@ router.post('/', async (req, res) => {
       items: orderItems,
       totalAmount,
       profit: totalAmount - totalCost,
-      paymentMethod: paymentMethod || 'cash'
+      paymentMethod: paymentMethod || 'cash',
+      status: 'completed',
+      tenantId: req.user?.tenantId || req.body?.tenantId || null
     });
 
     await order.save();
@@ -117,9 +121,9 @@ router.post('/', async (req, res) => {
 });
 
 // Get order by ID
-router.get('/:id', async (req, res) => {
+router.get('/:id', protect, async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id)
+    const order = await Order.findById(req.params.id, req)
       .populate('customer', 'name phone')
       .populate('items.product', 'name');
     
@@ -130,6 +134,37 @@ router.get('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error fetching order:', error);
     res.status(500).json({ message: error.message });
+  }
+});
+
+// Reverse an order sale and restore inventory
+router.patch('/:id/reverse', protect, isHardwareManagerOrOwner, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id, req);
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    if (order.status === 'reversed') {
+      return res.status(400).json({ message: 'This sale has already been reversed' });
+    }
+
+    const reversalResult = await applyOrderReversal(
+      order,
+      async (productId) => Product.findById(productId, req),
+      req.user,
+      {
+        reason: req.body?.reason || 'No reason provided',
+        notes: req.body?.notes || ''
+      }
+    );
+
+    await order.save();
+    res.json(reversalResult.order);
+  } catch (error) {
+    console.error('Error reversing order:', error);
+    res.status(400).json({ message: error.message });
   }
 });
 
