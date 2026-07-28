@@ -33,7 +33,7 @@ router.get('/:id', protect, async (req, res) => {
 router.post('/', protect, async (req, res) => {
   try {
     const { name, phone, gender } = req.body;
-    const customer = new Customer({ name, phone, gender, tenantId: req.user?.tenantId || req.body?.tenantId || null });
+    const customer = new Customer({ name, phone, gender, tenantId: req.user?.tenantId || null });
     await customer.save();
     res.status(201).json(customer);
   } catch (error) {

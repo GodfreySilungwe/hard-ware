@@ -33,7 +33,7 @@ router.get('/:id', protect, async (req, res) => {
 // Create supplier
 router.post('/', protect, async (req, res) => {
   try {
-    const supplier = new Supplier({ ...req.body, tenantId: req.user?.tenantId || req.body?.tenantId || null });
+    const supplier = new Supplier({ ...req.body, tenantId: req.user?.tenantId || null });
     await supplier.save();
     res.status(201).json(supplier);
   } catch (error) {

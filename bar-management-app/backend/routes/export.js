@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
+const { protect } = require('../middleware/auth');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
@@ -18,12 +19,12 @@ const formatDate = (date) => {
 };
 
 // Test route
-router.get('/test', (req, res) => {
+router.get('/test', protect, (req, res) => {
   res.json({ message: 'Export routes are working!' });
 });
 
 // Export Sales Report as Excel
-router.get('/sales/excel', async (req, res) => {
+router.get('/sales/excel', protect, async (req, res) => {
   try {
     const orders = await Order.find()
       .populate('customer', 'name phone')
@@ -101,7 +102,7 @@ router.get('/sales/excel', async (req, res) => {
 // Export Inventory Report as Excel
 router.get('/inventory/excel', async (req, res) => {
   try {
-    const products = await Product.find().populate('category', 'name');
+    const products = await Product.find({}, req).populate('category', 'name');
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Inventory Report');
@@ -153,7 +154,7 @@ router.get('/inventory/excel', async (req, res) => {
 // Export Customers Report as Excel
 router.get('/customers/excel', async (req, res) => {
   try {
-    const customers = await Customer.find().sort({ totalSpent: -1 });
+    const customers = await Customer.find({}, req).sort({ totalSpent: -1 });
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Customers Report');

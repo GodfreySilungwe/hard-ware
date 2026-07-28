@@ -69,7 +69,7 @@ class BaseModel {
       return null;
     }
 
-    const tenantId = user?.tenantId || req?.body?.tenantId || req?.query?.tenantId || null;
+    const tenantId = user?.tenantId || null;
     return tenantId ? { tenantId } : null;
   }
 

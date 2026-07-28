@@ -46,6 +46,8 @@ router.post('/', protect, async (req, res) => {
       return res.status(404).json({ message: 'Supplier not found' });
     }
 
+    const normalizedDelivery = expectedDelivery ? new Date(expectedDelivery).toISOString() : null;
+
     let totalAmount = 0;
     const orderItems = [];
 
@@ -71,10 +73,10 @@ router.post('/', protect, async (req, res) => {
       supplier,
       items: orderItems,
       totalAmount,
-      expectedDelivery,
+      expectedDelivery: normalizedDelivery,
       notes,
       status: 'pending',
-      tenantId: req.user?.tenantId || req.body?.tenantId || null
+      tenantId: req.user?.tenantId || null
     });
 
     await order.save();
@@ -99,7 +101,7 @@ router.put('/:id/status', protect, async (req, res) => {
     
     // If status is 'received', update product stock
     if (status === 'received') {
-      order.receivedDate = new Date();
+      order.receivedDate = new Date().toISOString();
       
       // Update product stock
       for (const item of order.items) {

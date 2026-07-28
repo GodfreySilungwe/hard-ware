@@ -108,7 +108,7 @@ router.post('/', protect, async (req, res) => {
       profit: totalAmount - totalCost,
       paymentMethod: paymentMethod || 'cash',
       status: 'completed',
-      tenantId: req.user?.tenantId || req.body?.tenantId || null
+      tenantId: req.user?.tenantId || null
     });
 
     await order.save();

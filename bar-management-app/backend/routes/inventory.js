@@ -55,7 +55,7 @@ router.post('/', protect, async (req, res) => {
       reason,
       previousStock: productData.currentStock,
       newStock,
-      tenantId: req.user?.tenantId || req.body?.tenantId || null
+      tenantId: req.user?.tenantId || null
     });
 
     await adjustment.save();

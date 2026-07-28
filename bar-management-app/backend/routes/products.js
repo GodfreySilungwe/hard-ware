@@ -52,7 +52,7 @@ router.post('/', protect, async (req, res) => {
   try {
     const product = new Product({
       ...req.body,
-      tenantId: req.user?.tenantId || req.body?.tenantId || null
+      tenantId: req.user?.tenantId || null
     });
     await product.save();
     res.status(201).json(product);

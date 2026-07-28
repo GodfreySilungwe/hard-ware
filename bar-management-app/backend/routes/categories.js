@@ -33,7 +33,7 @@ router.get('/:id', protect, async (req, res) => {
 router.post('/', protect, async (req, res) => {
   try {
     const { name, description } = req.body;
-    const category = new Category({ name, description, tenantId: req.user?.tenantId || req.body?.tenantId || null });
+    const category = new Category({ name, description, tenantId: req.user?.tenantId || null });
     await category.save();
     res.status(201).json(category);
   } catch (error) {
