@@ -18,7 +18,7 @@ import Settings from './pages/Settings';
 import Applications from './pages/Applications';
 
 const RootRoute = () => {
-  const { isAuthenticated, loading, role } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
     return <div style={styles.loading}>Loading...</div>;
@@ -26,10 +26,6 @@ const RootRoute = () => {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
-  }
-
-  if (role === 'sales') {
-    return <Navigate to="/pos" replace />;
   }
 
   return (

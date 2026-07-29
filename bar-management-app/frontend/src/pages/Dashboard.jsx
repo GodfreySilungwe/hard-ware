@@ -65,15 +65,23 @@ const Dashboard = () => {
       let orders = [];
       try {
         const ordersRes = await api.get('/orders');
-        orders = Array.isArray(ordersRes.data) ? ordersRes.data : [];
+        orders = Array.isArray(ordersRes.data)
+          ? ordersRes.data
+          : Array.isArray(ordersRes.data?.orders)
+            ? ordersRes.data.orders
+            : [];
       } catch (err) {
         console.log('No orders:', err.message);
       }
 
       const today = new Date();
       const todaysOrders = orders.filter((order) => {
-        const orderDate = new Date(order.createdAt || order.created_at || order.date || order.updatedAt || order.updated_at || 0);
-        return !Number.isNaN(orderDate.getTime()) && orderDate.toDateString() === today.toDateString();
+        const timestamp = order.createdAt || order.created_at || order.date || order.updatedAt || order.updated_at || null;
+        const orderDate = timestamp ? new Date(timestamp) : new Date(0);
+        return !Number.isNaN(orderDate.getTime()) &&
+          orderDate.getFullYear() === today.getFullYear() &&
+          orderDate.getMonth() === today.getMonth() &&
+          orderDate.getDate() === today.getDate();
       });
       const todaySales = todaysOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
       const todayProfit = todaysOrders.reduce((sum, order) => sum + Number(order.profit || 0), 0);
