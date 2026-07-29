@@ -409,7 +409,27 @@ body {
     display: none;
   }
 
-  /* Print styles for receipt */
+  .page-shell {
+    padding: 14px !important;
+  }
+
+  .headerBar {
+    padding: 14px !important;
+  }
+
+  .title {
+    font-size: 20px !important;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}
+
 @media print {
   body * {
     visibility: hidden;
@@ -436,5 +456,4 @@ body {
   .print-hide {
     display: none !important;
   }
-}
 }

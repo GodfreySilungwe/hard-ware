@@ -25,9 +25,15 @@ const api = axios.create({
   timeout: 10000
 });
 
-// Request interceptor for debugging
+// Request interceptor for debugging and auth
 api.interceptors.request.use(
   config => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
     console.log(`📤 ${config.method.toUpperCase()} ${config.url}`);
     return config;
   },

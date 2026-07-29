@@ -3,12 +3,14 @@ import api from '../api/api';
 import PageContainer from './PageContainer';
 import UnifiedCard from '../components/common/UnifiedCard';
 import Button from '../components/common/Button';
+import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 
 const Suppliers = () => {
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     contactPerson: '',
@@ -51,10 +53,11 @@ const Suppliers = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this supplier?')) return;
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.delete(`/suppliers/${id}`);
+      await api.delete(`/suppliers/${deleteTarget._id}`);
+      setDeleteTarget(null);
       await loadSuppliers();
     } catch (err) {
       console.error('Error deleting supplier:', err);
@@ -99,7 +102,7 @@ const Suppliers = () => {
         <div className="fade-in">
           <UnifiedCard title={editingSupplier ? 'Edit Supplier' : 'Add New Supplier'}>
             <form onSubmit={handleSubmit} style={styles.form}>
-              <div style={styles.formGrid}>
+              <div className="form-grid" style={styles.formGrid}>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Supplier Name *</label>
                   <input
@@ -156,7 +159,7 @@ const Suppliers = () => {
                   />
                 </div>
               </div>
-              <div style={styles.formActions}>
+              <div className="form-actions" style={styles.formActions}>
                 <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
                 <Button type="submit">{editingSupplier ? 'Update' : 'Create'}</Button>
               </div>
@@ -165,7 +168,15 @@ const Suppliers = () => {
         </div>
       )}
 
-      <div style={styles.supplierGrid}>
+      <DeleteConfirmModal
+        open={Boolean(deleteTarget)}
+        title="Delete supplier"
+        description={`Type delete to permanently remove ${deleteTarget?.name || 'this supplier'}.`}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+      />
+
+      <div className="supplierGrid" style={styles.supplierGrid}>
         {suppliers.map((supplier, index) => (
           <div 
             key={supplier._id}
@@ -189,7 +200,7 @@ const Suppliers = () => {
               </div>
               <div style={styles.supplierActions}>
                 <button style={styles.editBtn} onClick={() => handleEdit(supplier)}>✏️</button>
-                <button style={styles.deleteBtn} onClick={() => handleDelete(supplier._id)}>🗑️</button>
+                <button style={styles.deleteBtn} onClick={() => setDeleteTarget(supplier)}>🗑️</button>
               </div>
             </div>
             <div style={styles.supplierDetails}>

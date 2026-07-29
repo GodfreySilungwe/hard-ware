@@ -35,21 +35,90 @@ const Reports = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [dateRange, setDateRange] = useState('week');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [paymentFilter, setPaymentFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [customerFilter, setCustomerFilter] = useState('all');
+  const [productFilter, setProductFilter] = useState('all');
   const [reportData, setReportData] = useState({
     sales: [],
     topProducts: [],
     categorySales: [],
     dailySales: [],
     paymentMethods: [],
+    topCustomers: [],
     totalSales: 0,
     totalProfit: 0,
     totalOrders: 0,
-    averageOrderValue: 0
+    averageOrderValue: 0,
+    averageItemsPerOrder: 0,
+    averageRevenuePerCustomer: 0,
+    grossMarginPercentage: 0,
+    reversedOrderRate: 0,
+    salesGrowthPercentage: 0,
+    orderGrowthPercentage: 0,
+    customerNames: [],
+    productNames: []
   });
 
   useEffect(() => {
     loadReportData();
-  }, [dateRange]);
+  }, [dateRange, customStartDate, customEndDate, paymentFilter, statusFilter, customerFilter, productFilter]);
+
+  const getDateRangeBounds = () => {
+    const now = new Date();
+    let startDate = new Date();
+    let endDate = new Date();
+
+    if (dateRange === 'today') {
+      startDate.setHours(0, 0, 0, 0);
+    } else if (dateRange === 'week') {
+      startDate.setDate(now.getDate() - 7);
+      startDate.setHours(0, 0, 0, 0);
+    } else if (dateRange === 'month') {
+      startDate.setMonth(now.getMonth() - 1);
+      startDate.setHours(0, 0, 0, 0);
+    } else if (dateRange === 'year') {
+      startDate.setFullYear(now.getFullYear() - 1);
+      startDate.setHours(0, 0, 0, 0);
+    } else if (dateRange === 'custom' && customStartDate) {
+      startDate = new Date(customStartDate);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = customEndDate ? new Date(customEndDate) : new Date();
+      endDate.setHours(23, 59, 59, 999);
+      return { currentStart: startDate, currentEnd: endDate };
+    }
+
+    endDate.setHours(23, 59, 59, 999);
+    return {
+      currentStart: startDate,
+      currentEnd: endDate
+    };
+  };
+
+  const filterOrdersByCriteria = (ordersList, rangeStart, rangeEnd, includeReversed = true) => {
+    return ordersList.filter(order => {
+      const orderDate = new Date(order.createdAt);
+      if (Number.isNaN(orderDate.getTime())) return false;
+      if (orderDate < rangeStart || orderDate > rangeEnd) return false;
+      if (paymentFilter !== 'all' && (order.paymentMethod || 'cash') !== paymentFilter) return false;
+      if (!includeReversed && order.status === 'reversed') return false;
+      if (statusFilter !== 'all' && (order.status || 'completed') !== statusFilter) return false;
+      if (customerFilter !== 'all') {
+        const customerName = order.customer?.name || order.customerName || '';
+        if (!customerName || customerName !== customerFilter) return false;
+      }
+      if (productFilter !== 'all') {
+        const hasProduct = (order.items || []).some((item) => {
+          const productName = item.product?.name || item.name || '';
+          return productName === productFilter;
+        });
+        if (!hasProduct) return false;
+      }
+      return true;
+    });
+  };
 
   const loadReportData = async () => {
     try {
@@ -60,28 +129,49 @@ const Reports = () => {
       const orders = ordersRes.data;
       const productsRes = await api.get('/products');
 
-      const now = new Date();
-      let startDate = new Date();
-      
-      if (dateRange === 'today') {
-        startDate.setHours(0, 0, 0, 0);
-      } else if (dateRange === 'week') {
-        startDate.setDate(now.getDate() - 7);
-      } else if (dateRange === 'month') {
-        startDate.setMonth(now.getMonth() - 1);
-      } else if (dateRange === 'year') {
-        startDate.setFullYear(now.getFullYear() - 1);
-      }
+      const { currentStart, currentEnd } = getDateRangeBounds();
+      const rangeLengthMs = currentEnd.getTime() - currentStart.getTime();
+      const previousEnd = new Date(currentStart.getTime() - 1);
+      const previousStart = new Date(previousEnd.getTime() - rangeLengthMs);
 
-      const filteredOrders = orders.filter(order => {
-        const orderDate = new Date(order.createdAt);
-        return orderDate >= startDate;
-      });
+      const filteredOrders = filterOrdersByCriteria(orders, currentStart, currentEnd, false);
+      const previousFilteredOrders = filterOrdersByCriteria(orders, previousStart, previousEnd, false);
+      const rangeOrders = filterOrdersByCriteria(orders, currentStart, currentEnd, true);
 
       const totalSales = filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
       const totalProfit = filteredOrders.reduce((sum, o) => sum + o.profit, 0);
       const totalOrders = filteredOrders.length;
       const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
+      const totalItems = filteredOrders.reduce((sum, order) => sum + (order.items || []).reduce((s, item) => s + (item.quantity || 0), 0), 0);
+      const averageItemsPerOrder = totalOrders > 0 ? totalItems / totalOrders : 0;
+
+      const customersMap = {};
+      filteredOrders.forEach(order => {
+        const name = order.customer?.name || order.customerName || 'Walk-in';
+        if (!customersMap[name]) {
+          customersMap[name] = 0;
+        }
+        customersMap[name] += order.totalAmount;
+      });
+      const customerCount = Object.keys(customersMap).length;
+      const averageRevenuePerCustomer = customerCount > 0 ? totalSales / customerCount : 0;
+
+      const repeatCustomerCount = Object.keys(customersMap).filter(name => {
+        return filteredOrders.filter(order => (order.customer?.name || order.customerName || 'Walk-in') === name).length > 1;
+      }).length;
+
+      const topCustomers = Object.keys(customersMap)
+        .map(name => ({ name, revenue: customersMap[name] }))
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 10);
+
+      const totalReversedOrders = rangeOrders.filter(order => order.status === 'reversed').length;
+      const reversedOrderRate = rangeOrders.length > 0 ? (totalReversedOrders / rangeOrders.length) * 100 : 0;
+
+      const totalSalesPrevious = previousFilteredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+      const previousOrderCount = previousFilteredOrders.length;
+      const salesGrowthPercentage = totalSalesPrevious > 0 ? ((totalSales - totalSalesPrevious) / totalSalesPrevious) * 100 : totalSales > 0 ? 100 : 0;
+      const orderGrowthPercentage = previousOrderCount > 0 ? ((totalOrders - previousOrderCount) / previousOrderCount) * 100 : totalOrders > 0 ? 100 : 0;
 
       const dailySalesMap = {};
       filteredOrders.forEach(order => {
@@ -103,13 +193,13 @@ const Reports = () => {
 
       const productSalesMap = {};
       filteredOrders.forEach(order => {
-        order.items.forEach(item => {
+        (order.items || []).forEach(item => {
           const productName = item.product?.name || 'Unknown';
           if (!productSalesMap[productName]) {
             productSalesMap[productName] = { quantity: 0, revenue: 0 };
           }
-          productSalesMap[productName].quantity += item.quantity;
-          productSalesMap[productName].revenue += item.subtotal;
+          productSalesMap[productName].quantity += item.quantity || 0;
+          productSalesMap[productName].revenue += item.subtotal || 0;
         });
       });
 
@@ -124,12 +214,12 @@ const Reports = () => {
 
       const categorySalesMap = {};
       filteredOrders.forEach(order => {
-        order.items.forEach(item => {
+        (order.items || []).forEach(item => {
           const categoryName = item.product?.category?.name || 'Uncategorized';
           if (!categorySalesMap[categoryName]) {
             categorySalesMap[categoryName] = 0;
           }
-          categorySalesMap[categoryName] += item.subtotal;
+          categorySalesMap[categoryName] += item.subtotal || 0;
         });
       });
 
@@ -156,16 +246,28 @@ const Reports = () => {
         amount: paymentMethodsMap[method].amount
       }));
 
+      const customerNames = [...new Set((orders || []).map((order) => order.customer?.name || order.customerName).filter(Boolean))];
+      const productNames = [...new Set((productsRes.data || []).map((product) => product.name).filter(Boolean))];
+
       setReportData({
         sales: filteredOrders,
         topProducts,
+        topCustomers,
         categorySales,
         dailySales,
         paymentMethods,
         totalSales,
         totalProfit,
         totalOrders,
-        averageOrderValue
+        averageOrderValue,
+        averageItemsPerOrder,
+        averageRevenuePerCustomer,
+        grossMarginPercentage: totalSales ? (totalProfit / totalSales) * 100 : 0,
+        reversedOrderRate,
+        salesGrowthPercentage,
+        orderGrowthPercentage,
+        customerNames,
+        productNames
       });
 
     } catch (err) {
@@ -298,7 +400,7 @@ const Reports = () => {
         <div style={styles.filterGroup}>
           <label style={styles.filterLabel}>Date Range:</label>
           <div style={styles.filterButtons}>
-            {['today', 'week', 'month', 'year'].map((range, index) => (
+            {['today', 'week', 'month', 'year', 'custom'].map((range, index) => (
               <button
                 key={range}
                 className={`fade-in delay-${(index % 4) + 1}`}
@@ -329,6 +431,52 @@ const Reports = () => {
         </button>
       </div>
 
+      <div style={styles.filterPanel}>
+        {dateRange === 'custom' && (
+          <div style={styles.dateInputs}>
+            <label style={styles.filterLabel}>From
+              <input type="date" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} style={styles.input} />
+            </label>
+            <label style={styles.filterLabel}>To
+              <input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} style={styles.input} />
+            </label>
+          </div>
+        )}
+        <div style={styles.filterGrid}>
+          <label style={styles.filterLabel}>Payment
+            <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)} style={styles.input}>
+              <option value="all">All</option>
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="mobile_money">Mobile money</option>
+            </select>
+          </label>
+          <label style={styles.filterLabel}>Status
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={styles.input}>
+              <option value="all">All</option>
+              <option value="completed">Completed</option>
+              <option value="reversed">Reversed</option>
+            </select>
+          </label>
+          <label style={styles.filterLabel}>Customer
+            <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)} style={styles.input}>
+              <option value="all">All</option>
+              {reportData.customerNames.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </label>
+          <label style={styles.filterLabel}>Product
+            <select value={productFilter} onChange={(e) => setProductFilter(e.target.value)} style={styles.input}>
+              <option value="all">All</option>
+              {reportData.productNames.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
       {/* Export Buttons */}
       <div style={styles.exportSection}>
         <ExportButton type="sales" label="Export Sales (Excel)" icon="📊" variant="success" />
@@ -343,7 +491,11 @@ const Reports = () => {
           { title: 'Total Sales', value: formatPriceMK(reportData.totalSales), icon: '💰', color: '#e94560', delay: 1 },
           { title: 'Total Profit', value: formatPriceMK(reportData.totalProfit), icon: '📈', color: '#2ecc71', delay: 2 },
           { title: 'Total Orders', value: reportData.totalOrders, icon: '🛒', color: '#3498db', delay: 3 },
-          { title: 'Average Order', value: formatPriceMK(reportData.averageOrderValue), icon: '📊', color: '#9b59b6', delay: 4 }
+          { title: 'Average Order', value: formatPriceMK(reportData.averageOrderValue), icon: '📊', color: '#9b59b6', delay: 4 },
+          { title: 'Avg Items / Order', value: reportData.averageItemsPerOrder.toFixed(1), icon: '📦', color: '#f39c12', delay: 5 },
+          { title: 'Gross Margin', value: `${reportData.grossMarginPercentage.toFixed(1)}%`, icon: '💹', color: '#16a085', delay: 6 },
+          { title: 'Avg Rev / Customer', value: formatPriceMK(reportData.averageRevenuePerCustomer), icon: '👥', color: '#8e44ad', delay: 7 },
+          { title: 'Reversal Rate', value: `${reportData.reversedOrderRate.toFixed(1)}%`, icon: '↺', color: '#c0392b', delay: 8 }
         ].map((item, index) => (
           <div 
             key={index}
@@ -367,6 +519,21 @@ const Reports = () => {
               <p style={styles.summaryLabel}>{item.title}</p>
               <p style={styles.summaryValue}>{item.value}</p>
             </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Portfolio Growth Cards */}
+      <div style={styles.portfolioGrid}>
+        {[
+          { title: 'Sales Growth', value: `${reportData.salesGrowthPercentage.toFixed(1)}%`, detail: 'vs previous period', color: '#3498db' },
+          { title: 'Order Growth', value: `${reportData.orderGrowthPercentage.toFixed(1)}%`, detail: 'vs previous period', color: '#27ae60' },
+          { title: 'Repeat Customer Ratio', value: reportData.topCustomers.length > 0 ? `${((reportData.topCustomers.filter((_, i) => i < 5).length / reportData.topCustomers.length) * 100).toFixed(1)}%` : '0%', detail: 'top customer share', color: '#9b59b6' }
+        ].map((item, index) => (
+          <div key={index} className={`fade-in delay-${index + 1}`} style={{ ...styles.portfolioCard, borderLeft: `4px solid ${item.color}` }}>
+            <p style={styles.portfolioTitle}>{item.title}</p>
+            <p style={styles.portfolioValue}>{item.value}</p>
+            <p style={styles.portfolioDetail}>{item.detail}</p>
           </div>
         ))}
       </div>
@@ -458,6 +625,34 @@ const Reports = () => {
         </div>
       </div>
 
+      {/* Top Customers Table */}
+      {reportData.topCustomers.length > 0 && (
+        <div className="fade-in delay-5">
+          <UnifiedCard title="🏅 Top Customers by Revenue">
+            <div style={styles.tableWrapper}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Customer</th>
+                    <th>Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportData.topCustomers.map((customer, index) => (
+                    <tr key={index} style={styles.tableRow}>
+                      <td style={styles.rank}>{index + 1}</td>
+                      <td style={styles.productName}>{customer.name}</td>
+                      <td style={styles.revenue}>{formatPriceMK(customer.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </UnifiedCard>
+        </div>
+      )}
+
       {/* Top Products Table */}
       {reportData.topProducts.length > 0 && (
         <div className="fade-in delay-5">
@@ -520,9 +715,36 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '20px',
+    marginBottom: '12px',
     flexWrap: 'wrap',
     gap: '15px'
+  },
+  filterPanel: {
+    backgroundColor: 'white',
+    border: '1px solid #e5e7eb',
+    borderRadius: '12px',
+    padding: '14px',
+    marginBottom: '20px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+  },
+  dateInputs: {
+    display: 'flex',
+    gap: '10px',
+    flexWrap: 'wrap',
+    marginBottom: '10px'
+  },
+  filterGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+    gap: '10px'
+  },
+  input: {
+    width: '100%',
+    marginTop: '4px',
+    padding: '8px 10px',
+    borderRadius: '8px',
+    border: '1px solid #d1d5db',
+    fontSize: '13px'
   },
   filterGroup: {
     display: 'flex',
@@ -573,6 +795,37 @@ const styles = {
     backgroundColor: 'white',
     borderRadius: '12px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+  },
+  portfolioGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '18px',
+    marginBottom: '24px'
+  },
+  portfolioCard: {
+    backgroundColor: 'white',
+    padding: '18px 20px',
+    borderRadius: '16px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px'
+  },
+  portfolioTitle: {
+    fontSize: '13px',
+    color: '#888',
+    margin: 0
+  },
+  portfolioValue: {
+    fontSize: '24px',
+    fontWeight: '700',
+    color: '#1a1a2e',
+    margin: 0
+  },
+  portfolioDetail: {
+    fontSize: '13px',
+    color: '#6b7280',
+    margin: 0
   },
   summaryGrid: {
     display: 'grid',

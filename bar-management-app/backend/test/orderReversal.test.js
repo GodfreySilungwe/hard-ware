@@ -31,6 +31,48 @@ test('restores inventory and marks the order as reversed', async () => {
   assert.equal(result.order.reversedBy, 'u1');
 });
 
+test('deducts customer sales totals and loyalty points when reversing an order', async () => {
+  const order = {
+    status: 'completed',
+    totalAmount: 1000,
+    customer: 'c1',
+    items: [{ product: 'p1', quantity: 2 }]
+  };
+
+  const customer = {
+    totalSpent: 1500,
+    loyaltyPoints: 15,
+    async save() {
+      this.saved = true;
+      return this;
+    }
+  };
+
+  const products = [
+    {
+      _id: 'p1',
+      currentStock: 5,
+      async save() {
+        this.saved = true;
+        return this;
+      }
+    }
+  ];
+
+  const productFinder = async (id) => products.find((product) => product._id === id) || null;
+  const customerFinder = async () => customer;
+  const user = { _id: 'u1', role: 'hardware-manager' };
+
+  const result = await applyOrderReversal(order, productFinder, user, {
+    reason: 'Customer requested cancellation',
+    customerFinder
+  });
+
+  assert.equal(result.order.status, 'reversed');
+  assert.equal(customer.totalSpent, 500);
+  assert.equal(customer.loyaltyPoints, 5);
+});
+
 test('allows reversal only for hardware managers or owners', () => {
   assert.equal(canReverseOrder({ role: 'hardware-manager' }), true);
   assert.equal(canReverseOrder({ role: 'owner' }), true);

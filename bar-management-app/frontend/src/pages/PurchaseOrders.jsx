@@ -13,6 +13,7 @@ const PurchaseOrders = () => {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [productSearchTerms, setProductSearchTerms] = useState(['']);
   const [formData, setFormData] = useState({
     supplier: '',
     items: [{ product: '', quantity: '', costPrice: '' }],
@@ -42,22 +43,43 @@ const PurchaseOrders = () => {
   };
 
   const handleAddItem = () => {
-    setFormData({
-      ...formData,
-      items: [...formData.items, { product: '', quantity: '', costPrice: '' }]
-    });
+    setFormData(prev => ({
+      ...prev,
+      items: [...prev.items, { product: '', quantity: '', costPrice: '' }]
+    }));
+    setProductSearchTerms(prev => [...prev, '']);
   };
 
   const handleRemoveItem = (index) => {
     if (formData.items.length === 1) return;
-    const newItems = formData.items.filter((_, i) => i !== index);
-    setFormData({ ...formData, items: newItems });
+    setFormData(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
+    setProductSearchTerms(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleItemChange = (index, field, value) => {
-    const newItems = [...formData.items];
-    newItems[index][field] = value;
-    setFormData({ ...formData, items: newItems });
+    setFormData(prev => {
+      const newItems = [...prev.items];
+      newItems[index][field] = value;
+      return { ...prev, items: newItems };
+    });
+  };
+
+  const handleProductSearchChange = (index, value) => {
+    setProductSearchTerms(prev => {
+      const updated = [...prev];
+      updated[index] = value;
+      return updated;
+    });
+  };
+
+  const getFilteredProductsForItem = (index) => {
+    const query = (productSearchTerms[index] || '').trim().toLowerCase();
+    if (!query) return products;
+
+    return products.filter(product =>
+      product.name?.toLowerCase().includes(query) ||
+      product.category?.name?.toLowerCase().includes(query)
+    );
   };
 
   const handleSubmit = async (e) => {
@@ -93,6 +115,7 @@ const PurchaseOrders = () => {
         expectedDelivery: '',
         notes: ''
       });
+      setProductSearchTerms(['']);
       await loadData();
       setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
@@ -162,7 +185,7 @@ const PurchaseOrders = () => {
         <div className="fade-in">
           <UnifiedCard title="Create Purchase Order">
             <form onSubmit={handleSubmit} style={styles.form}>
-              <div style={styles.formGroup}>
+              <div className="form-group" style={styles.formGroup}>
                 <label style={styles.label}>Supplier *</label>
                 <select
                   required
@@ -180,18 +203,27 @@ const PurchaseOrders = () => {
               <div style={styles.itemsSection}>
                 <label style={styles.label}>Items *</label>
                 {formData.items.map((item, index) => (
-                  <div key={index} style={styles.itemRow}>
-                    <select
-                      required
-                      style={{...styles.input, flex: 2}}
-                      value={item.product}
-                      onChange={(e) => handleItemChange(index, 'product', e.target.value)}
-                    >
-                      <option value="">Select Product</option>
-                      {products.map(p => (
-                        <option key={p._id} value={p._id}>{p.name}</option>
-                      ))}
-                    </select>
+                  <div key={index} className="mobile-stack-row" style={styles.itemRow}>
+                    <div style={{ ...styles.input, flex: 2, padding: 0, overflow: 'hidden' }}>
+                      <input
+                        type="text"
+                        placeholder="Search product"
+                        value={productSearchTerms[index] || ''}
+                        onChange={(e) => handleProductSearchChange(index, e.target.value)}
+                        style={{ ...styles.input, border: 'none', outline: 'none', width: '100%', height: '100%' }}
+                      />
+                      <select
+                        required
+                        style={{ ...styles.input, borderTop: '1px solid #ddd', borderRadius: 0, width: '100%', marginBottom: 0 }}
+                        value={item.product}
+                        onChange={(e) => handleItemChange(index, 'product', e.target.value)}
+                      >
+                        <option value="">Select Product</option>
+                        {getFilteredProductsForItem(index).map(p => (
+                          <option key={p._id} value={p._id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
                     <input
                       type="number"
                       required
@@ -249,7 +281,7 @@ const PurchaseOrders = () => {
                 />
               </div>
 
-              <div style={styles.formActions}>
+              <div className="form-actions" style={styles.formActions}>
                 <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
                 <Button type="submit">Create Order</Button>
               </div>
@@ -258,7 +290,7 @@ const PurchaseOrders = () => {
         </div>
       )}
 
-      <div style={styles.ordersGrid}>
+      <div className="ordersGrid" style={styles.ordersGrid}>
         {orders.length === 0 ? (
           <div className="fade-in" style={styles.emptyState}>
             <p style={styles.emptyIcon}>📦</p>

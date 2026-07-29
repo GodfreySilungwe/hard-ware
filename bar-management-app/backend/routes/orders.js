@@ -27,7 +27,8 @@ router.get('/today', protect, async (req, res) => {
     startOfDay.setHours(0, 0, 0, 0);
     
     const orders = await Order.find({
-      createdAt: { $gte: startOfDay }
+      createdAt: { $gte: startOfDay },
+      status: { $ne: 'reversed' }
     }, req);
     
     const totalSales = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
@@ -156,7 +157,8 @@ router.patch('/:id/reverse', protect, isHardwareManagerOrOwner, async (req, res)
       req.user,
       {
         reason: req.body?.reason || 'No reason provided',
-        notes: req.body?.notes || ''
+        notes: req.body?.notes || '',
+        customerFinder: async (customerId) => Customer.findById(customerId, req)
       }
     );
 

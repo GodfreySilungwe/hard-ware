@@ -17,6 +17,25 @@ async function applyOrderReversal(order, productFinder, user, metadata = {}) {
     await product.save();
   }
 
+  if (order.customer) {
+    const customerFinder = metadata.customerFinder;
+    const customerId = typeof order.customer === 'string'
+      ? order.customer
+      : order.customer?.id || order.customer?._id || null;
+
+    if (customerId && customerFinder) {
+      const customer = await customerFinder(customerId);
+      if (customer) {
+        const amountToDeduct = Number(order.totalAmount || 0);
+        const pointsToDeduct = Math.max(0, Math.floor(amountToDeduct / 100));
+
+        customer.totalSpent = Math.max(0, Number(customer.totalSpent || 0) - amountToDeduct);
+        customer.loyaltyPoints = Math.max(0, Number(customer.loyaltyPoints || 0) - pointsToDeduct);
+        await customer.save();
+      }
+    }
+  }
+
   order.status = 'reversed';
   order.reversedAt = new Date().toISOString();
   order.reversedBy = user?._id || user?.id || null;

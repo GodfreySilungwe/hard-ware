@@ -3,6 +3,7 @@ import api from '../api/api';
 import PageContainer from './PageContainer';
 import Button from '../components/common/Button';
 import UnifiedCard from '../components/common/UnifiedCard';
+import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 
 const Categories = () => {
   const [categories, setCategories] = useState([]);
@@ -10,6 +11,7 @@ const Categories = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [formData, setFormData] = useState({ name: '', description: '' });
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   useEffect(() => {
     loadCategories();
@@ -44,10 +46,11 @@ const Categories = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this category?')) return;
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.delete(`/categories/${id}`);
+      await api.delete(`/categories/${deleteTarget._id}`);
+      setDeleteTarget(null);
       await loadCategories();
     } catch (err) {
       console.error('Error deleting category:', err);
@@ -75,7 +78,7 @@ const Categories = () => {
       {showForm && (
         <UnifiedCard title={editingCategory ? 'Edit Category' : 'Add New Category'}>
           <form onSubmit={handleSubmit} style={styles.form}>
-            <div style={styles.formGroup}>
+            <div className="form-group" style={styles.formGroup}>
               <label style={styles.label}>Category Name *</label>
               <input
                 type="text"
@@ -94,7 +97,7 @@ const Categories = () => {
                 onChange={(e) => setFormData({...formData, description: e.target.value})}
               />
             </div>
-            <div style={styles.formActions}>
+            <div className="form-actions" style={styles.formActions}>
               <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
               <Button type="submit">{editingCategory ? 'Update' : 'Create'}</Button>
             </div>
@@ -102,7 +105,15 @@ const Categories = () => {
         </UnifiedCard>
       )}
 
-      <div style={styles.categoryGrid}>
+      <DeleteConfirmModal
+        open={Boolean(deleteTarget)}
+        title="Delete category"
+        description={`Type delete to permanently remove ${deleteTarget?.name || 'this category'}.`}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+      />
+
+      <div className="categoryGrid" style={styles.categoryGrid}>
         {categories.map((category, index) => (
           <div 
             key={category._id} 
@@ -137,7 +148,7 @@ const Categories = () => {
                 >
                   ✏️
                 </button>
-                <button style={styles.deleteBtn} onClick={() => handleDelete(category._id)}>
+                <button style={styles.deleteBtn} onClick={() => setDeleteTarget(category)}>
                   🗑️
                 </button>
               </div>

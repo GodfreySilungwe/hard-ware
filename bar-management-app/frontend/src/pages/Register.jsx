@@ -6,15 +6,17 @@ const Register = () => {
   const [formData, setFormData] = useState({
     username: '',
     email: '',
+    phone: '',
     password: '',
     confirmPassword: '',
     fullName: '',
-    role: 'staff'
+    role: 'hardware-manager'
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const { register, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
@@ -32,6 +34,7 @@ const Register = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setSuccess('');
 
     // Check password match
     if (formData.password !== formData.confirmPassword) {
@@ -47,11 +50,30 @@ const Register = () => {
       return;
     }
 
+    // Check WhatsApp number
+    if (!formData.phone.trim()) {
+      setError('WhatsApp phone number is required');
+      setLoading(false);
+      return;
+    }
+
     try {
       const { confirmPassword, ...registerData } = formData;
-      const result = await register(registerData);
+      const result = await register({
+        ...registerData,
+        role: 'hardware-manager'
+      });
       if (result.success) {
-        navigate('/');
+        setSuccess(result.message || 'Registration submitted for owner approval.');
+        setFormData({
+          username: '',
+          email: '',
+          phone: '',
+          password: '',
+          confirmPassword: '',
+          fullName: '',
+          role: 'hardware-manager'
+        });
       } else {
         setError(result.error || 'Registration failed');
       }
@@ -74,12 +96,13 @@ const Register = () => {
     <div style={styles.container}>
       <div style={styles.card}>
         <div style={styles.header}>
-          <span style={styles.logo}>🍸</span>
-          <h1 style={styles.title}>Create Account</h1>
-          <p style={styles.subtitle}>Register for Bar Manager</p>
+          <span style={styles.logo}>🔧</span>
+          <h1 style={styles.title}>Hardware Manager Onboarding</h1>
+          <p style={styles.subtitle}>Register a new hardware manager account for approval</p>
         </div>
 
         {error && <div style={styles.error}>{error}</div>}
+        {success && <div style={styles.success}>{success}</div>}
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.formGroup}>
@@ -117,6 +140,19 @@ const Register = () => {
               value={formData.email}
               onChange={handleChange}
               placeholder="Enter your email"
+              required
+            />
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>WhatsApp Number *</label>
+            <input
+              type="tel"
+              name="phone"
+              style={styles.input}
+              value={formData.phone}
+              onChange={handleChange}
+              placeholder="e.g. +265XXXXXXXXX"
               required
             />
           </div>
@@ -178,17 +214,13 @@ const Register = () => {
           </div>
 
           <div style={styles.formGroup}>
-            <label style={styles.label}>Role</label>
-            <select
-              name="role"
-              style={styles.input}
-              value={formData.role}
-              onChange={handleChange}
-            >
-              <option value="staff">Staff</option>
-              <option value="manager">Manager</option>
-              <option value="admin">Admin</option>
-            </select>
+            <label style={styles.label}>Account Type</label>
+            <input
+              type="text"
+              style={{ ...styles.input, backgroundColor: '#f8fafc' }}
+              value="Hardware Manager"
+              readOnly
+            />
           </div>
 
           <button
@@ -252,6 +284,15 @@ const styles = {
     marginBottom: '20px',
     fontSize: '14px',
     border: '1px solid #f5c6cb'
+  },
+  success: {
+    backgroundColor: '#e8f5e9',
+    color: '#2e7d32',
+    padding: '12px 16px',
+    borderRadius: '8px',
+    marginBottom: '20px',
+    fontSize: '14px',
+    border: '1px solid #c8e6c9'
   },
   form: {
     display: 'flex',

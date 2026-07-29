@@ -1,6 +1,6 @@
 const UnifiedCard = ({ title, children, style = {} }) => {
   return (
-    <div style={{ ...styles.card, ...style }}>
+    <div className="mobile-card" style={{ ...styles.card, ...style }}>
       {title && <h3 style={styles.title}>{title}</h3>}
       <div>{children}</div>
     </div>

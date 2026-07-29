@@ -1,35 +1,33 @@
 import { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-  faDollarSign, 
   faChartLine, 
-  faShoppingCart, 
-  faExclamationTriangle, 
-  faBox, 
   faUsers,
   faClock,
-  faTools
+  faTools,
+  faClipboardCheck,
+  faWarehouse
 } from '@fortawesome/free-solid-svg-icons';
 import api from '../api/api';
 import StatsCard from '../components/common/StatsCard';
 import UnifiedCard from '../components/common/UnifiedCard';
 import PageContainer from './PageContainer';
 import { formatPriceMK } from '../utils/formatPrice';
+import { useAuth } from '../context/AuthContext';
 
 const Dashboard = () => {
   const [stats, setStats] = useState({
-    todaySales: 0,
-    todayProfit: 0,
-    totalOrders: 0,
-    lowStock: 0,
+    pendingApprovals: 0,
+    activeBars: 0,
+    hardwareManagers: 0,
     totalProducts: 0,
     totalCustomers: 0
   });
-  const [recentOrders, setRecentOrders] = useState([]);
-  const [lowStockProducts, setLowStockProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [todayOrders, setTodayOrders] = useState([]);
+  const { user } = useAuth();
 
   useEffect(() => {
     fetchDashboardData();
@@ -40,12 +38,12 @@ const Dashboard = () => {
       setLoading(true);
       setError(null);
 
-      let todayData = { count: 0, totalSales: 0, totalProfit: 0 };
+      let summary = {};
       try {
-        const todayRes = await api.get('/orders/today');
-        todayData = todayRes.data;
+        const summaryRes = await api.get('/auth/tenant-summary');
+        summary = summaryRes.data || {};
       } catch (err) {
-        console.log('No orders yet:', err.message);
+        console.log('No summary available:', err.message);
       }
       
       let products = [];
@@ -63,34 +61,37 @@ const Dashboard = () => {
       } catch (err) {
         console.log('No customers:', err.message);
       }
-      
-      let lowStock = [];
-      try {
-        const lowStockRes = await api.get('/products/low-stock');
-        lowStock = lowStockRes.data;
-      } catch (err) {
-        console.log('No low stock:', err.message);
-      }
-      
-      let recent = [];
+
+      let orders = [];
       try {
         const ordersRes = await api.get('/orders');
-        recent = ordersRes.data.slice(0, 5);
+        orders = Array.isArray(ordersRes.data) ? ordersRes.data : [];
       } catch (err) {
         console.log('No orders:', err.message);
       }
 
-      setStats({
-        todaySales: todayData.totalSales || 0,
-        todayProfit: todayData.totalProfit || 0,
-        totalOrders: todayData.count || 0,
-        lowStock: lowStock.length || 0,
-        totalProducts: products.length || 0,
-        totalCustomers: customers.length || 0
+      const today = new Date();
+      const todaysOrders = orders.filter((order) => {
+        const orderDate = new Date(order.createdAt || order.created_at || order.date || order.updatedAt || order.updated_at || 0);
+        return !Number.isNaN(orderDate.getTime()) && orderDate.toDateString() === today.toDateString();
       });
-
-      setRecentOrders(recent);
-      setLowStockProducts(lowStock);
+      const todaySales = todaysOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+      const todayProfit = todaysOrders.reduce((sum, order) => sum + Number(order.profit || 0), 0);
+      const reversedOrders = todaysOrders.filter((order) => order.status === 'reversed').length;
+      
+      setStats({
+        pendingApprovals: summary.pendingTenants || 0,
+        activeBars: summary.activeTenants || 0,
+        hardwareManagers: summary.hardwareManagers || 0,
+        totalProducts: products.length || 0,
+        totalCustomers: customers.length || 0,
+        todayOrders: todaysOrders.length,
+        todaySales,
+        todayProfit,
+        reversedOrders,
+        averageOrderValue: todaysOrders.length > 0 ? todaySales / todaysOrders.length : 0
+      });
+      setTodayOrders(todaysOrders.slice(0, 5));
       setLastUpdated(new Date().toLocaleTimeString());
       
     } catch (err) {
@@ -100,6 +101,46 @@ const Dashboard = () => {
       setLoading(false);
     }
   };
+
+  const role = user?.role;
+  const isOwnerRole = role === 'owner';
+  const isHardwareManagerRole = role === 'hardware-manager';
+  const isSalesRole = role === 'sales';
+
+  const heroTitle = isOwnerRole
+    ? 'Global owner control center'
+    : isHardwareManagerRole
+      ? 'Hardware manager operations center'
+      : isSalesRole
+        ? 'Sales command center'
+        : 'Workspace dashboard';
+
+  const heroSubtitle = isOwnerRole
+    ? 'Approve new hardware applications, manage global accounts, and monitor your hardware network from one place.'
+    : isHardwareManagerRole
+      ? 'Review today’s sales activity, track daily orders, and keep hardware operations moving.'
+      : isSalesRole
+        ? 'Focus on point-of-sale activity, customer service, and daily orders from one view.'
+        : 'Review recent activity and stay on top of your work.';
+
+  const visibleStats = isOwnerRole
+    ? [
+        { title: 'Pending approvals', value: stats.pendingApprovals, icon: faClipboardCheck, color: '#f39c12' },
+        { title: 'Active hardwares', value: stats.activeBars, icon: faWarehouse, color: '#2ecc71' },
+        { title: 'Hardware managers', value: stats.hardwareManagers, icon: faTools, color: '#3498db' }
+      ]
+    : isHardwareManagerRole
+      ? [
+          { title: 'Today sales', value: formatPriceMK(stats.todaySales), icon: faChartLine, color: '#2ecc71' },
+          { title: 'Today profit', value: formatPriceMK(stats.todayProfit), icon: faChartLine, color: '#3498db' },
+          { title: 'Today orders', value: stats.todayOrders, icon: faClipboardCheck, color: '#e94560' },
+          { title: 'Products', value: stats.totalProducts, icon: faTools, color: '#9b59b6' }
+        ]
+      : [
+          { title: 'Products', value: stats.totalProducts, icon: faChartLine, color: '#9b59b6' },
+          { title: 'Customers', value: stats.totalCustomers, icon: faUsers, color: '#1abc9c' },
+          { title: 'Orders', value: stats.todayOrders || 0, icon: faClipboardCheck, color: '#e94560' }
+        ];
 
   if (loading) {
     return (
@@ -127,185 +168,122 @@ const Dashboard = () => {
 
   return (
     <PageContainer title="📊 Dashboard">
-      {/* Welcome Section */}
+      {/* Executive Welcome Section */}
       <div style={styles.welcomeSection}>
-        <div>
-          <p style={styles.subtitle}>Welcome back! Here's your hardware store overview for today.</p>
-          {lastUpdated && (
-            <p style={styles.lastUpdated}>
-              <FontAwesomeIcon icon={faClock} style={{ marginRight: '6px' }} />
-              Last updated: {lastUpdated}
-            </p>
-          )}
+        <div style={styles.heroPanel}>
+          <div>
+            <p style={styles.eyebrow}>Executive overview</p>
+            <h2 style={styles.heroTitle}>{heroTitle}</h2>
+            <p style={styles.subtitle}>{heroSubtitle}</p>
+            {lastUpdated && (
+              <p style={styles.lastUpdated}>
+                <FontAwesomeIcon icon={faClock} style={{ marginRight: '6px' }} />
+                Last updated: {lastUpdated}
+              </p>
+            )}
+          </div>
+          <button style={styles.refreshBtn} onClick={fetchDashboardData}>
+            🔄 Refresh
+          </button>
         </div>
-        <button style={styles.refreshBtn} onClick={fetchDashboardData}>
-          🔄 Refresh
-        </button>
       </div>
 
       {/* Stats Grid */}
       <div style={styles.statsGrid}>
-        <div className="fade-in delay-1" style={styles.statItem}>
-          <StatsCard 
-            title="Today's Sales" 
-            value={stats.todaySales}
-            icon={faDollarSign}
-            color="#e94560" 
-            isCurrency={true}
-          />
-        </div>
-        <div className="fade-in delay-2" style={styles.statItem}>
-          <StatsCard 
-            title="Today's Profit" 
-            value={stats.todayProfit}
-            icon={faChartLine}
-            color="#2ecc71" 
-            isCurrency={true}
-          />
-        </div>
-        <div className="fade-in delay-3" style={styles.statItem}>
-          <StatsCard 
-            title="Orders Today" 
-            value={stats.totalOrders} 
-            icon={faShoppingCart}
-            color="#3498db" 
-            isCurrency={false}
-          />
-        </div>
-        <div className="fade-in delay-4" style={styles.statItem}>
-          <StatsCard 
-            title="Low Stock" 
-            value={stats.lowStock} 
-            icon={faExclamationTriangle}
-            color="#f39c12" 
-            isCurrency={false}
-          />
-        </div>
-        <div className="fade-in delay-5" style={styles.statItem}>
-          <StatsCard 
-            title="Total Products" 
-            value={stats.totalProducts} 
-            icon={faTools}
-            color="#9b59b6" 
-            isCurrency={false}
-          />
-        </div>
-        <div className="fade-in delay-6" style={styles.statItem}>
-          <StatsCard 
-            title="Total Customers" 
-            value={stats.totalCustomers} 
-            icon={faUsers}
-            color="#1abc9c" 
-            isCurrency={false}
-          />
-        </div>
+        {visibleStats.map((stat, index) => (
+          <div key={stat.title} className={`fade-in delay-${index + 1}`} style={styles.statItem}>
+            <StatsCard
+              title={stat.title}
+              value={stat.value}
+              icon={stat.icon}
+              color={stat.color}
+              isCurrency={stat.title.includes('sales')}
+            />
+          </div>
+        ))}
       </div>
 
-      {/* Low Stock Alert */}
-      {lowStockProducts.length > 0 && (
-        <div className="fade-in">
-          <UnifiedCard title="⚠️ Low Stock Alert">
-            <div style={styles.lowStockGrid}>
-              {lowStockProducts.map(product => (
-                <div key={product._id} style={styles.lowStockItem}>
-                  <div style={styles.lowStockHeader}>
-                    <span style={styles.lowStockName}>{product.name}</span>
-                    <span style={styles.lowStockCategory}>{product.category?.name}</span>
+      {isHardwareManagerRole && (
+        <div className="fade-in" style={styles.ordersPanel}>
+          <div style={styles.panelHeader}>
+            <h3 style={styles.panelTitle}>Today’s snapshot</h3>
+            <span style={styles.panelHint}>Revenue, profit, and recent activity at a glance</span>
+          </div>
+          <div style={styles.snapshotGrid}>
+            <div style={{...styles.snapshotCard, borderColor: '#2ecc71'}}>
+              <div style={styles.snapshotLabel}>Revenue</div>
+              <div style={styles.snapshotValue}>{formatPriceMK(stats.todaySales)}</div>
+            </div>
+            <div style={{...styles.snapshotCard, borderColor: '#3498db'}}>
+              <div style={styles.snapshotLabel}>Profit</div>
+              <div style={styles.snapshotValue}>{formatPriceMK(stats.todayProfit)}</div>
+            </div>
+            <div style={{...styles.snapshotCard, borderColor: '#e94560'}}>
+              <div style={styles.snapshotLabel}>Avg order</div>
+              <div style={styles.snapshotValue}>{formatPriceMK(stats.averageOrderValue)}</div>
+            </div>
+            <div style={{...styles.snapshotCard, borderColor: '#9b59b6'}}>
+              <div style={styles.snapshotLabel}>Reversed</div>
+              <div style={styles.snapshotValue}>{stats.reversedOrders || 0}</div>
+            </div>
+          </div>
+          {todayOrders.length === 0 ? (
+            <div style={styles.emptyState}>No orders recorded today yet.</div>
+          ) : (
+            <div style={styles.ordersList}>
+              {todayOrders.map((order) => (
+                <div key={order._id || order.id} style={styles.orderItem}>
+                  <div>
+                    <div style={styles.orderName}>Order #{order.orderNumber || order._id || order.id}</div>
+                    <div style={styles.orderMeta}>{order.customer?.name || order.customerName || 'Walk-in customer'}</div>
                   </div>
-                  <div style={styles.lowStockDetails}>
-                    <span style={styles.lowStockQty}>
-                      📦 Current: {product.currentStock}
-                    </span>
-                    <span style={styles.lowStockThreshold}>
-                      ⚠️ Threshold: {product.lowStockThreshold}
-                    </span>
-                  </div>
-                  <div style={styles.lowStockBar}>
-                    <div 
-                      style={{
-                        ...styles.lowStockBarFill,
-                        width: `${Math.min((product.currentStock / product.lowStockThreshold) * 100, 100)}%`,
-                        backgroundColor: product.currentStock === 0 ? '#e74c3c' : '#f39c12'
-                      }}
-                    />
-                  </div>
-                  {product.currentStock === 0 && (
-                    <span style={styles.outOfStockBadge}>OUT OF STOCK</span>
-                  )}
+                  <div style={styles.orderAmount}>{formatPriceMK(order.totalAmount || 0)}</div>
                 </div>
               ))}
             </div>
-          </UnifiedCard>
+          )}
         </div>
       )}
 
-      {/* Recent Orders */}
-      <div className="fade-in">
-        <UnifiedCard title="📋 Recent Orders">
-          {recentOrders.length === 0 ? (
-            <div style={styles.emptyState}>
-              <p style={styles.emptyIcon}>🛒</p>
-              <p style={styles.emptyText}>No orders yet today</p>
-              <p style={styles.emptySubtext}>Start selling hardware items to see orders here</p>
-            </div>
-          ) : (
-            <div style={styles.tableWrapper}>
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Order #</th>
-                    <th>Customer</th>
-                    <th>Items</th>
-                    <th>Amount</th>
-                    <th>Profit</th>
-                    <th>Payment</th>
-                    <th>Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentOrders.map(order => (
-                    <tr key={order._id} style={styles.tableRow}>
-                      <td style={styles.orderNumber}>{order.orderNumber}</td>
-                      <td>{order.customer?.name || 'Walk-in'}</td>
-                      <td>{order.items.length} items</td>
-                      <td style={styles.amount}>MK {formatPriceMK(order.totalAmount)}</td>
-                      <td style={styles.profit}>+MK {formatPriceMK(order.profit)}</td>
-                      <td>
-                        <span style={{
-                          ...styles.paymentBadge,
-                          ...(order.paymentMethod === 'cash' ? styles.cash : 
-                              order.paymentMethod === 'card' ? styles.card : 
-                              styles.mobile)
-                        }}>
-                          {order.paymentMethod.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td style={styles.time}>{new Date(order.createdAt).toLocaleTimeString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </UnifiedCard>
-      </div>
     </PageContainer>
   );
 };
 
 const styles = {
   welcomeSection: {
+    marginBottom: '24px'
+  },
+  heroPanel: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '25px',
-    flexWrap: 'wrap',
-    gap: '15px'
+    background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+    border: '1px solid #e5e7eb',
+    borderRadius: '20px',
+    padding: '22px 24px',
+    boxShadow: '0 12px 35px rgba(15, 23, 42, 0.06)',
+    gap: '16px',
+    flexWrap: 'wrap'
+  },
+  eyebrow: {
+    fontSize: '12px',
+    fontWeight: '700',
+    letterSpacing: '0.14em',
+    textTransform: 'uppercase',
+    color: '#e94560',
+    margin: '0 0 6px 0'
+  },
+  heroTitle: {
+    fontSize: '22px',
+    fontWeight: '700',
+    color: '#111827',
+    margin: '0 0 8px 0'
   },
   subtitle: {
-    fontSize: '16px',
-    color: '#666',
-    margin: '0 0 5px 0'
+    fontSize: '14px',
+    color: '#6b7280',
+    margin: '0 0 8px 0',
+    maxWidth: '700px'
   },
   lastUpdated: {
     fontSize: '13px',
@@ -313,25 +291,104 @@ const styles = {
     margin: '0'
   },
   refreshBtn: {
-    padding: '8px 20px',
-    borderRadius: '25px',
-    border: '2px solid #e94560',
-    backgroundColor: 'transparent',
+    padding: '10px 18px',
+    borderRadius: '999px',
+    border: '1px solid #e94560',
+    backgroundColor: '#fff',
     color: '#e94560',
     cursor: 'pointer',
     fontSize: '14px',
     fontWeight: '600',
-    transition: 'all 0.3s ease'
+    transition: 'all 0.3s ease',
+    width: '100%',
+    maxWidth: '140px'
   },
   statsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '20px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: '12px',
     marginBottom: '30px',
-    width: '100%'
+    width: '100%',
+    alignItems: 'stretch'
   },
   statItem: {
     width: '100%'
+  },
+  ordersPanel: {
+    backgroundColor: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: '16px',
+    padding: '18px',
+    boxShadow: '0 10px 25px rgba(15, 23, 42, 0.05)'
+  },
+  snapshotGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+    gap: '10px',
+    marginBottom: '14px'
+  },
+  snapshotCard: {
+    border: '2px solid',
+    borderRadius: '12px',
+    padding: '10px 12px',
+    backgroundColor: '#f8fafc'
+  },
+  snapshotLabel: {
+    fontSize: '12px',
+    color: '#6b7280',
+    marginBottom: '4px'
+  },
+  snapshotValue: {
+    fontSize: '16px',
+    fontWeight: '700',
+    color: '#111827'
+  },
+  panelHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '12px',
+    flexWrap: 'wrap',
+    gap: '8px'
+  },
+  panelTitle: {
+    fontSize: '16px',
+    fontWeight: '700',
+    color: '#111827',
+    margin: 0
+  },
+  panelHint: {
+    fontSize: '13px',
+    color: '#6b7280'
+  },
+  ordersList: {
+    display: 'grid',
+    gap: '10px'
+  },
+  orderItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '12px 14px',
+    borderRadius: '12px',
+    backgroundColor: '#f8fafc',
+    border: '1px solid #e5e7eb',
+    gap: '10px',
+    flexWrap: 'wrap'
+  },
+  orderName: {
+    fontWeight: '700',
+    color: '#111827'
+  },
+  orderMeta: {
+    fontSize: '13px',
+    color: '#6b7280',
+    marginTop: '2px'
+  },
+  orderAmount: {
+    fontWeight: '700',
+    color: '#e94560',
+    marginLeft: 'auto'
   },
   loading: {
     display: 'flex',
@@ -390,8 +447,8 @@ const styles = {
   },
   lowStockGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-    gap: '15px'
+    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+    gap: '12px'
   },
   lowStockItem: {
     padding: '16px',

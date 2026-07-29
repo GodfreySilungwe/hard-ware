@@ -1,13 +1,9 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 
-// Format price with MK symbol - inline function
-const formatPriceMK = (amount) => {
-  if (amount === undefined || amount === null) return 'MK 0.00';
-  return `MK ${Number(amount).toFixed(2)}`;
-};
+import { formatPriceMK } from '../../utils/formatPrice';
 
-const StatsCard = ({ title, value, icon, color = '#e94560', isCurrency = true }) => {
-  const displayValue = isCurrency ? formatPriceMK(value) : value;
+const StatsCard = ({ title, value, icon, color = '#e94560', isCurrency = false }) => {
+  const displayValue = isCurrency ? formatPriceMK(value || 0) : value;
   
   return (
     <div 
@@ -45,14 +41,15 @@ const styles = {
     borderRadius: '16px',
     padding: '20px 24px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-    minWidth: '180px',
+    minWidth: '0',
     width: '100%',
     cursor: 'pointer',
     height: '100%',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'center',
-    transition: 'all 0.3s ease'
+    transition: 'all 0.3s ease',
+    overflow: 'hidden'
   },
   content: {
     display: 'flex',
@@ -69,7 +66,8 @@ const styles = {
   },
   value: {
     fontSize: '28px',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    wordBreak: 'break-word'
   },
   icon: {
     width: '52px',

@@ -3,6 +3,7 @@ import api from '../api/api';
 import PageContainer from './PageContainer';
 import Button from '../components/common/Button';
 import UnifiedCard from '../components/common/UnifiedCard';
+import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import { formatPriceMK } from '../utils/formatPrice';
 
 const Products = () => {
@@ -11,6 +12,7 @@ const Products = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     category: '',
@@ -77,10 +79,11 @@ const Products = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this product?')) return;
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.delete(`/products/${id}`);
+      await api.delete(`/products/${deleteTarget._id}`);
+      setDeleteTarget(null);
       await loadData();
     } catch (err) {
       console.error('Error deleting product:', err);
@@ -135,7 +138,7 @@ const Products = () => {
       {showForm && (
         <UnifiedCard title={editingProduct ? 'Edit Product' : 'Add New Product'}>
           <form onSubmit={handleSubmit} style={styles.form}>
-            <div style={styles.formGrid}>
+            <div className="form-grid" style={styles.formGrid}>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Product Name *</label>
                 <input
@@ -223,7 +226,7 @@ const Products = () => {
                 </select>
               </div>
             </div>
-            <div style={styles.formActions}>
+            <div className="form-actions" style={styles.formActions}>
               <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
               <Button type="submit">{editingProduct ? 'Update' : 'Create'}</Button>
             </div>
@@ -231,7 +234,15 @@ const Products = () => {
         </UnifiedCard>
       )}
 
-      <div style={styles.productGrid}>
+      <DeleteConfirmModal
+        open={Boolean(deleteTarget)}
+        title="Delete product"
+        description={`Type delete to permanently remove ${deleteTarget?.name || 'this product'}.`}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+      />
+
+      <div className="productGrid" style={styles.productGrid}>
         {products.map((product, index) => (
           <div 
             key={product._id} 
@@ -257,7 +268,7 @@ const Products = () => {
               </div>
               <div style={styles.productActions}>
                 <button style={styles.editBtn} onClick={() => handleEdit(product)}>✏️</button>
-                <button style={styles.deleteBtn} onClick={() => handleDelete(product._id)}>🗑️</button>
+                <button style={styles.deleteBtn} onClick={() => setDeleteTarget(product)}>🗑️</button>
               </div>
             </div>
             <div style={styles.productDetails}>

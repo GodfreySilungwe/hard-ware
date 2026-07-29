@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTools } from '@fortawesome/free-solid-svg-icons';
@@ -10,7 +10,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { login, isAuthenticated, loading: authLoading } = useAuth();
+  const { login, isAuthenticated, loading: authLoading, suspensionNotice, clearSuspensionNotice } = useAuth();
   const navigate = useNavigate();
 
   // Redirect if already logged in
@@ -24,6 +24,7 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    clearSuspensionNotice();
 
     try {
       const result = await login(username, password);
@@ -54,6 +55,9 @@ const Login = () => {
         </div>
 
         {error && <div style={styles.error}>{error}</div>}
+        {suspensionNotice && (
+          <div style={styles.suspensionBanner}>{suspensionNotice}</div>
+        )}
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.formGroup}>
@@ -128,7 +132,21 @@ const Login = () => {
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
+
+          <div style={styles.registerPrompt}>
+            Need an account?{' '}
+            <Link to="/register" style={styles.registerLink}>
+              Register here
+            </Link>
+          </div>
         </form>
+
+        <div style={styles.branding}>
+          <div style={styles.brandTitle}>Powered by GOSH Solutions</div>
+          <div style={styles.brandContact}>Email: hello@goshsolutions.tech</div>
+          <div style={styles.brandContact}>Website: www.goshsolutions.tech</div>
+          <div style={styles.brandContact}>Phone: +265 995 718 815</div>
+        </div>
       </div>
     </div>
   );
@@ -186,9 +204,20 @@ const styles = {
     color: '#e74c3c',
     padding: '12px 16px',
     borderRadius: '8px',
-    marginBottom: '20px',
+    marginBottom: '12px',
     fontSize: '14px',
     border: '1px solid #f5c6cb'
+  },
+  suspensionBanner: {
+    backgroundColor: '#fff1f2',
+    border: '1px solid #fecdd3',
+    color: '#be123c',
+    padding: '12px 14px',
+    borderRadius: '10px',
+    marginBottom: '16px',
+    fontSize: '14px',
+    fontWeight: '600',
+    textAlign: 'center'
   },
   form: {
     display: 'flex',
@@ -250,6 +279,34 @@ const styles = {
     cursor: 'pointer',
     transition: 'all 0.3s ease',
     marginTop: '10px'
+  },
+  registerPrompt: {
+    textAlign: 'center',
+    fontSize: '14px',
+    color: '#666',
+    marginTop: '4px'
+  },
+  registerLink: {
+    color: '#e94560',
+    fontWeight: '600',
+    textDecoration: 'none'
+  },
+  branding: {
+    marginTop: '20px',
+    paddingTop: '16px',
+    borderTop: '1px solid #eee',
+    textAlign: 'center',
+    color: '#666',
+    fontSize: '12px',
+    lineHeight: 1.6
+  },
+  brandTitle: {
+    fontWeight: '700',
+    color: '#1a1a2e',
+    marginBottom: '4px'
+  },
+  brandContact: {
+    fontSize: '12px'
   }
 };
 

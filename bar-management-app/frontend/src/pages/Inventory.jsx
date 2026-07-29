@@ -123,7 +123,7 @@ const Inventory = () => {
       {success && <div style={styles.success}>{success}</div>}
 
       {/* Summary Cards with Animations */}
-      <div style={styles.summaryGrid}>
+      <div className="summaryGrid" style={styles.summaryGrid}>
         {summary.map((item, index) => (
           <div 
             key={item._id} 
@@ -157,7 +157,7 @@ const Inventory = () => {
         <div className="fade-in">
           <UnifiedCard title="New Inventory Adjustment">
             <form onSubmit={handleSubmit} style={styles.form}>
-              <div style={styles.formGrid}>
+              <div className="form-grid" style={styles.formGrid}>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Product *</label>
                   <select
@@ -213,7 +213,7 @@ const Inventory = () => {
                   />
                 </div>
               </div>
-              <div style={styles.formActions}>
+              <div className="form-actions" style={styles.formActions}>
                 <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
                 <Button type="submit">Create Adjustment</Button>
               </div>

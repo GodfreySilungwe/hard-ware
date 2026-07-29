@@ -2,13 +2,19 @@ import { useState, useEffect } from 'react';
 import api from '../api/api';
 import PageContainer from './PageContainer';
 import UnifiedCard from '../components/common/UnifiedCard';
+import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import { formatPriceMK } from '../utils/formatPrice';
+import { useAuth } from '../context/AuthContext';
 
 const Orders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [expandedOrder, setExpandedOrder] = useState(null);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [reverseTarget, setReverseTarget] = useState(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     loadOrders();
@@ -39,6 +45,28 @@ const Orders = () => {
     setExpandedOrder(expandedOrder === orderId ? null : orderId);
   };
 
+  const handleReverseOrder = async () => {
+    if (!reverseTarget) return;
+
+    try {
+      const res = await api.patch(`/orders/${reverseTarget._id}/reverse`, { reason: 'Manager reversal' });
+      setOrders(prev => prev.map(item => item._id === reverseTarget._id ? res.data : item));
+      setMessage('✅ Sale reversed successfully and inventory restored.');
+      setError('');
+      setReverseTarget(null);
+      setTimeout(() => setMessage(''), 4000);
+    } catch (err) {
+      console.error('Error reversing order:', err);
+      setError(err.response?.data?.message || '❌ Unable to reverse sale');
+      setMessage('');
+      setTimeout(() => setError(''), 4000);
+    }
+  };
+
+  const canReverse = (order) => {
+    return (user?.role === 'hardware-manager' || user?.role === 'owner') && order?.status !== 'reversed';
+  };
+
   const filteredOrders = getFilteredOrders();
   const totalSales = filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
   const totalProfit = filteredOrders.reduce((sum, o) => sum + o.profit, 0);
@@ -56,6 +84,17 @@ const Orders = () => {
 
   return (
     <PageContainer title="📋 Orders">
+      <DeleteConfirmModal
+        open={Boolean(reverseTarget)}
+        title="Reverse sale"
+        description={`Type delete to reverse order ${reverseTarget?.orderNumber || ''} and restore inventory.`}
+        onCancel={() => setReverseTarget(null)}
+        onConfirm={handleReverseOrder}
+      />
+      {message && <div style={styles.success}>{message}</div>}
+      {error && <div style={styles.error}>{error}</div>}
+      {message && <div style={styles.success}>{message}</div>}
+      {error && <div style={styles.error}>{error}</div>}
       <div style={styles.header}>
         <p style={styles.subtitle}>View all orders and transactions</p>
         <div style={styles.filters}>
@@ -177,20 +216,41 @@ const Orders = () => {
                         </td>
                         <td style={styles.date}>{new Date(order.createdAt).toLocaleString()}</td>
                         <td>
-                          <button
-                            style={styles.detailsBtn}
-                            onClick={() => toggleExpand(order._id)}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = '#e94560';
-                              e.currentTarget.style.color = 'white';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = 'white';
-                              e.currentTarget.style.color = '#333';
-                            }}
-                          >
-                            {expandedOrder === order._id ? '▲ Hide' : '▼ View'}
-                          </button>
+                          <span style={{...styles.statusBadge, ...(order.status === 'reversed' ? styles.reversedBadge : styles.activeBadge)}}>
+                            {order.status === 'reversed' ? 'Reversed' : 'Completed'}
+                          </span>
+                          <div style={styles.actionsCell}>
+                            <button
+                              style={styles.detailsBtn}
+                              onClick={() => toggleExpand(order._id)}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = '#e94560';
+                                e.currentTarget.style.color = 'white';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = 'white';
+                                e.currentTarget.style.color = '#333';
+                              }}
+                            >
+                              {expandedOrder === order._id ? '▲ Hide' : '▼ View'}
+                            </button>
+                            {canReverse(order) && (
+                              <button
+                                style={styles.reverseBtn}
+                                onClick={() => setReverseTarget(order)}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.backgroundColor = '#27ae60';
+                                  e.currentTarget.style.color = 'white';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.backgroundColor = '#fef2f2';
+                                  e.currentTarget.style.color = '#b91c1c';
+                                }}
+                              >
+                                ↺ Reverse
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                       {expandedOrder === order._id && (
@@ -366,6 +426,22 @@ const styles = {
     textTransform: 'capitalize',
     display: 'inline-block'
   },
+  statusBadge: {
+    padding: '4px 10px',
+    borderRadius: '999px',
+    fontSize: '11px',
+    fontWeight: '700',
+    display: 'inline-block',
+    marginBottom: '6px'
+  },
+  activeBadge: {
+    backgroundColor: '#d1fae5',
+    color: '#047857'
+  },
+  reversedBadge: {
+    backgroundColor: '#fee2e2',
+    color: '#b91c1c'
+  },
   cash: {
     backgroundColor: '#d5f5e3',
     color: '#27ae60'
@@ -378,6 +454,12 @@ const styles = {
     backgroundColor: '#fdebd0',
     color: '#e67e22'
   },
+  actionsCell: {
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center',
+    flexWrap: 'wrap'
+  },
   detailsBtn: {
     padding: '4px 12px',
     borderRadius: '6px',
@@ -386,6 +468,32 @@ const styles = {
     cursor: 'pointer',
     fontSize: '12px',
     transition: 'all 0.3s ease'
+  },
+  reverseBtn: {
+    padding: '4px 12px',
+    borderRadius: '6px',
+    border: '1px solid #f8c8c8',
+    backgroundColor: '#fef2f2',
+    color: '#b91c1c',
+    cursor: 'pointer',
+    fontSize: '12px',
+    transition: 'all 0.3s ease'
+  },
+  success: {
+    backgroundColor: '#d4edda',
+    color: '#155724',
+    padding: '12px 16px',
+    borderRadius: '8px',
+    marginBottom: '15px',
+    border: '1px solid #c3e6cb'
+  },
+  error: {
+    backgroundColor: '#fde8e8',
+    color: '#912d2d',
+    padding: '12px 16px',
+    borderRadius: '8px',
+    marginBottom: '15px',
+    border: '1px solid #f5c6cb'
   },
   detailsRow: {
     backgroundColor: '#f8f9fa',

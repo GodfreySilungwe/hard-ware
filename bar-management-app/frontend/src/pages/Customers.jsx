@@ -3,6 +3,7 @@ import api from '../api/api';
 import PageContainer from './PageContainer';
 import Button from '../components/common/Button';
 import UnifiedCard from '../components/common/UnifiedCard';
+import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import { formatPriceMK } from '../utils/formatPrice';
 
 const Customers = () => {
@@ -10,6 +11,7 @@ const Customers = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -49,10 +51,11 @@ const Customers = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this customer?')) return;
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.delete(`/customers/${id}`);
+      await api.delete(`/customers/${deleteTarget._id}`);
+      setDeleteTarget(null);
       await loadCustomers();
     } catch (err) {
       console.error('Error deleting customer:', err);
@@ -80,7 +83,7 @@ const Customers = () => {
       {showForm && (
         <UnifiedCard title={editingCustomer ? 'Edit Customer' : 'Add New Customer'}>
           <form onSubmit={handleSubmit} style={styles.form}>
-            <div style={styles.formGrid}>
+            <div className="form-grid" style={styles.formGrid}>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Full Name *</label>
                 <input
@@ -115,7 +118,7 @@ const Customers = () => {
                 </select>
               </div>
             </div>
-            <div style={styles.formActions}>
+            <div className="form-actions" style={styles.formActions}>
               <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
               <Button type="submit">{editingCustomer ? 'Update' : 'Create'}</Button>
             </div>
@@ -123,7 +126,15 @@ const Customers = () => {
         </UnifiedCard>
       )}
 
-      <div style={styles.customerGrid}>
+      <DeleteConfirmModal
+        open={Boolean(deleteTarget)}
+        title="Delete customer"
+        description={`Type delete to permanently remove ${deleteTarget?.name || 'this customer'}.`}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+      />
+
+      <div className="customerGrid" style={styles.customerGrid}>
         {customers.map((customer, index) => (
           <div 
             key={customer._id}
@@ -161,7 +172,7 @@ const Customers = () => {
                 >
                   ✏️
                 </button>
-                <button style={styles.deleteBtn} onClick={() => handleDelete(customer._id)}>
+                <button style={styles.deleteBtn} onClick={() => setDeleteTarget(customer)}>
                   🗑️
                 </button>
               </div>

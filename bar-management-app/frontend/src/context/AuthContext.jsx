@@ -8,6 +8,7 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [suspensionNotice, setSuspensionNotice] = useState(null);
 
   // Set auth token in axios headers
   useEffect(() => {
@@ -26,11 +27,19 @@ export const AuthProvider = ({ children }) => {
       if (token) {
         try {
           const res = await api.get('/auth/me');
-          setUser(res.data);
+          const authUser = res.data;
+          const normalizedUser = {
+            ...authUser,
+            role: authUser?.role === 'owner' ? 'owner' : authUser?.role || 'user',
+            tenantId: authUser?.tenantId || null
+          };
+          setUser(normalizedUser);
+          setSuspensionNotice(authUser?.suspensionMessage || null);
         } catch (err) {
           console.error('Error loading user:', err);
           setToken(null);
           setUser(null);
+          setSuspensionNotice(null);
         }
       }
     };
@@ -45,12 +54,20 @@ export const AuthProvider = ({ children }) => {
       setError(null);
       const res = await api.post('/auth/login', { username, password });
       const { token: authToken, user: authUser } = res.data;
+      const normalizedUser = {
+        ...authUser,
+        role: authUser?.role === 'owner' ? 'owner' : authUser?.role || 'user',
+        tenantId: authUser?.tenantId || null
+      };
       setToken(authToken);
-      setUser(authUser);
-      return { success: true, token: authToken, user: authUser };
+      setUser(normalizedUser);
+      setSuspensionNotice(authUser?.suspensionMessage || null);
+      return { success: true, token: authToken, user: normalizedUser };
     } catch (err) {
       const errorMessage = err.response?.data?.message || 'Login failed';
+      const isSuspended = /suspended|deleted/i.test(errorMessage);
       setError(errorMessage);
+      setSuspensionNotice(isSuspended ? errorMessage : null);
       return { success: false, error: errorMessage };
     }
   };
@@ -60,10 +77,17 @@ export const AuthProvider = ({ children }) => {
     try {
       setError(null);
       const res = await api.post('/auth/register', userData);
-      const { token: authToken, user: authUser } = res.data;
-      setToken(authToken);
-      setUser(authUser);
-      return { success: true, token: authToken, user: authUser };
+      const { token: authToken, user: authUser, message } = res.data;
+
+      if (authToken) {
+        setToken(authToken);
+        setUser(authUser);
+      } else {
+        setToken(null);
+        setUser(null);
+      }
+
+      return { success: true, token: authToken, user: authUser, message };
     } catch (err) {
       const errorMessage = err.response?.data?.message || 'Registration failed';
       setError(errorMessage);
@@ -76,6 +100,11 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
     setUser(null);
     setError(null);
+    setSuspensionNotice(null);
+  };
+
+  const clearSuspensionNotice = () => {
+    setSuspensionNotice(null);
   };
 
   return (
@@ -84,12 +113,16 @@ export const AuthProvider = ({ children }) => {
       token,
       loading,
       error,
+      suspensionNotice,
       login,
       register,
       logout,
+      clearSuspensionNotice,
       isAuthenticated: Boolean(token),
       isOwner: user?.role === 'owner',
-      isSales: user?.role === 'sales'
+      isHardwareManager: user?.role === 'hardware-manager',
+      isSales: user?.role === 'sales',
+      role: user?.role || null
     }}>
       {children}
     </AuthContext.Provider>

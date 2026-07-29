@@ -35,7 +35,9 @@ const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '8px'
+    gap: '8px',
+    minHeight: '44px',
+    lineHeight: 1.2
   },
   primary: {
     backgroundColor: '#e94560',

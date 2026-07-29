@@ -1,8 +1,15 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
-const ProtectedRoute = ({ children, ownerOnly = false }) => {
-  const { isAuthenticated, isOwner, loading } = useAuth();
+const ProtectedRoute = ({
+  children,
+  ownerOnly = false,
+  hardwareManagerOnly = false,
+  salesOnly = false,
+  allowSalesAndManagement = false,
+  allowedRoles = []
+}) => {
+  const { isAuthenticated, isOwner, isHardwareManager, isSales, loading, role } = useAuth();
 
   if (loading) {
     return (
@@ -17,7 +24,21 @@ const ProtectedRoute = ({ children, ownerOnly = false }) => {
     return <Navigate to="/login" replace />;
   }
 
-  if (ownerOnly && !isOwner) {
+  let hasAccess = true;
+
+  if (ownerOnly) {
+    hasAccess = isOwner;
+  } else if (hardwareManagerOnly) {
+    hasAccess = isHardwareManager || isOwner;
+  } else if (salesOnly) {
+    hasAccess = isSales;
+  } else if (allowSalesAndManagement) {
+    hasAccess = isSales || isHardwareManager || isOwner;
+  } else if (allowedRoles.length > 0) {
+    hasAccess = allowedRoles.includes(role);
+  }
+
+  if (!hasAccess) {
     return <Navigate to="/" replace />;
   }
 

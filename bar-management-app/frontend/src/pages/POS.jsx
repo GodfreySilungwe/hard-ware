@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../api/api';
 import PageContainer from './PageContainer';
 import UnifiedCard from '../components/common/UnifiedCard';
+import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import ReceiptModal from '../components/common/ReceiptModal';
 import { formatPriceMK } from '../utils/formatPrice';
 
@@ -13,10 +14,12 @@ const POS = () => {
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [receiptOrder, setReceiptOrder] = useState(null);
+  const [clearCartOpen, setClearCartOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -77,11 +80,10 @@ const POS = () => {
     });
   };
 
-  const clearCart = () => {
+  const handleClearCart = () => {
     if (cart.length === 0) return;
-    if (window.confirm('Are you sure you want to clear the cart?')) {
-      setCart([]);
-    }
+    setCart([]);
+    setClearCartOpen(false);
   };
 
   const subtotal = cart.reduce((sum, item) => sum + (item.sellingPrice * item.quantity), 0);
@@ -128,12 +130,29 @@ const POS = () => {
     }
   };
 
-  const filteredProducts = selectedCategory === 'all'
-    ? products
-    : products.filter(p => p.category?._id === selectedCategory || p.category === selectedCategory);
+  const filteredProducts = products.filter((product) => {
+    const matchesCategory = selectedCategory === 'all'
+      ? true
+      : product.category?._id === selectedCategory || product.category === selectedCategory;
+
+    const query = searchTerm.trim().toLowerCase();
+    const matchesSearch = !query ||
+      product.name?.toLowerCase().includes(query) ||
+      product.unit?.toLowerCase().includes(query) ||
+      product.category?.name?.toLowerCase().includes(query);
+
+    return matchesCategory && matchesSearch;
+  });
 
   return (
     <PageContainer title="🛒 Point of Sale">
+      <DeleteConfirmModal
+        open={clearCartOpen}
+        title="Clear cart"
+        description="Type delete to remove all items from the current cart."
+        onCancel={() => setClearCartOpen(false)}
+        onConfirm={handleClearCart}
+      />
       {error && <div style={styles.error}>{error}</div>}
       {success && <div style={styles.success}>{success}</div>}
 
@@ -195,6 +214,13 @@ const POS = () => {
         <div style={styles.productSection} className="pos-mobile-product-section">
           <UnifiedCard title="Hardware Products">
             <div style={styles.categoryFilter} className="pos-mobile-category-filter">
+              <input
+                type="text"
+                placeholder="Search products"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={styles.searchInput}
+              />
               <button
                 className="category-btn pos-mobile-category-btn"
                 style={{
@@ -411,7 +437,7 @@ const POS = () => {
               <button
                 className="btn-modern btn-danger-modern"
                 style={styles.checkoutBtn}
-                onClick={clearCart}
+                onClick={() => setClearCartOpen(true)}
                 disabled={cart.length === 0}
                 onMouseEnter={(e) => {
                   if (cart.length > 0) {
@@ -485,7 +511,17 @@ const styles = {
     display: 'flex',
     gap: '8px',
     marginBottom: '15px',
-    flexWrap: 'wrap'
+    flexWrap: 'wrap',
+    alignItems: 'center'
+  },
+  searchInput: {
+    flex: '1 1 220px',
+    minWidth: '0',
+    padding: '8px 12px',
+    borderRadius: '8px',
+    border: '1px solid #ddd',
+    fontSize: '14px',
+    minHeight: '38px'
   },
   categoryBtn: {
     padding: '6px 16px',
