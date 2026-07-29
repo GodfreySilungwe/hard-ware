@@ -24,7 +24,7 @@ const ReceiptModal = ({ order, onClose }) => {
             <p><strong>Order #:</strong> {order.orderNumber}</p>
             <p><strong>Date:</strong> {new Date(order.createdAt).toLocaleString()}</p>
             <p><strong>Customer:</strong> {order.customer?.name || 'Walk-in Customer'}</p>
-            <p><strong>Payment:</strong> {order.paymentMethod.replace('_', ' ')}</p>
+            <p><strong>Payment:</strong> {order.paymentMethodLabel || String(order.paymentMethod || '').replace('_', ' ')}</p>
           </div>
 
           <div style={styles.divider} />

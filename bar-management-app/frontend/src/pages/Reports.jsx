@@ -4,6 +4,17 @@ import PageContainer from './PageContainer';
 import UnifiedCard from '../components/common/UnifiedCard';
 import ExportButton from '../components/common/ExportButton';
 import { formatPriceMK } from '../utils/formatPrice';
+
+const getPaymentMethodLabel = (method) => {
+  const normalized = String(method || '').toLowerCase().trim();
+  if (normalized === 'airtel_money' || normalized === 'airtelmoney') return 'Airtel Money';
+  if (normalized === 'mpamba') return 'Mpamba';
+  if (normalized === 'mobile_money' || normalized === 'mobile-money' || normalized === 'mobile money') return 'Mobile Money';
+  if (normalized === 'cash') return 'Cash';
+  if (normalized === 'card') return 'Card';
+  return String(method || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim() || 'Unknown';
+};
+
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -138,8 +149,8 @@ const Reports = () => {
       const previousFilteredOrders = filterOrdersByCriteria(orders, previousStart, previousEnd, false);
       const rangeOrders = filterOrdersByCriteria(orders, currentStart, currentEnd, true);
 
-      const totalSales = filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
-      const totalProfit = filteredOrders.reduce((sum, o) => sum + o.profit, 0);
+      const totalSales = filteredOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+      const totalProfit = filteredOrders.reduce((sum, o) => sum + Number(o.profit || 0), 0);
       const totalOrders = filteredOrders.length;
       const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
       const totalItems = filteredOrders.reduce((sum, order) => sum + (order.items || []).reduce((s, item) => s + (item.quantity || 0), 0), 0);
@@ -241,7 +252,7 @@ const Reports = () => {
       });
 
       const paymentMethods = Object.keys(paymentMethodsMap).map(method => ({
-        method: method.replace('_', ' '),
+        method: getPaymentMethodLabel(method),
         count: paymentMethodsMap[method].count,
         amount: paymentMethodsMap[method].amount
       }));
@@ -448,7 +459,9 @@ const Reports = () => {
               <option value="all">All</option>
               <option value="cash">Cash</option>
               <option value="card">Card</option>
-              <option value="mobile_money">Mobile money</option>
+              <option value="mobile_money">Mobile Money</option>
+              <option value="airtel_money">Airtel Money</option>
+              <option value="mpamba">Mpamba</option>
             </select>
           </label>
           <label style={styles.filterLabel}>Status

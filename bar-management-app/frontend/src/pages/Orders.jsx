@@ -6,6 +6,16 @@ import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import { formatPriceMK } from '../utils/formatPrice';
 import { useAuth } from '../context/AuthContext';
 
+const getPaymentMethodLabel = (method) => {
+  const normalized = String(method || '').toLowerCase().trim();
+  if (normalized === 'airtel_money' || normalized === 'airtelmoney') return 'Airtel Money';
+  if (normalized === 'mpamba') return 'Mpamba';
+  if (normalized === 'mobile_money' || normalized === 'mobile-money' || normalized === 'mobile money') return 'Mobile Money';
+  if (normalized === 'cash') return 'Cash';
+  if (normalized === 'card') return 'Card';
+  return String(method || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim() || 'Unknown';
+};
+
 const Orders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -32,13 +42,13 @@ const Orders = () => {
   };
 
   const getFilteredOrders = () => {
+    const baseOrders = orders.filter((order) => order.status !== 'reversed');
+
     if (filter === 'today') {
       const today = new Date().toDateString();
-      return orders.filter(order => 
-        new Date(order.createdAt).toDateString() === today
-      );
+      return baseOrders.filter((order) => new Date(order.createdAt).toDateString() === today);
     }
-    return orders;
+    return baseOrders;
   };
 
   const toggleExpand = (orderId) => {
@@ -68,8 +78,8 @@ const Orders = () => {
   };
 
   const filteredOrders = getFilteredOrders();
-  const totalSales = filteredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
-  const totalProfit = filteredOrders.reduce((sum, o) => sum + o.profit, 0);
+  const totalSales = filteredOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const totalProfit = filteredOrders.reduce((sum, order) => sum + Number(order.profit || 0), 0);
 
   if (loading) {
     return (
@@ -211,7 +221,7 @@ const Orders = () => {
                                 order.paymentMethod === 'card' ? styles.card : 
                                 styles.mobile)
                           }}>
-                            {order.paymentMethod.replace('_', ' ')}
+                            {getPaymentMethodLabel(order.paymentMethod)}
                           </span>
                         </td>
                         <td style={styles.date}>{new Date(order.createdAt).toLocaleString()}</td>

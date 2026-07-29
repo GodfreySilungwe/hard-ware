@@ -412,23 +412,45 @@ const POS = () => {
                   className="payment-btn pos-mobile-payment-btn"
                   style={{
                     ...styles.paymentBtn,
-                    ...(paymentMethod === 'mobile_money' ? styles.paymentBtnActive : {})
+                    ...(paymentMethod === 'airtel_money' ? styles.paymentBtnActive : {})
                   }}
-                  onClick={() => setPaymentMethod('mobile_money')}
+                  onClick={() => setPaymentMethod('airtel_money')}
                   onMouseEnter={(e) => {
-                    if (paymentMethod !== 'mobile_money') {
+                    if (paymentMethod !== 'airtel_money') {
                       e.currentTarget.style.backgroundColor = '#f0f0f0';
                       e.currentTarget.style.transform = 'translateY(-2px)';
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (paymentMethod !== 'mobile_money') {
+                    if (paymentMethod !== 'airtel_money') {
                       e.currentTarget.style.backgroundColor = 'white';
                       e.currentTarget.style.transform = 'translateY(0)';
                     }
                   }}
                 >
-                  📱 Mobile Money
+                  📱 Airtel Money
+                </button>
+                <button
+                  className="payment-btn pos-mobile-payment-btn"
+                  style={{
+                    ...styles.paymentBtn,
+                    ...(paymentMethod === 'mpamba' ? styles.paymentBtnActive : {})
+                  }}
+                  onClick={() => setPaymentMethod('mpamba')}
+                  onMouseEnter={(e) => {
+                    if (paymentMethod !== 'mpamba') {
+                      e.currentTarget.style.backgroundColor = '#f0f0f0';
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (paymentMethod !== 'mpamba') {
+                      e.currentTarget.style.backgroundColor = 'white';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }
+                  }}
+                >
+                  📱 Mpamba
                 </button>
               </div>
             </div>

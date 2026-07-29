@@ -14,6 +14,7 @@ import UnifiedCard from '../components/common/UnifiedCard';
 import PageContainer from './PageContainer';
 import { formatPriceMK } from '../utils/formatPrice';
 import { useAuth } from '../context/AuthContext';
+import { resolveTodayOrderSummary } from '../utils/orderSummary';
 
 const Dashboard = () => {
   const [stats, setStats] = useState({
@@ -63,29 +64,36 @@ const Dashboard = () => {
       }
 
       let orders = [];
+      let todaySummary = null;
       try {
-        const ordersRes = await api.get('/orders');
-        orders = Array.isArray(ordersRes.data)
-          ? ordersRes.data
-          : Array.isArray(ordersRes.data?.orders)
-            ? ordersRes.data.orders
-            : [];
+        const todayRes = await api.get('/orders/today');
+        todaySummary = todayRes.data || {};
+        orders = Array.isArray(todaySummary.orders)
+          ? todaySummary.orders
+          : [];
       } catch (err) {
-        console.log('No orders:', err.message);
+        console.log('No today summary:', err.message);
+      }
+
+      if (!orders.length) {
+        try {
+          const ordersRes = await api.get('/orders');
+          orders = Array.isArray(ordersRes.data)
+            ? ordersRes.data
+            : Array.isArray(ordersRes.data?.orders)
+              ? ordersRes.data.orders
+              : [];
+        } catch (err) {
+          console.log('No orders:', err.message);
+        }
       }
 
       const today = new Date();
-      const todaysOrders = orders.filter((order) => {
-        const timestamp = order.createdAt || order.created_at || order.date || order.updatedAt || order.updated_at || null;
-        const orderDate = timestamp ? new Date(timestamp) : new Date(0);
-        return !Number.isNaN(orderDate.getTime()) &&
-          orderDate.getFullYear() === today.getFullYear() &&
-          orderDate.getMonth() === today.getMonth() &&
-          orderDate.getDate() === today.getDate();
-      });
-      const todaySales = todaysOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
-      const todayProfit = todaysOrders.reduce((sum, order) => sum + Number(order.profit || 0), 0);
-      const reversedOrders = todaysOrders.filter((order) => order.status === 'reversed').length;
+      const resolvedSummary = resolveTodayOrderSummary(todaySummary, orders, today);
+      const todaysOrders = resolvedSummary.orders || [];
+      const todaySales = resolvedSummary.totalSales ?? 0;
+      const todayProfit = resolvedSummary.totalProfit ?? 0;
+      const reversedOrders = resolvedSummary.reversedOrders ?? 0;
       
       setStats({
         pendingApprovals: summary.pendingTenants || 0,
@@ -97,7 +105,7 @@ const Dashboard = () => {
         todaySales,
         todayProfit,
         reversedOrders,
-        averageOrderValue: todaysOrders.length > 0 ? todaySales / todaysOrders.length : 0
+        averageOrderValue: resolvedSummary.averageOrderValue ?? 0
       });
       setTodayOrders(todaysOrders.slice(0, 5));
       setLastUpdated(new Date().toLocaleTimeString());
