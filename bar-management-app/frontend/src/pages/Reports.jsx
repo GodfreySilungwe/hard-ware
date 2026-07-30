@@ -15,6 +15,24 @@ const getPaymentMethodLabel = (method) => {
   return String(method || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim() || 'Unknown';
 };
 
+const getProductNameFromItem = (item, productById = {}) => {
+  const rawName = item?.product?.name || item?.name || '';
+  if (rawName && rawName !== 'Product' && rawName !== 'Unknown') {
+    return rawName;
+  }
+
+  if (typeof item?.product === 'string') {
+    return productById[item.product]?.name || 'Unknown';
+  }
+
+  const productId = item?.product?._id || item?.product?.id;
+  if (productId) {
+    return productById[productId]?.name || 'Unknown';
+  }
+
+  return rawName || 'Unknown';
+};
+
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -110,7 +128,7 @@ const Reports = () => {
     };
   };
 
-  const filterOrdersByCriteria = (ordersList, rangeStart, rangeEnd, includeReversed = true) => {
+  const filterOrdersByCriteria = (ordersList, rangeStart, rangeEnd, includeReversed = true, productById = {}) => {
     return ordersList.filter(order => {
       const orderDate = new Date(order.createdAt);
       if (Number.isNaN(orderDate.getTime())) return false;
@@ -124,7 +142,7 @@ const Reports = () => {
       }
       if (productFilter !== 'all') {
         const hasProduct = (order.items || []).some((item) => {
-          const productName = item.product?.name || item.name || '';
+          const productName = getProductNameFromItem(item, productById);
           return productName === productFilter;
         });
         if (!hasProduct) return false;
@@ -142,14 +160,21 @@ const Reports = () => {
       const orders = ordersRes.data;
       const productsRes = await api.get('/products');
 
+      const productById = {};
+      (productsRes.data || []).forEach((product) => {
+        if (product._id) {
+          productById[product._id] = product;
+        }
+      });
+
       const { currentStart, currentEnd } = getDateRangeBounds();
       const rangeLengthMs = currentEnd.getTime() - currentStart.getTime();
       const previousEnd = new Date(currentStart.getTime() - 1);
       const previousStart = new Date(previousEnd.getTime() - rangeLengthMs);
 
-      const filteredOrders = filterOrdersByCriteria(orders, currentStart, currentEnd, false);
-      const previousFilteredOrders = filterOrdersByCriteria(orders, previousStart, previousEnd, false);
-      const rangeOrders = filterOrdersByCriteria(orders, currentStart, currentEnd, true);
+      const filteredOrders = filterOrdersByCriteria(orders, currentStart, currentEnd, false, productById);
+      const previousFilteredOrders = filterOrdersByCriteria(orders, previousStart, previousEnd, false, productById);
+      const rangeOrders = filterOrdersByCriteria(orders, currentStart, currentEnd, true, productById);
 
       const totalSales = filteredOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
       const totalTax = filteredOrders.reduce((sum, o) => sum + Number(o.taxAmount || 0), 0);
@@ -212,7 +237,7 @@ const Reports = () => {
       const productSalesMap = {};
       filteredOrders.forEach(order => {
         (order.items || []).forEach(item => {
-          const productName = item.product?.name || 'Unknown';
+          const productName = getProductNameFromItem(item, productById);
           if (!productSalesMap[productName]) {
             productSalesMap[productName] = { quantity: 0, revenue: 0 };
           }
@@ -415,43 +440,45 @@ const Reports = () => {
 
   return (
     <PageContainer title="📊 Reports & Analytics">
-      {/* Date Range Filter & Export Buttons */}
-      <div style={styles.filterContainer}>
-        <div style={styles.filterGroup}>
-          <label style={styles.filterLabel}>Date Range:</label>
-          <div style={styles.filterButtons}>
-            {['today', 'week', 'month', 'year', 'custom'].map((range, index) => (
-              <button
-                key={range}
-                className={`fade-in delay-${(index % 4) + 1}`}
-                style={{
-                  ...styles.filterBtn,
-                  ...(dateRange === range ? styles.filterBtnActive : {})
-                }}
-                onClick={() => setDateRange(range)}
-              >
-                {range.charAt(0).toUpperCase() + range.slice(1)}
-              </button>
-            ))}
+      <div className="reports-page">
+        {/* Date Range Filter & Export Buttons */}
+        <div style={styles.filterContainer} className="reports-filterContainer">
+          <div style={styles.filterGroup} className="reports-filterGroup">
+            <label style={styles.filterLabel}>Date Range:</label>
+            <div style={styles.filterButtons} className="reports-filterButtons">
+              {['today', 'week', 'month', 'year', 'custom'].map((range, index) => (
+                <button
+                  key={range}
+                  className={`fade-in delay-${(index % 4) + 1}`}
+                  style={{
+                    ...styles.filterBtn,
+                    ...(dateRange === range ? styles.filterBtnActive : {})
+                  }}
+                  onClick={() => setDateRange(range)}
+                >
+                  {range.charAt(0).toUpperCase() + range.slice(1)}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-        <button 
-          style={styles.refreshBtn} 
-          onClick={loadReportData}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#e94560';
-            e.currentTarget.style.color = 'white';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = '#e94560';
-          }}
-        >
-          🔄 Refresh
-        </button>
+          <button 
+            className="reports-refreshBtn"
+            style={styles.refreshBtn} 
+            onClick={loadReportData}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#e94560';
+              e.currentTarget.style.color = 'white';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = '#e94560';
+            }}
+          >
+            🔄 Refresh
+          </button>
       </div>
 
-      <div style={styles.filterPanel}>
+      <div style={styles.filterPanel} className="reports-filterPanel">
         {dateRange === 'custom' && (
           <div style={styles.dateInputs}>
             <label style={styles.filterLabel}>From
@@ -462,7 +489,7 @@ const Reports = () => {
             </label>
           </div>
         )}
-        <div style={styles.filterGrid}>
+        <div style={styles.filterGrid} className="reports-filterGrid">
           <label style={styles.filterLabel}>Payment
             <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)} style={styles.input}>
               <option value="all">All</option>
@@ -500,7 +527,7 @@ const Reports = () => {
       </div>
 
       {/* Export Buttons */}
-      <div style={styles.exportSection}>
+      <div style={styles.exportSection} className="reports-exportSection">
         <ExportButton type="sales" label="Export Sales (Excel)" icon="📊" variant="success" />
         <ExportButton type="sales-pdf" label="Export Sales (PDF)" icon="📄" variant="info" />
         <ExportButton type="inventory" label="Export Inventory" icon="📦" variant="warning" />
@@ -508,7 +535,7 @@ const Reports = () => {
       </div>
 
       {/* Summary Cards with Animations */}
-      <div style={styles.summaryGrid}>
+      <div style={styles.summaryGrid} className="reports-summaryGrid">
         {[
           { title: 'Total Sales', value: formatPriceMK(reportData.totalSales), icon: '💰', color: '#e94560', delay: 1 },
           { title: 'Net Sales', value: formatPriceMK(reportData.totalSalesNet), icon: '💵', color: '#16a085', delay: 2 },
@@ -523,7 +550,7 @@ const Reports = () => {
         ].map((item, index) => (
           <div 
             key={index}
-            className={`fade-in delay-${item.delay}`}
+            className={`reports-summaryCard fade-in delay-${item.delay}`}
             style={{
               ...styles.summaryCard,
               borderLeft: `4px solid ${item.color}`,
@@ -548,7 +575,7 @@ const Reports = () => {
       </div>
 
       {/* Portfolio Growth Cards */}
-      <div style={styles.portfolioGrid}>
+      <div style={styles.portfolioGrid} className="reports-portfolioGrid">
         {[
           { title: 'Sales Growth', value: `${reportData.salesGrowthPercentage.toFixed(1)}%`, detail: 'vs previous period', color: '#3498db' },
           { title: 'Order Growth', value: `${reportData.orderGrowthPercentage.toFixed(1)}%`, detail: 'vs previous period', color: '#27ae60' },
@@ -563,7 +590,7 @@ const Reports = () => {
       </div>
 
       {/* Charts Grid with Animations */}
-      <div style={styles.chartsGrid}>
+      <div style={styles.chartsGrid} className="reports-chartsGrid">
         <div className="fade-in delay-1" style={styles.chartWrapper}>
           <UnifiedCard title="📈 Daily Sales & Profit Trend" style={styles.chartCard}>
             <div style={styles.chartContainer}>
@@ -653,7 +680,7 @@ const Reports = () => {
       {reportData.topCustomers.length > 0 && (
         <div className="fade-in delay-5">
           <UnifiedCard title="🏅 Top Customers by Revenue">
-            <div style={styles.tableWrapper}>
+            <div style={styles.tableWrapper} className="reports-tableWrapper">
               <table style={styles.table}>
                 <thead>
                   <tr>
@@ -681,7 +708,7 @@ const Reports = () => {
       {reportData.topProducts.length > 0 && (
         <div className="fade-in delay-5">
           <UnifiedCard title="📋 Top Products Details">
-            <div style={styles.tableWrapper}>
+            <div style={styles.tableWrapper} className="reports-tableWrapper">
               <table style={styles.table}>
                 <thead>
                   <tr>
@@ -730,6 +757,7 @@ const Reports = () => {
           </UnifiedCard>
         </div>
       )}
+      </div>
     </PageContainer>
   );
 };
@@ -759,22 +787,23 @@ const styles = {
   },
   filterGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
     gap: '10px'
   },
   input: {
     width: '100%',
     marginTop: '4px',
-    padding: '8px 10px',
-    borderRadius: '8px',
+    padding: '10px 12px',
+    borderRadius: '10px',
     border: '1px solid #d1d5db',
-    fontSize: '13px'
+    fontSize: '14px'
   },
   filterGroup: {
     display: 'flex',
     alignItems: 'center',
     gap: '10px',
-    flexWrap: 'wrap'
+    flexWrap: 'wrap',
+    width: '100%'
   },
   filterLabel: {
     fontSize: '14px',
@@ -783,10 +812,11 @@ const styles = {
   },
   filterButtons: {
     display: 'flex',
+    flexWrap: 'wrap',
     gap: '8px'
   },
   filterBtn: {
-    padding: '6px 16px',
+    padding: '8px 14px',
     borderRadius: '20px',
     border: '1px solid #ddd',
     backgroundColor: 'white',
@@ -800,8 +830,8 @@ const styles = {
     borderColor: '#e94560'
   },
   refreshBtn: {
-    padding: '8px 20px',
-    borderRadius: '8px',
+    padding: '10px 20px',
+    borderRadius: '10px',
     border: '2px solid #e94560',
     backgroundColor: 'transparent',
     color: '#e94560',
@@ -811,8 +841,8 @@ const styles = {
     transition: 'all 0.3s ease'
   },
   exportSection: {
-    display: 'flex',
-    flexWrap: 'wrap',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
     gap: '10px',
     marginBottom: '25px',
     padding: '15px',
@@ -854,21 +884,21 @@ const styles = {
   summaryGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '20px',
+    gap: '16px',
     marginBottom: '30px',
     width: '100%'
   },
   summaryCard: {
     backgroundColor: 'white',
-    padding: '18px 20px',
+    padding: '16px 18px',
     borderRadius: '16px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
     display: 'flex',
     alignItems: 'center',
-    gap: '15px',
-    cursor: 'pointer'
-  },
-  summaryIcon: {
+    gap: '12px',
+    cursor: 'pointer',
+    minHeight: '86px'
+  },  summaryIcon: {
     fontSize: '32px'
   },
   summaryLabel: {
@@ -884,7 +914,7 @@ const styles = {
   },
   chartsGrid: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
     gap: '20px',
     marginBottom: '20px',
     width: '100%'
@@ -896,7 +926,8 @@ const styles = {
     marginBottom: '0'
   },
   chartContainer: {
-    height: '280px',
+    minHeight: '240px',
+    height: '100%',
     width: '100%',
     position: 'relative'
   },
@@ -922,7 +953,8 @@ const styles = {
   table: {
     width: '100%',
     borderCollapse: 'collapse',
-    fontSize: '14px'
+    fontSize: '13px',
+    minWidth: '600px'
   },
   tableRow: {
     transition: 'background 0.2s ease',
@@ -1038,6 +1070,77 @@ styleSheet.textContent = `
   .delay-4 { animation-delay: 0.2s; }
   .delay-5 { animation-delay: 0.25s; }
   .delay-6 { animation-delay: 0.3s; }
+  @media (max-width: 900px) {
+    .reports-filterContainer {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .reports-filterGroup {
+      width: 100%;
+    }
+
+    .reports-filterButtons {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .reports-exportSection {
+      grid-template-columns: repeat(1, minmax(0, 1fr));
+    }
+
+    .reports-summaryGrid,
+    .reports-portfolioGrid,
+    .reports-chartsGrid {
+      grid-template-columns: 1fr;
+    }
+
+    .reports-summaryCard {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .reports-tableWrapper {
+      overflow-x: auto;
+    }
+
+    .reports-filterPanel {
+      padding: 12px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .reports-filterButtons button,
+    .reports-refreshBtn {
+      width: 100%;
+    }
+
+    .reports-filterPanel {
+      padding: 12px;
+    }
+
+    .reports-exportSection {
+      padding: 12px;
+      gap: 8px;
+    }
+
+    .reports-summaryCard {
+      padding: 14px 16px;
+    }
+
+    .reports-summaryValue {
+      font-size: 18px;
+    }
+
+    .reports-tableWrapper table {
+      font-size: 12px;
+    }
+
+    .reports-tableWrapper th,
+    .reports-tableWrapper td {
+      padding: 10px 8px;
+    }
+  }
 `;
 document.head.appendChild(styleSheet);
 

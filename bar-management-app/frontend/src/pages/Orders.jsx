@@ -73,6 +73,23 @@ const Orders = () => {
     }
   };
 
+  const getItemName = (item) => {
+    if (!item) return 'Unknown';
+
+    if (item.product && typeof item.product === 'object') {
+      const productName = item.product.name;
+      if (productName && productName !== 'Product' && productName !== 'Unknown') return productName;
+      if (item.product._id) return item.product._id;
+    }
+
+    if (item.product && typeof item.product === 'string') {
+      return item.product;
+    }
+
+    if (item.name && item.name !== 'Product' && item.name !== 'Unknown') return item.name;
+    return 'Unknown';
+  };
+
   const canReverse = (order) => {
     return (user?.role === 'hardware-manager' || user?.role === 'owner') && order?.status !== 'reversed';
   };
@@ -277,7 +294,7 @@ const Orders = () => {
                                   }}
                                 >
                                   <span style={styles.itemName}>
-                                    {item.product?.name || 'Product'}
+                                    {getItemName(item)}
                                   </span>
                                   <span style={styles.itemQuantity}>
                                     × {item.quantity}

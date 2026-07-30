@@ -1,5 +1,22 @@
 import { formatPriceMK } from '../../utils/formatPrice';
 
+const getItemName = (item) => {
+  if (!item) return 'Unknown';
+
+  if (item.product && typeof item.product === 'object') {
+    const productName = item.product.name;
+    if (productName && productName !== 'Product' && productName !== 'Unknown') return productName;
+    if (item.product._id) return item.product._id;
+  }
+
+  if (item.product && typeof item.product === 'string') {
+    return item.product;
+  }
+
+  if (item.name && item.name !== 'Product' && item.name !== 'Unknown') return item.name;
+  return 'Unknown';
+};
+
 const ReceiptModal = ({ order, onClose }) => {
   if (!order) return null;
 
@@ -42,7 +59,7 @@ const ReceiptModal = ({ order, onClose }) => {
             <tbody>
               {order.items.map((item, index) => (
                 <tr key={index}>
-                  <td style={styles.tdItem}>{item.product?.name || 'Product'}</td>
+                  <td style={styles.tdItem}>{getItemName(item)}</td>
                   <td style={styles.tdQty}>{item.quantity}</td>
                   <td style={styles.tdPrice}>{formatPriceMK(item.priceAtSale)}</td>
                   <td style={styles.tdSubtotal}>{formatPriceMK(item.subtotal)}</td>
