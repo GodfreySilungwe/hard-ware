@@ -5,6 +5,8 @@ const Product = require('../models/Product');
 const Customer = require('../models/Customer');
 const { protect, isHardwareManagerOrOwner } = require('../middleware/auth');
 const { applyOrderReversal } = require('../lib/orderReversal');
+const { summarizeOrders, getPaymentMethodLabel } = require('../lib/orderMetrics');
+const { applyOrderToCustomerAccount } = require('../lib/customerAccountSync');
 
 // Get all orders
 router.get('/', protect, async (req, res) => {
@@ -13,7 +15,13 @@ router.get('/', protect, async (req, res) => {
       .populate('customer', 'name phone')
       .populate('items.product', 'name')
       .sort({ createdAt: -1 });
-    res.json(orders);
+
+    const normalizedOrders = orders.map((order) => ({
+      ...order,
+      paymentMethodLabel: order.paymentMethodLabel || getPaymentMethodLabel(order.paymentMethod)
+    }));
+
+    res.json(normalizedOrders);
   } catch (error) {
     console.error('Error fetching orders:', error);
     res.status(500).json({ message: error.message });
@@ -25,20 +33,31 @@ router.get('/today', protect, async (req, res) => {
   try {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
-    
-    const orders = await Order.find({
-      createdAt: { $gte: startOfDay },
-      status: { $ne: 'reversed' }
-    }, req);
-    
-    const totalSales = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-    const totalProfit = orders.reduce((sum, o) => sum + (o.profit || 0), 0);
-    
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const allOrders = await Order.find({}, req)
+      .populate('customer', 'name phone')
+      .populate('items.product', 'name')
+      .sort({ createdAt: -1 });
+
+    const todaysOrders = (allOrders || []).filter((order) => {
+      const orderDate = new Date(order.createdAt || order.created_at || order.date || order.updatedAt || order.updated_at || null);
+      return !Number.isNaN(orderDate.getTime()) && orderDate >= startOfDay && orderDate <= endOfDay;
+    });
+
+    const summary = summarizeOrders(todaysOrders, { includeReversed: false });
+    const reversedOrders = todaysOrders.filter((order) => order.status === 'reversed').length;
+
     res.json({
-      count: orders.length,
-      totalSales,
-      totalProfit,
-      orders
+      count: summary.count,
+      totalSales: summary.totalSales,
+      totalTax: summary.totalTax,
+      totalSalesNet: summary.totalSalesNet,
+      totalProfit: summary.totalProfit,
+      orders: summary.orders,
+      reversedOrders,
+      totalOrders: todaysOrders.length
     });
   } catch (error) {
     console.error('Error fetching today orders:', error);
@@ -90,26 +109,49 @@ router.post('/', protect, async (req, res) => {
       });
     }
 
-    // Update customer total spent
+    // Sync customer account metrics with POS activity
     if (customer) {
       const customerDoc = await Customer.findById(customer, req);
       if (customerDoc) {
-        customerDoc.totalSpent += totalAmount;
-        customerDoc.loyaltyPoints += Math.floor(totalAmount / 100);
+        applyOrderToCustomerAccount(customerDoc, totalAmount);
         await customerDoc.save();
       }
     }
 
     // Create order - NO createdBy field
+    const taxCompliant = Boolean(req.body?.taxCompliant);
+    const TAX_RATE = 0.175;
+    let taxAmount = Number(req.body?.taxAmount || 0);
+    let netAmount = Number(req.body?.netAmount || 0);
+
+    if (taxCompliant) {
+      if (!Number.isFinite(taxAmount) || taxAmount <= 0) {
+        netAmount = totalAmount / (1 + TAX_RATE);
+        taxAmount = totalAmount - netAmount;
+      } else if (!Number.isFinite(netAmount) || netAmount <= 0) {
+        netAmount = totalAmount - taxAmount;
+      }
+    } else {
+      taxAmount = 0;
+      netAmount = totalAmount;
+    }
+
+    // compute profit: use netAmount for tax-compliant orders to exclude tax from profit
+    const profitBase = (taxCompliant ? netAmount : totalAmount) - totalCost;
+
     const order = new Order({
       orderNumber: `ORD-${Date.now().toString().slice(-8)}`,
       customer: customer || null,
       items: orderItems,
       totalAmount,
-      profit: totalAmount - totalCost,
+      profit: profitBase,
       paymentMethod: paymentMethod || 'cash',
+      paymentMethodLabel: getPaymentMethodLabel(paymentMethod || 'cash'),
       status: 'completed',
-      tenantId: req.user?.tenantId || null
+      tenantId: req.user?.tenantId || null,
+      taxCompliant,
+      taxAmount,
+      netAmount
     });
 
     await order.save();

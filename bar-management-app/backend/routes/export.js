@@ -38,10 +38,13 @@ router.get('/sales/excel', protect, async (req, res) => {
     worksheet.columns = [
       { header: 'Order #', key: 'orderNumber', width: 20 },
       { header: 'Customer', key: 'customer', width: 25 },
+      { header: 'Tax Compliant', key: 'taxCompliant', width: 15 },
       { header: 'Items', key: 'items', width: 15 },
-      { header: 'Total Amount (MK)', key: 'totalAmount', width: 20 },
-      { header: 'Profit (MK)', key: 'profit', width: 18 },
-      { header: 'Payment Method', key: 'paymentMethod', width: 18 },
+      { header: 'Total Amount (MK)', key: 'totalAmount', width: 18 },
+      { header: 'Tax (MK)', key: 'taxAmount', width: 14 },
+      { header: 'Net Amount (MK)', key: 'netAmount', width: 18 },
+      { header: 'Profit (MK)', key: 'profit', width: 16 },
+      { header: 'Payment Method', key: 'paymentMethod', width: 16 },
       { header: 'Date', key: 'date', width: 25 }
     ];
 
@@ -60,23 +63,30 @@ router.get('/sales/excel', protect, async (req, res) => {
       worksheet.addRow({
         orderNumber: order.orderNumber,
         customer: order.customer?.name || 'Walk-in',
+        taxCompliant: order.taxCompliant ? 'Yes' : 'No',
         items: order.items.length,
         totalAmount: order.totalAmount,
+        taxAmount: order.taxAmount || 0,
+        netAmount: Number.isFinite(Number(order.netAmount)) ? order.netAmount : order.totalAmount,
         profit: order.profit,
-        paymentMethod: order.paymentMethod.replace('_', ' '),
+        paymentMethod: (order.paymentMethod || '').replace('_', ' '),
         date: formatDate(order.createdAt)
       });
     });
 
     // Add totals row
-    const totalSales = orders.reduce((sum, o) => sum + o.totalAmount, 0);
-    const totalProfit = orders.reduce((sum, o) => sum + o.profit, 0);
+    const totalSales = orders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+    const totalTax = orders.reduce((sum, o) => sum + (Number(o.taxAmount) || 0), 0);
+    const totalNet = orders.reduce((sum, o) => sum + (Number.isFinite(Number(o.netAmount)) ? Number(o.netAmount) : Number(o.totalAmount)), 0);
+    const totalProfit = orders.reduce((sum, o) => sum + (Number(o.profit) || 0), 0);
     
     const totalsRow = worksheet.addRow({
       orderNumber: 'TOTALS',
       customer: '',
       items: orders.length,
       totalAmount: totalSales,
+      taxAmount: totalTax,
+      netAmount: totalNet,
       profit: totalProfit,
       paymentMethod: '',
       date: ''
@@ -221,24 +231,29 @@ router.get('/sales/pdf', async (req, res) => {
     doc.moveDown();
 
     // Summary
-    const totalSales = orders.reduce((sum, o) => sum + o.totalAmount, 0);
-    const totalProfit = orders.reduce((sum, o) => sum + o.profit, 0);
-    
+    const totalSales = orders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+    const totalTax = orders.reduce((sum, o) => sum + (Number(o.taxAmount) || 0), 0);
+    const totalNet = orders.reduce((sum, o) => sum + (Number.isFinite(Number(o.netAmount)) ? Number(o.netAmount) : Number(o.totalAmount)), 0);
+    const totalProfit = orders.reduce((sum, o) => sum + (Number(o.profit) || 0), 0);
+
     doc.fontSize(14).font('Helvetica-Bold');
     doc.text(`Total Orders: ${orders.length}`, 50, doc.y);
-    doc.text(`Total Sales: MK ${totalSales.toFixed(2)}`, 300, doc.y - 20);
-    doc.text(`Total Profit: MK ${totalProfit.toFixed(2)}`, 300, doc.y);
+    doc.text(`Total Sales (Gross): MK ${totalSales.toFixed(2)}`, 300, doc.y - 30);
+    doc.text(`Total Tax: MK ${totalTax.toFixed(2)}`, 300, doc.y - 10);
+    doc.text(`Total Sales (Net): MK ${totalNet.toFixed(2)}`, 300, doc.y + 10);
+    doc.text(`Total Profit: MK ${totalProfit.toFixed(2)}`, 300, doc.y + 30);
     doc.moveDown(2);
 
     // Table Headers
     const tableTop = doc.y;
     doc.fontSize(10).font('Helvetica-Bold');
     doc.text('Order #', 50, tableTop);
-    doc.text('Customer', 150, tableTop);
-    doc.text('Items', 280, tableTop);
-    doc.text('Amount', 350, tableTop);
-    doc.text('Payment', 430, tableTop);
-    doc.text('Date', 500, tableTop);
+    doc.text('Customer', 120, tableTop);
+    doc.text('Tax', 260, tableTop, { width: 50, align: 'right' });
+    doc.text('Net', 320, tableTop, { width: 70, align: 'right' });
+    doc.text('Gross', 400, tableTop, { width: 70, align: 'right' });
+    doc.text('Payment', 470, tableTop);
+    doc.text('Date', 540, tableTop);
     
     // Draw header line
     doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
@@ -279,11 +294,13 @@ router.get('/sales/pdf', async (req, res) => {
       });
       
       doc.text(order.orderNumber, 50, y);
-      doc.text(order.customer?.name || 'Walk-in', 150, y);
-      doc.text(order.items.length.toString(), 280, y);
-      doc.text(`MK ${order.totalAmount.toFixed(2)}`, 350, y);
-      doc.text(order.paymentMethod.replace('_', ' '), 430, y);
-      doc.text(formattedDate, 500, y);
+      doc.text(order.customer?.name || 'Walk-in', 120, y);
+      doc.text(`MK ${(Number(order.taxAmount) || 0).toFixed(2)}`, 260, y, { width: 50, align: 'right' });
+      const netValue = Number.isFinite(Number(order.netAmount)) ? Number(order.netAmount) : Number(order.totalAmount);
+      doc.text(`MK ${netValue.toFixed(2)}`, 320, y, { width: 70, align: 'right' });
+      doc.text(`MK ${Number(order.totalAmount || 0).toFixed(2)}`, 400, y, { width: 70, align: 'right' });
+      doc.text(order.paymentMethod.replace('_', ' '), 470, y);
+      doc.text(formattedDate, 540, y);
       y += 20;
     });
 

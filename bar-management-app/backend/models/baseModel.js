@@ -193,7 +193,21 @@ class BaseModel {
         populated.supplier = { _id: populated.supplier, name: 'Supplier' };
       }
       if (path === 'items.product' && Array.isArray(populated.items)) {
-        populated.items = populated.items.map((item) => ({ ...item, product: item.product ? { _id: item.product, name: 'Product' } : null }));
+        const Product = require('./Product');
+        populated.items = populated.items.map((item) => {
+          if (!item || !item.product) return { ...item, product: null };
+
+          const productId = typeof item.product === 'string'
+            ? item.product
+            : item.product._id || item.product.id;
+          if (!productId) return { ...item, product: null };
+
+          const product = Product.findById(productId);
+          return {
+            ...item,
+            product: product ? { _id: productId, name: product.name || 'Unknown' } : { _id: productId, name: 'Unknown' }
+          };
+        });
       }
     }
     return populated;
@@ -234,10 +248,21 @@ class BaseModel {
       this.supplier = { _id: this.supplier, name: 'Supplier' };
     }
     if (path === 'items.product' && Array.isArray(this.items)) {
-      this.items = this.items.map((item) => ({
-        ...item,
-        product: item.product ? { _id: item.product, name: 'Product' } : null
-      }));
+      const Product = require('./Product');
+      this.items = this.items.map((item) => {
+        if (!item || !item.product) return { ...item, product: null };
+
+        const productId = typeof item.product === 'string'
+          ? item.product
+          : item.product._id || item.product.id;
+        if (!productId) return { ...item, product: null };
+
+        const product = Product.findById(productId);
+        return {
+          ...item,
+          product: product ? { _id: productId, name: product.name || 'Unknown' } : { _id: productId, name: 'Unknown' }
+        };
+      });
     }
     return this;
   }
