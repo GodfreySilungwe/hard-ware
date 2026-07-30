@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../api/api';
 import PageContainer from './PageContainer';
 import UnifiedCard from '../components/common/UnifiedCard';
@@ -21,6 +21,10 @@ const POS = () => {
   const [receiptOrder, setReceiptOrder] = useState(null);
   const [businessSettings, setBusinessSettings] = useState({ taxCompliant: false });
   const [clearCartOpen, setClearCartOpen] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [highlightedProductId, setHighlightedProductId] = useState(null);
+  const feedbackTimerRef = useRef(null);
+  const audioContextRef = useRef(null);
 
   useEffect(() => {
     loadData();
@@ -32,6 +36,14 @@ const POS = () => {
         console.error('Failed to parse business settings', err);
       }
     }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimerRef.current) {
+        clearTimeout(feedbackTimerRef.current);
+      }
+    };
   }, []);
 
   const loadData = async () => {
@@ -50,6 +62,32 @@ const POS = () => {
     }
   };
 
+  const playAddToCartSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+
+      const audioContext = audioContextRef.current || new AudioCtx();
+      audioContextRef.current = audioContext;
+
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(1320, audioContext.currentTime + 0.12);
+      gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.08, audioContext.currentTime + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.24);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.25);
+    } catch (err) {
+      console.warn('Unable to play cart sound:', err);
+    }
+  };
+
   const addToCart = (product) => {
     if (product.currentStock <= 0) {
       setError(`⚠️ ${product.name} is out of stock!`);
@@ -57,14 +95,16 @@ const POS = () => {
       return;
     }
 
+    const existingCartItem = cart.find(item => item._id === product._id);
+    if (existingCartItem && existingCartItem.quantity >= product.currentStock) {
+      setError(`⚠️ Not enough stock for ${product.name}`);
+      setTimeout(() => setError(''), 3000);
+      return;
+    }
+
     setCart(prev => {
       const existing = prev.find(item => item._id === product._id);
       if (existing) {
-        if (existing.quantity >= product.currentStock) {
-          setError(`⚠️ Not enough stock for ${product.name}`);
-          setTimeout(() => setError(''), 3000);
-          return prev;
-        }
         return prev.map(item =>
           item._id === product._id
             ? { ...item, quantity: item.quantity + 1 }
@@ -73,6 +113,19 @@ const POS = () => {
       }
       return [...prev, { ...product, quantity: 1 }];
     });
+
+    playAddToCartSound();
+    setHighlightedProductId(product._id);
+    setFeedbackMessage(`${product.name} added to cart`);
+
+    if (feedbackTimerRef.current) {
+      clearTimeout(feedbackTimerRef.current);
+    }
+
+    feedbackTimerRef.current = window.setTimeout(() => {
+      setHighlightedProductId(null);
+      setFeedbackMessage('');
+    }, 800);
   };
 
   const removeFromCart = (productId) => {
@@ -171,6 +224,7 @@ const POS = () => {
       />
       {error && <div style={styles.error}>{error}</div>}
       {success && <div style={styles.success}>{success}</div>}
+      {feedbackMessage && <div style={styles.feedbackToast}>{feedbackMessage}</div>}
 
       <style>{`
         @media (max-width: 768px) {
@@ -228,7 +282,7 @@ const POS = () => {
       <div style={styles.posLayout} className="pos-mobile-stack">
         {/* Left: Product Grid */}
         <div style={styles.productSection} className="pos-mobile-product-section">
-          <UnifiedCard title="Hardware Products">
+          <UnifiedCard title="Smart Inventory App">
             <div style={styles.categoryFilter} className="pos-mobile-category-filter">
               <input
                 type="text"
@@ -269,7 +323,8 @@ const POS = () => {
                   className={`fade-in delay-${(index % 6) + 1} pos-mobile-product-btn`}
                   style={{
                     ...styles.productBtn,
-                    ...(product.currentStock <= 0 ? styles.productOutOfStock : {})
+                    ...(product.currentStock <= 0 ? styles.productOutOfStock : {}),
+                    ...(highlightedProductId === product._id ? styles.productBtnActive : {})
                   }}
                   onClick={() => addToCart(product)}
                   disabled={product.currentStock <= 0}
@@ -295,14 +350,14 @@ const POS = () => {
                 </button>
               ))}
               {filteredProducts.length === 0 && (
-                <div style={styles.emptyState}>No hardware products found</div>
+                <div style={styles.emptyState}>No Smart Inventory App products found</div>
               )}
             </div>
           </UnifiedCard>
         </div>
 
         {/* Right: Cart */}
-        <div style={styles.cartSection} className="pos-mobile-cart-section">
+        <div style={{ ...styles.cartSection, ...(feedbackMessage ? styles.cartSectionActive : {}) }} className="pos-mobile-cart-section">
           <UnifiedCard title={`🛒 Cart (${totalItems} items)`}>
             <div style={styles.customerSection}>
               <select
@@ -545,6 +600,9 @@ const styles = {
     minHeight: '500px',
     width: '100%'
   },
+  cartSectionActive: {
+    animation: 'cartPulse 0.6s ease'
+  },
   categoryFilter: {
     display: 'flex',
     gap: '8px',
@@ -600,6 +658,12 @@ const styles = {
   productOutOfStock: {
     opacity: 0.5,
     cursor: 'not-allowed'
+  },
+  productBtnActive: {
+    transform: 'scale(1.02)',
+    boxShadow: '0 0 0 3px rgba(46, 204, 113, 0.22)',
+    borderColor: '#2ecc71',
+    backgroundColor: '#f5fff9'
   },
   productName: {
     fontSize: '14px',
@@ -760,6 +824,15 @@ productUnit: {
     opacity: 0.7,
     cursor: 'wait'
   },
+  feedbackToast: {
+    backgroundColor: '#eaf8ee',
+    color: '#1f7a3d',
+    padding: '10px 14px',
+    borderRadius: '8px',
+    marginBottom: '15px',
+    border: '1px solid #bfe8c8',
+    fontWeight: '600'
+  },
   error: {
     backgroundColor: '#fde8e8',
     color: '#e74c3c',
@@ -777,5 +850,15 @@ productUnit: {
     border: '1px solid #c3e6cb'
   }
 };
+
+const styleSheet = document.createElement('style');
+styleSheet.textContent = `
+  @keyframes cartPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.01); box-shadow: 0 0 0 4px rgba(46, 204, 113, 0.12); }
+    100% { transform: scale(1); }
+  }
+`;
+document.head.appendChild(styleSheet);
 
 export default POS;

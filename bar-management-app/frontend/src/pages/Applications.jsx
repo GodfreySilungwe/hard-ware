@@ -89,7 +89,7 @@ const Applications = () => {
         password
       });
 
-      setFormSuccess(response.data?.message || 'Hardware account created successfully.');
+      setFormSuccess(response.data?.message || 'Smart Inventory App account created successfully.');
       setFormData({
         tenantName: '',
         hardwareName: '',
@@ -102,7 +102,7 @@ const Applications = () => {
       });
       fetchData();
     } catch (err) {
-      setFormError(err.response?.data?.message || 'Failed to create hardware account.');
+      setFormError(err.response?.data?.message || 'Failed to create Smart Inventory App account.');
     } finally {
       setFormLoading(false);
     }
@@ -113,16 +113,16 @@ const Applications = () => {
       <div style={styles.heroPanel}>
         <div>
           <p style={styles.eyebrow}>Owner application center</p>
-          <h2 style={styles.heroTitle}>Keep hardware manager onboarding moving.</h2>
-          <p style={styles.subtitle}>Review new applications, monitor tenant readiness, and keep your hardware network aligned with your operating standards.</p>
+          <h2 style={styles.heroTitle}>Keep Smart Inventory App onboarding moving.</h2>
+          <p style={styles.subtitle}>Review new applications, monitor tenant readiness, and keep your inventory network aligned with your operating standards.</p>
         </div>
         <button style={styles.refreshBtn} onClick={fetchData}>↻ Refresh</button>
       </div>
 
       <div style={styles.statsGrid}>
         <StatsCard title="Pending approvals" value={pendingRegistrations.length} icon={faClipboardCheck} color="#f39c12" />
-        <StatsCard title="Hardware managers" value={summary?.hardwareManagers || 0} icon={faTools} color="#e94560" />
-        <StatsCard title="Active hardwares" value={summary?.activeTenants || 0} icon={faUsers} color="#2ecc71" />
+        <StatsCard title="Smart Inventory App users" value={summary?.hardwareManagers || 0} icon={faTools} color="#e94560" />
+        <StatsCard title="Active Smart Inventory App accounts" value={summary?.activeTenants || 0} icon={faUsers} color="#2ecc71" />
         <StatsCard title="Sales accounts" value={summary?.salesAccounts || 0} icon={faChartBar} color="#3498db" />
       </div>
 
@@ -152,7 +152,7 @@ const Applications = () => {
           )}
         </UnifiedCard>
 
-        <UnifiedCard title="➕ Create hardware from scratch">
+        <UnifiedCard title="➕ Create Smart Inventory App account">
           {formSuccess && <div style={styles.success}>{formSuccess}</div>}
           {formError && <div style={styles.error}>{formError}</div>}
           <form style={styles.form} onSubmit={handleCreateHardware}>
@@ -168,18 +168,18 @@ const Applications = () => {
               />
             </div>
             <div style={styles.formGroup}>
-              <label style={styles.label}>Hardware Name *</label>
+              <label style={styles.label}>Smart Inventory App Name *</label>
               <input
                 name="hardwareName"
                 value={formData.hardwareName}
                 onChange={handleFormChange}
                 style={styles.input}
-                placeholder="Enter hardware name"
+                placeholder="Enter Smart Inventory App name"
                 required
               />
             </div>
             <div style={styles.formGroup}>
-              <label style={styles.label}>Hardware Manager Name *</label>
+              <label style={styles.label}>App Manager Name *</label>
               <input
                 name="fullName"
                 value={formData.fullName}
@@ -249,7 +249,7 @@ const Applications = () => {
               />
             </div>
             <button type="submit" style={styles.button} disabled={formLoading}>
-              {formLoading ? 'Creating hardware...' : 'Create Hardware'}
+              {formLoading ? 'Creating account...' : 'Create Smart Inventory App'}
             </button>
           </form>
         </UnifiedCard>

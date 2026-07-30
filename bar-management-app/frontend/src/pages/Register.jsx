@@ -97,8 +97,8 @@ const Register = () => {
       <div style={styles.card}>
         <div style={styles.header}>
           <span style={styles.logo}>🔧</span>
-          <h1 style={styles.title}>Hardware Manager Onboarding</h1>
-          <p style={styles.subtitle}>Register a new hardware manager account for approval</p>
+          <h1 style={styles.title}>Smart Inventory App Onboarding</h1>
+          <p style={styles.subtitle}>Register a new Smart Inventory App account for approval</p>
         </div>
 
         {error && <div style={styles.error}>{error}</div>}
@@ -218,7 +218,7 @@ const Register = () => {
             <input
               type="text"
               style={{ ...styles.input, backgroundColor: '#f8fafc' }}
-              value="Hardware Manager"
+              value="Smart Inventory App"
               readOnly
             />
           </div>

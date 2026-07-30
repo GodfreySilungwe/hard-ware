@@ -15,7 +15,7 @@ const ReceiptModal = ({ order, onClose }) => {
         <div id="receipt" style={styles.receipt}>
           {/* Header */}
           <div style={styles.header}>
-            <h1 style={styles.barName}>🔧 Hardware Manager</h1>
+            <h1 style={styles.barName}>Smart Inventory App</h1>
             <div style={styles.divider} />
           </div>
 
@@ -94,7 +94,7 @@ const ReceiptModal = ({ order, onClose }) => {
           <div style={styles.footer}>
             <p style={styles.thankYou}>Thank you for your business!</p>
             <p style={styles.footerText}>Visit us again 😊</p>
-            <p style={styles.footerText}>Follow us on Facebook: @HardwareManagerMlw</p>
+            <p style={styles.footerText}>Follow us on Facebook: @SmartInventoryApp</p>
           </div>
         </div>
 

@@ -58,7 +58,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
     name: 'Global Account Manager',
     address: '123 Main Street, Lilongwe',
     phone: '+265 999 123 456',
-    email: 'info@barmanager.com',
+    email: 'info@smartinventoryapp.com',
     taxId: '',
     taxCompliant: false,
     currency: 'MWK',
@@ -208,7 +208,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
         
         setProfile({
           username: parsedProfile.username || 'admin',
-          email: parsedProfile.email || 'admin@bar.com',
+          email: parsedProfile.email || 'admin@smartinventoryapp.com',
           fullName: parsedProfile.fullName || 'Admin User',
           role: parsedProfile.role || 'admin'
         });
@@ -224,7 +224,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
         // Default profile
         setProfile({
           username: 'admin',
-          email: 'admin@bar.com',
+          email: 'admin@smartinventoryapp.com',
           fullName: 'Admin User',
           role: 'admin'
         });
@@ -235,7 +235,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
       // Set default profile
       setProfile({
         username: 'admin',
-        email: 'admin@bar.com',
+        email: 'admin@smartinventoryapp.com',
         fullName: 'Admin User',
         role: 'admin'
       });
@@ -346,13 +346,13 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
     try {
       const response = await api.patch(`/auth/tenants/${tenantId}/${action}`);
-      setMessage(response.data?.message || `Hardware ${action}d successfully`);
+      setMessage(response.data?.message || `Smart Inventory App ${action}d successfully`);
       await refreshOwnerData();
       await refreshHardwareManagers();
       notifyOwnerDataChanged();
       setTimeout(() => setMessage(''), 4000);
     } catch (err) {
-      setError(err.response?.data?.message || `❌ Failed to ${action} hardware`);
+      setError(err.response?.data?.message || `❌ Failed to ${action} Smart Inventory App`);
       setTimeout(() => setError(''), 4000);
     } finally {
       setLoading(false);
@@ -400,8 +400,8 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
     try {
       const response = await api.post(`/auth/approve-registration/${registrationId}`, {
-        tenantName: inviteForm.tenantName || 'Hardware',
-        hardwareName: inviteForm.hardwareName || 'Hardware'
+        tenantName: inviteForm.tenantName || 'Smart Inventory App',
+        hardwareName: inviteForm.hardwareName || 'Smart Inventory App'
       });
       setMessage(response.data?.message || 'Registration approved');
       await refreshOwnerData();
@@ -495,13 +495,13 @@ const Settings = ({ initialMenu = 'settings' }) => {
         hardwareName: inviteForm.hardwareName
       });
 
-      setMessage(`✅ Hardware manager created for ${response.data?.tenant?.name || inviteForm.tenantName}`);
+      setMessage(`✅ Smart Inventory App account created for ${response.data?.tenant?.name || inviteForm.tenantName}`);
       setSalesAccountForm({ fullName: '', username: '', email: '', phone: '', password: '', confirmPassword: '' });
       setInviteForm({ tenantName: '', hardwareName: '', expiresInDays: '7' });
       await refreshHardwareManagers();
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
-      setError(err.response?.data?.message || '❌ Failed to create hardware manager');
+      setError(err.response?.data?.message || '❌ Failed to create Smart Inventory App account');
       setTimeout(() => setError(''), 3000);
     } finally {
       setLoading(false);
@@ -573,7 +573,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
   const menuItems = isOwnerRole
     ? [
-        { id: 'hardware', label: '🔧 Hardware' }
+        { id: 'hardware', label: '� Smart Inventory App' }
       ]
     : [
         { id: 'settings', label: '⚙️ Settings' },
@@ -600,7 +600,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
   };
 
   return (
-    <PageContainer title={isOwnerRole ? '🌐 Global Account' : '⚙️ Hardware Manager Settings'}>
+    <PageContainer title={isOwnerRole ? '🌐 Global Account' : '⚙️ Smart Inventory App Settings'}>
       {message && (
         <div className="fade-in" style={styles.success}>{message}</div>
       )}
@@ -767,9 +767,9 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
       <DeleteConfirmModal
         open={Boolean(deleteTarget)}
-        title={deleteAction === 'tenant' ? 'Delete hardware account' : 'Delete sales account'}
+        title={deleteAction === 'tenant' ? 'Delete Smart Inventory App account' : 'Delete sales account'}
         description={deleteAction === 'tenant'
-          ? 'Type delete to permanently remove this hardware account and disable its users.'
+          ? 'Type delete to permanently remove this Smart Inventory App account and disable its users.'
           : 'Type delete to permanently remove this sales account.'}
         onCancel={() => {
           setDeleteTarget(null);
@@ -789,7 +789,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
         <div className="fade-in">
           <UnifiedCard title="👥 Create Sales Team">
             <p style={{ marginTop: 0, color: '#6b7280' }}>
-              Create sales accounts for your hardware location. These users can manage POS, customers, and orders.
+              Create sales accounts for your Smart Inventory App location. These users can manage POS, customers, and orders.
             </p>
             <form onSubmit={handleCreateSalesAccount} style={styles.form}>
               <div style={styles.formGrid}>
@@ -849,7 +849,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
       {isOwnerRole && activeMenu === 'hardware' && (
         <div className="fade-in">
-          <UnifiedCard title="⚠️ Pending Hardware Applications">
+          <UnifiedCard title="⚠️ Pending Smart Inventory App Applications">
             <div style={{ marginBottom: '16px', padding: '12px 14px', borderRadius: '10px', backgroundColor: pendingRegistrations.length > 0 ? '#fff7ed' : '#f8fafc', border: pendingRegistrations.length > 0 ? '1px solid #fdba74' : '1px solid #e5e7eb' }}>
               <strong>{pendingRegistrations.length}</strong> pending application{pendingRegistrations.length === 1 ? '' : 's'} waiting for review.
             </div>
@@ -873,11 +873,11 @@ const Settings = ({ initialMenu = 'settings' }) => {
           </UnifiedCard>
 
           <div style={{ marginTop: '16px' }}>
-            <UnifiedCard title="➕ Hardware Creation Form">
+            <UnifiedCard title="➕ Smart Inventory App Creation Form">
               <form onSubmit={handleCreateInviteLink} style={styles.form}>
                 <div style={styles.formGrid}>
                   <div style={styles.formGroup}>
-                    <label style={styles.label}>Hardware Name</label>
+                    <label style={styles.label}>Smart Inventory App Name</label>
                     <input type="text" required style={styles.input} value={inviteForm.hardwareName} onChange={(e) => setInviteForm({ ...inviteForm, hardwareName: e.target.value })} />
                   </div>
                   <div style={styles.formGroup}>
@@ -894,17 +894,17 @@ const Settings = ({ initialMenu = 'settings' }) => {
                   </div>
                 </div>
                 <div style={styles.formActions}>
-                  <Button type="submit" disabled={loading}>{loading ? 'Creating...' : 'Create Hardware'}</Button>
+                  <Button type="submit" disabled={loading}>{loading ? 'Creating...' : 'Create Smart Inventory App'}</Button>
                 </div>
               </form>
             </UnifiedCard>
           </div>
 
           <div style={{ marginTop: '16px' }}>
-            <UnifiedCard title="🏢 Existing Hardwares">
+            <UnifiedCard title="🏢 Existing Smart Inventory App Accounts">
               <div style={{ display: 'grid', gap: '10px' }}>
                 {tenants.length === 0 ? (
-                  <div style={{ color: '#888' }}>No hardware accounts found yet.</div>
+                  <div style={{ color: '#888' }}>No Smart Inventory App accounts found yet.</div>
                 ) : tenants.map((tenant) => (
                   <div key={tenant._id || tenant.id} style={{ border: '1px solid #eee', borderRadius: '10px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                     <div>
@@ -934,10 +934,10 @@ const Settings = ({ initialMenu = 'settings' }) => {
           </div>
 
           <div style={{ marginTop: '16px' }}>
-            <UnifiedCard title="👥 Hardware Managers">
+            <UnifiedCard title="👥 Smart Inventory App Users">
               <div style={{ display: 'grid', gap: '10px' }}>
                 {hardwareManagers.length === 0 ? (
-                  <div style={{ color: '#888' }}>No hardware managers found.</div>
+                  <div style={{ color: '#888' }}>No Smart Inventory App users found.</div>
                 ) : hardwareManagers.map((manager) => (
                   <div key={manager.id} style={{ border: '1px solid #eee', borderRadius: '10px', padding: '14px', display: 'grid', gap: '8px' }}>
                     <div style={{ fontWeight: 700, fontSize: '15px' }}>{manager.fullName || manager.username}</div>

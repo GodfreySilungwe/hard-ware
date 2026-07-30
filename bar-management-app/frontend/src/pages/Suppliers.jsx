@@ -91,7 +91,7 @@ const Suppliers = () => {
 
   return (
     <PageContainer title="🏷️ Supplier Management">
-      <div style={styles.header}>
+      <div style={styles.header} className="supplier-mobile-header">
         <p style={styles.subtitle}>Manage your product suppliers</p>
         <Button onClick={() => setShowForm(!showForm)}>
           {showForm ? '✕ Close' : '+ Add Supplier'}
@@ -102,7 +102,7 @@ const Suppliers = () => {
         <div className="fade-in">
           <UnifiedCard title={editingSupplier ? 'Edit Supplier' : 'Add New Supplier'}>
             <form onSubmit={handleSubmit} style={styles.form}>
-              <div className="form-grid" style={styles.formGrid}>
+              <div className="form-grid supplier-mobile-form-grid" style={styles.formGrid}>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Supplier Name *</label>
                   <input
@@ -159,7 +159,7 @@ const Suppliers = () => {
                   />
                 </div>
               </div>
-              <div className="form-actions" style={styles.formActions}>
+              <div className="form-actions supplier-mobile-form-actions" style={styles.formActions}>
                 <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
                 <Button type="submit">{editingSupplier ? 'Update' : 'Create'}</Button>
               </div>
@@ -176,11 +176,11 @@ const Suppliers = () => {
         onConfirm={handleDelete}
       />
 
-      <div className="supplierGrid" style={styles.supplierGrid}>
+      <div className="supplierGrid supplier-mobile-card-list" style={styles.supplierGrid}>
         {suppliers.map((supplier, index) => (
           <div 
             key={supplier._id}
-            className={`fade-in delay-${(index % 6) + 1}`}
+            className={`fade-in delay-${(index % 6) + 1} supplier-mobile-card`}
             style={styles.supplierCard}
             onMouseEnter={(e) => {
               e.currentTarget.style.transform = 'translateY(-6px)';
@@ -191,19 +191,19 @@ const Suppliers = () => {
               e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
             }}
           >
-            <div style={styles.supplierHeader}>
+            <div style={styles.supplierHeader} className="supplier-mobile-card-header">
               <div>
                 <h3 style={styles.supplierName}>{supplier.name}</h3>
                 {supplier.contactPerson && (
                   <p style={styles.contactPerson}>👤 {supplier.contactPerson}</p>
                 )}
               </div>
-              <div style={styles.supplierActions}>
+              <div style={styles.supplierActions} className="supplier-mobile-card-actions">
                 <button style={styles.editBtn} onClick={() => handleEdit(supplier)}>✏️</button>
                 <button style={styles.deleteBtn} onClick={() => setDeleteTarget(supplier)}>🗑️</button>
               </div>
             </div>
-            <div style={styles.supplierDetails}>
+            <div style={styles.supplierDetails} className="supplier-mobile-details">
               <span>📱 {supplier.phone}</span>
               {supplier.email && <span>✉️ {supplier.email}</span>}
               {supplier.address && <span>📍 {supplier.address}</span>}
@@ -381,6 +381,55 @@ styleSheet.textContent = `
   
   .full-width {
     grid-column: 1 / -1;
+  }
+
+  @media (max-width: 768px) {
+    .supplier-mobile-header {
+      flex-direction: column;
+      align-items: stretch !important;
+    }
+
+    .supplier-mobile-header button {
+      width: 100%;
+    }
+
+    .supplier-mobile-form-grid {
+      grid-template-columns: 1fr !important;
+    }
+
+    .supplier-mobile-form-actions {
+      flex-direction: column-reverse !important;
+    }
+
+    .supplier-mobile-form-actions button {
+      width: 100%;
+    }
+
+    .supplier-mobile-card-list {
+      grid-template-columns: 1fr !important;
+    }
+
+    .supplier-mobile-card {
+      padding: 16px !important;
+    }
+
+    .supplier-mobile-card-header {
+      flex-direction: column;
+      align-items: flex-start !important;
+      gap: 8px;
+    }
+
+    .supplier-mobile-card-actions {
+      align-self: flex-end;
+    }
+
+    .supplier-mobile-details {
+      gap: 8px;
+    }
+
+    .supplier-mobile-details span {
+      word-break: break-word;
+    }
   }
 `;
 document.head.appendChild(styleSheet);

@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTools } from '@fortawesome/free-solid-svg-icons';
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -47,8 +45,7 @@ const Login = () => {
       <div style={styles.card}>
         <div style={styles.header}>
           <div style={styles.logo}>
-            <FontAwesomeIcon icon={faTools} style={styles.logoIcon} />
-            <span style={styles.logoText}>Hardware Manager</span>
+            <span style={styles.logoText}>Smart Inventory App</span>
           </div>
           <h1 style={styles.title}>Welcome Back</h1>
           <p style={styles.subtitle}>Sign in to your account</p>

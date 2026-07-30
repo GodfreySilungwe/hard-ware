@@ -28,7 +28,7 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
 
   const getRoleLabel = () => {
     if (user?.role === 'owner') return 'Global Owner';
-    if (user?.role === 'hardware-manager') return 'Hardware Manager';
+    if (user?.role === 'hardware-manager') return 'Smart Inventory App';
     if (user?.role === 'sales') return 'Sales';
     return 'User';
   };
@@ -69,7 +69,7 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
   const navItems = {
     owner: [
       { path: '/', label: 'Dashboard', icon: faChartBar },
-      { path: '/hardware', label: 'Hardware', icon: faTools },
+      { path: '/hardware', label: 'Smart Inventory App', icon: faTools },
       { path: '/applications', label: 'Applications', icon: faTools, showBadge: true }
     ],
     'hardware-manager': [
@@ -100,8 +100,8 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
       <div style={styles.logo}>
         <div style={styles.logoBadge}>🏢</div>
         <div>
-          <div style={styles.logoText}>Enterprise Hub</div>
-          <div style={styles.logoSubtext}>Global Owner Console</div>
+          <div style={styles.logoText}>Smart Inventory App</div>
+          <div style={styles.logoSubtext}>Owner Console</div>
         </div>
         {window.innerWidth < 900 && (
           <button type="button" onClick={onClose} style={styles.closeButton} aria-label="Close menu">

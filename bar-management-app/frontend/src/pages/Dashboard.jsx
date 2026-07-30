@@ -139,23 +139,23 @@ const Dashboard = () => {
   const heroTitle = isOwnerRole
     ? 'Global owner control center'
     : isHardwareManagerRole
-      ? 'Hardware manager operations center'
+      ? 'Smart Inventory App operations center'
       : isSalesRole
         ? 'Sales command center'
         : 'Workspace dashboard';
 
   const heroSubtitle = isOwnerRole
-    ? 'Approve new hardware applications, manage global accounts, and monitor your hardware network from one place.'
+    ? 'Approve new Smart Inventory App applications, manage global accounts, and monitor your network from one place.'
     : isHardwareManagerRole
-      ? 'Review today’s sales activity, track daily orders, and keep hardware operations moving.'
+      ? 'Review today’s sales activity, track daily orders, and keep your inventory operations moving.'
       : isSalesRole
         ? 'Focus on point-of-sale activity, customer service, and daily orders from one view.'
         : 'Review recent activity and stay on top of your work.';
 
   const visibleStats = isOwnerRole
     ? [
-        { title: 'Total Hardware Accounts', value: stats.totalHardwareAccounts, icon: faWarehouse, color: '#2ecc71' },
-        { title: 'Active Hardware Accounts', value: stats.activeHardwareAccounts, icon: faTools, color: '#3498db' },
+        { title: 'Total Smart Inventory App Accounts', value: stats.totalHardwareAccounts, icon: faWarehouse, color: '#2ecc71' },
+        { title: 'Active Smart Inventory App Accounts', value: stats.activeHardwareAccounts, icon: faTools, color: '#3498db' },
         { title: 'Pending Applications', value: stats.pendingApplications, icon: faClipboardCheck, color: '#f39c12' }
       ]
     : isHardwareManagerRole
@@ -254,7 +254,7 @@ const Dashboard = () => {
               <div style={styles.snapshotValue}>{stats.pendingApplications}</div>
             </div>
             <div style={styles.ownerCard}>
-              <div style={styles.snapshotLabel}>Hardware Managers</div>
+              <div style={styles.snapshotLabel}>Smart Inventory App Users</div>
               <div style={styles.snapshotValue}>{stats.hardwareManagers || 0}</div>
             </div>
             <div style={styles.ownerCard}>

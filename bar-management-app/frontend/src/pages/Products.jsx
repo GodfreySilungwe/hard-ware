@@ -113,23 +113,35 @@ const Products = () => {
       meter: '📏',
       liter: '🧴',
       kg: '⚖️',
-      roll: '🧻'
+      roll: '🧻',
+      bottle: '🧴',
+      carton: '📦',
+      bag: '🛍️',
+      bunch: '🌿',
+      crate: '🧺',
+      dozen: '🧮',
+      pair: '👟',
+      gram: '⚖️',
+      gallon: '🧴',
+      tray: '🥫',
+      set: '🧩',
+      unit: '📦'
     };
     return icons[unit] || '📦';
   };
 
   if (loading) {
     return (
-      <PageContainer title="🔩 Hardware Products">
+      <PageContainer title="📦 Smart Inventory App">
         <p>Loading products...</p>
       </PageContainer>
     );
   }
 
   return (
-    <PageContainer title="🔩 Hardware Products">
+    <PageContainer title="📦 Smart Inventory App Products">
       <div style={styles.header}>
-        <p style={styles.subtitle}>Manage your hardware inventory</p>
+        <p style={styles.subtitle}>Manage your Smart Inventory App inventory</p>
         <Button onClick={() => setShowForm(!showForm)}>
           {showForm ? '✕ Close' : '+ Add Product'}
         </Button>
@@ -219,10 +231,22 @@ const Products = () => {
                   <option value="piece">📦 Piece</option>
                   <option value="box">📦 Box</option>
                   <option value="pack">📦 Pack</option>
+                  <option value="carton">📦 Carton</option>
+                  <option value="bag">🛍️ Bag</option>
+                  <option value="bottle">🧴 Bottle</option>
+                  <option value="crate">🧺 Crate</option>
+                  <option value="bunch">🌿 Bunch</option>
+                  <option value="dozen">🧮 Dozen</option>
+                  <option value="pair">👟 Pair</option>
                   <option value="meter">📏 Meter</option>
                   <option value="liter">🧴 Liter</option>
                   <option value="kg">⚖️ Kilogram</option>
+                  <option value="gram">⚖️ Gram</option>
+                  <option value="gallon">🧴 Gallon</option>
                   <option value="roll">🧻 Roll</option>
+                  <option value="tray">🥫 Tray</option>
+                  <option value="set">🧩 Set</option>
+                  <option value="unit">📦 Unit</option>
                 </select>
               </div>
             </div>
