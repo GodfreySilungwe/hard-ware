@@ -134,14 +134,14 @@ function App() {
             </ProtectedRoute>
           } />
           <Route path="/settings" element={
-            <ProtectedRoute hardwareManagerOnly>
+            <ProtectedRoute allowedRoles={['hardware-manager']}>
               <Layout>
                 <Settings initialMenu="settings" />
               </Layout>
             </ProtectedRoute>
           } />
           <Route path="/sales-team" element={
-            <ProtectedRoute hardwareManagerOnly>
+            <ProtectedRoute allowedRoles={['hardware-manager']}>
               <Layout>
                 <Settings initialMenu="sales-team" />
               </Layout>

@@ -79,6 +79,21 @@ textarea {
     align-items: stretch !important;
   }
 
+  .mobile-stack-row > * {
+    min-width: 0 !important;
+  }
+
+  .mobile-stack-row input,
+  .mobile-stack-row select,
+  .mobile-stack-row button,
+  .form-grid input,
+  .form-grid select,
+  .form-grid textarea {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box;
+  }
+
   .productGrid,
   .categoryGrid,
   .customerGrid,

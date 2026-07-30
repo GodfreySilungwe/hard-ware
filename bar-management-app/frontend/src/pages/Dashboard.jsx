@@ -99,6 +99,10 @@ const Dashboard = () => {
         pendingApprovals: summary.pendingTenants || 0,
         activeBars: summary.activeTenants || 0,
         hardwareManagers: summary.hardwareManagers || 0,
+        salesAccounts: summary.salesAccounts || 0,
+        totalHardwareAccounts: summary.totalTenants || 0,
+        activeHardwareAccounts: summary.activeTenants || 0,
+        pendingApplications: summary.pendingTenants || 0,
         totalProducts: products.length || 0,
         totalCustomers: customers.length || 0,
         todayOrders: todaysOrders.length,
@@ -141,9 +145,9 @@ const Dashboard = () => {
 
   const visibleStats = isOwnerRole
     ? [
-        { title: 'Pending approvals', value: stats.pendingApprovals, icon: faClipboardCheck, color: '#f39c12' },
-        { title: 'Active hardwares', value: stats.activeBars, icon: faWarehouse, color: '#2ecc71' },
-        { title: 'Hardware managers', value: stats.hardwareManagers, icon: faTools, color: '#3498db' }
+        { title: 'Total Hardware Accounts', value: stats.totalHardwareAccounts, icon: faWarehouse, color: '#2ecc71' },
+        { title: 'Active Hardware Accounts', value: stats.activeHardwareAccounts, icon: faTools, color: '#3498db' },
+        { title: 'Pending Applications', value: stats.pendingApplications, icon: faClipboardCheck, color: '#f39c12' }
       ]
     : isHardwareManagerRole
       ? [
@@ -218,6 +222,37 @@ const Dashboard = () => {
           </div>
         ))}
       </div>
+
+      {isOwnerRole && (
+        <div className="fade-in" style={styles.ordersPanel}>
+          <div style={styles.ownerPortfolioHeader}>
+            <h3 style={styles.panelTitle}>Owner Portfolio</h3>
+            <span style={styles.panelHint}>Global portfolio overview from tenant summary</span>
+          </div>
+          <div style={styles.ownerGrid}>
+            <div style={styles.ownerCard}>
+              <div style={styles.snapshotLabel}>Total Accounts</div>
+              <div style={styles.snapshotValue}>{stats.totalHardwareAccounts}</div>
+            </div>
+            <div style={styles.ownerCard}>
+              <div style={styles.snapshotLabel}>Active Accounts</div>
+              <div style={styles.snapshotValue}>{stats.activeHardwareAccounts}</div>
+            </div>
+            <div style={styles.ownerCard}>
+              <div style={styles.snapshotLabel}>Pending Applications</div>
+              <div style={styles.snapshotValue}>{stats.pendingApplications}</div>
+            </div>
+            <div style={styles.ownerCard}>
+              <div style={styles.snapshotLabel}>Hardware Managers</div>
+              <div style={styles.snapshotValue}>{stats.hardwareManagers || 0}</div>
+            </div>
+            <div style={styles.ownerCard}>
+              <div style={styles.snapshotLabel}>Sales Accounts</div>
+              <div style={styles.snapshotValue}>{stats.salesAccounts || 0}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isHardwareManagerRole && (
         <div className="fade-in" style={styles.ordersPanel}>
@@ -376,6 +411,26 @@ const styles = {
   panelHint: {
     fontSize: '13px',
     color: '#6b7280'
+  },
+  ownerPortfolioHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '14px',
+    flexWrap: 'wrap',
+    gap: '10px'
+  },
+  ownerGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: '12px',
+    marginBottom: '18px'
+  },
+  ownerCard: {
+    padding: '16px',
+    borderRadius: '14px',
+    backgroundColor: '#fafafa',
+    border: '1px solid #e5e7eb'
   },
   ordersList: {
     display: 'grid',

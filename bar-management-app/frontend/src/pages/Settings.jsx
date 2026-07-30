@@ -572,7 +572,6 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
   const menuItems = isOwnerRole
     ? [
-        { id: 'settings', label: '⚙️ Settings' },
         { id: 'hardware', label: '🔧 Hardware' }
       ]
     : [
@@ -582,7 +581,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
   useEffect(() => {
     if (!menuItems.some((item) => item.id === activeMenu)) {
-      setActiveMenu(menuItems[0]?.id || 'settings');
+      setActiveMenu(menuItems[0]?.id || 'hardware');
     }
   }, [menuItems, activeMenu]);
 
@@ -624,71 +623,6 @@ const Settings = ({ initialMenu = 'settings' }) => {
         ))}
       </div>
 
-      {isOwnerRole && activeMenu === 'settings' && (
-        <div className="fade-in" style={styles.statGridSection}>
-          <UnifiedCard title="🌐 Owner Portfolio Dashboard">
-            <div style={styles.statGrid}>
-              <div style={styles.statCard}>
-                <div style={styles.statValue}>{tenants.length}</div>
-                <div style={styles.statLabel}>Total Hardware Accounts</div>
-              </div>
-              <div style={styles.statCard}>
-                <div style={styles.statValue}>{tenants.filter((tenant) => tenant.status !== 'deleted').length}</div>
-                <div style={styles.statLabel}>Active Hardware Accounts</div>
-              </div>
-              <div style={styles.statCard}>
-                <div style={styles.statValue}>{pendingRegistrations.length}</div>
-                <div style={styles.statLabel}>Pending Applications</div>
-              </div>
-              <div style={styles.statCard}>
-                <div style={styles.statValue}>{hardwareManagers.length}</div>
-                <div style={styles.statLabel}>Hardware Managers</div>
-              </div>
-              <div style={styles.statCard}>
-                <div style={styles.statValue}>{salesAccounts.length}</div>
-                <div style={styles.statLabel}>Sales Accounts</div>
-              </div>
-              <div style={styles.statCard}>
-                <div style={styles.statValue}>{salesAccounts.filter((account) => account.isActive).length}</div>
-                <div style={styles.statLabel}>Active Sales Accounts</div>
-              </div>
-            </div>
-          </UnifiedCard>
-        </div>
-      )}
-
-      {isOwnerRole && activeMenu === 'settings' && (
-        <div className="fade-in" style={styles.statGridSection}>
-          <UnifiedCard title="💼 Owner Revenue & Performance">
-            <div style={styles.statGrid}>
-              <div style={styles.statCard}>
-                <div style={styles.statValue}>{formatPriceMK(ownerPerformance.totalSales)}</div>
-                <div style={styles.statLabel}>Total Network Sales</div>
-              </div>
-              <div style={styles.statCard}>
-                <div style={styles.statValue}>{formatPriceMK(ownerPerformance.totalProfit)}</div>
-                <div style={styles.statLabel}>Total Network Profit</div>
-              </div>
-              <div style={styles.statCard}>
-                <div style={styles.statValue}>{ownerPerformance.totalOrders}</div>
-                <div style={styles.statLabel}>Completed Orders</div>
-              </div>
-              <div style={styles.statCard}>
-                <div style={styles.statValue}>{formatPriceMK(ownerPerformance.averageOrderValue)}</div>
-                <div style={styles.statLabel}>Average Order Value</div>
-              </div>
-              <div style={styles.statCard}>
-                <div style={styles.statValue}>{ownerPerformance.averageItemsPerOrder.toFixed(1)}</div>
-                <div style={styles.statLabel}>Avg Items / Order</div>
-              </div>
-              <div style={styles.statCard}>
-                <div style={styles.statValue}>{ownerPerformance.reversalRate}%</div>
-                <div style={styles.statLabel}>Order Reversal Rate</div>
-              </div>
-            </div>
-          </UnifiedCard>
-        </div>
-      )}
 
       {activeMenu === 'settings' && (
         <div className="fade-in">

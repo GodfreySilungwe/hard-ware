@@ -69,7 +69,6 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
   const navItems = {
     owner: [
       { path: '/', label: 'Dashboard', icon: faChartBar },
-      { path: '/settings', label: 'Settings', icon: faCog },
       { path: '/hardware', label: 'Hardware', icon: faTools },
       { path: '/applications', label: 'Applications', icon: faTools, showBadge: true }
     ],

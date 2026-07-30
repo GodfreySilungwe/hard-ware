@@ -204,7 +204,7 @@ const PurchaseOrders = () => {
                 <label style={styles.label}>Items *</label>
                 {formData.items.map((item, index) => (
                   <div key={index} className="mobile-stack-row" style={styles.itemRow}>
-                    <div style={{ ...styles.input, flex: 2, padding: 0, overflow: 'hidden' }}>
+                    <div style={{ ...styles.input, flex: 2, padding: 0, overflow: 'hidden', minWidth: 0, width: '100%' }}>
                       <input
                         type="text"
                         placeholder="Search product"
@@ -539,7 +539,10 @@ const styles = {
   itemRow: {
     display: 'flex',
     gap: '10px',
-    alignItems: 'center'
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    width: '100%',
+    minWidth: 0
   },
   input: {
     padding: '10px 12px',
@@ -547,7 +550,10 @@ const styles = {
     border: '1px solid #ddd',
     fontSize: '14px',
     transition: 'border 0.3s ease',
-    fontFamily: 'inherit'
+    fontFamily: 'inherit',
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box'
   },
   label: {
     fontSize: '14px',

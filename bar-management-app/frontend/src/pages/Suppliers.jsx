@@ -300,8 +300,9 @@ const styles = {
   },
   formGrid: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '15px'
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '15px',
+    minWidth: 0
   },
   formGroup: {
     display: 'flex',
@@ -319,7 +320,10 @@ const styles = {
     border: '1px solid #ddd',
     fontSize: '14px',
     transition: 'border 0.3s ease',
-    fontFamily: 'inherit'
+    fontFamily: 'inherit',
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box'
   },
   formActions: {
     display: 'flex',
