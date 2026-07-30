@@ -26,6 +26,11 @@ export const buildTodayOrderSummary = (orders = [], referenceDate = new Date(), 
 
   const totalSales = todayOrders.reduce((sum, order) => sum + toNumber(order?.totalAmount), 0);
   const totalProfit = todayOrders.reduce((sum, order) => sum + toNumber(order?.profit), 0);
+  const totalTax = todayOrders.reduce((sum, order) => sum + toNumber(order?.taxAmount), 0);
+  const totalSalesNet = todayOrders.reduce((sum, order) => {
+    const net = Number.isFinite(Number(order?.netAmount)) ? Number(order.netAmount) : toNumber(order?.totalAmount);
+    return sum + net;
+  }, 0);
   const reversedOrders = normalizedOrders.filter((order) => {
     const orderDate = getOrderDate(order);
     return order?.status === 'reversed' && Boolean(orderDate) && isSameCalendarDay(orderDate, referenceDate);
@@ -33,14 +38,20 @@ export const buildTodayOrderSummary = (orders = [], referenceDate = new Date(), 
 
   const fallbackSales = toNumber(summaryFallback?.totalSales);
   const fallbackProfit = toNumber(summaryFallback?.totalProfit);
+  const fallbackTax = toNumber(summaryFallback?.totalTax);
+  const fallbackSalesNet = toNumber(summaryFallback?.totalSalesNet);
   const resolvedSales = fallbackSales > 0 ? fallbackSales : totalSales;
   const resolvedProfit = fallbackProfit > 0 ? fallbackProfit : totalProfit;
+  const resolvedTax = fallbackTax > 0 ? fallbackTax : totalTax;
+  const resolvedSalesNet = fallbackSalesNet > 0 ? fallbackSalesNet : totalSalesNet;
 
   return {
     orders: todayOrders,
     count: todayOrders.length,
     totalSales: resolvedSales,
     totalProfit: resolvedProfit,
+    totalTax: resolvedTax,
+    totalSalesNet: resolvedSalesNet,
     averageOrderValue: todayOrders.length > 0 ? resolvedSales / todayOrders.length : 0,
     reversedOrders
   };
@@ -57,6 +68,8 @@ export const resolveTodayOrderSummary = (summaryPayload = null, fallbackOrders =
 
   return {
     ...summary,
-    count: payloadCount ?? summary.count
+    count: payloadCount ?? summary.count,
+    totalTax: normalizedPayload?.totalTax ?? summary.totalTax,
+    totalSalesNet: normalizedPayload?.totalSalesNet ?? summary.totalSalesNet
   };
 };

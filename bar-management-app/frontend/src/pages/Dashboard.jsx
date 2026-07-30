@@ -22,7 +22,14 @@ const Dashboard = () => {
     activeBars: 0,
     hardwareManagers: 0,
     totalProducts: 0,
-    totalCustomers: 0
+    totalCustomers: 0,
+    todayOrders: 0,
+    todaySales: 0,
+    todaySalesNet: 0,
+    todayTax: 0,
+    todayProfit: 0,
+    reversedOrders: 0,
+    averageOrderValue: 0
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -107,6 +114,8 @@ const Dashboard = () => {
         totalCustomers: customers.length || 0,
         todayOrders: todaysOrders.length,
         todaySales,
+        todaySalesNet: resolvedSummary.totalSalesNet ?? 0,
+        todayTax: resolvedSummary.totalTax ?? 0,
         todayProfit,
         reversedOrders,
         averageOrderValue: resolvedSummary.averageOrderValue ?? 0
@@ -152,6 +161,8 @@ const Dashboard = () => {
     : isHardwareManagerRole
       ? [
           { title: 'Today sales', value: formatPriceMK(stats.todaySales), icon: faChartLine, color: '#2ecc71' },
+          { title: 'Today net sales', value: formatPriceMK(stats.todaySalesNet), icon: faChartLine, color: '#16a085' },
+          { title: 'Today tax', value: formatPriceMK(stats.todayTax), icon: faChartLine, color: '#f39c12' },
           { title: 'Today profit', value: formatPriceMK(stats.todayProfit), icon: faChartLine, color: '#3498db' },
           { title: 'Today orders', value: stats.todayOrders, icon: faClipboardCheck, color: '#e94560' },
           { title: 'Products', value: stats.totalProducts, icon: faTools, color: '#9b59b6' }

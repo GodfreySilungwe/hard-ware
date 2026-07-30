@@ -60,6 +60,8 @@ const Reports = () => {
     paymentMethods: [],
     topCustomers: [],
     totalSales: 0,
+    totalSalesNet: 0,
+    totalTax: 0,
     totalProfit: 0,
     totalOrders: 0,
     averageOrderValue: 0,
@@ -150,6 +152,11 @@ const Reports = () => {
       const rangeOrders = filterOrdersByCriteria(orders, currentStart, currentEnd, true);
 
       const totalSales = filteredOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+      const totalTax = filteredOrders.reduce((sum, o) => sum + Number(o.taxAmount || 0), 0);
+      const totalSalesNet = filteredOrders.reduce((sum, o) => {
+        const net = Number.isFinite(Number(o.netAmount)) ? Number(o.netAmount) : Number(o.totalAmount || 0);
+        return sum + net;
+      }, 0);
       const totalProfit = filteredOrders.reduce((sum, o) => sum + Number(o.profit || 0), 0);
       const totalOrders = filteredOrders.length;
       const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
@@ -268,6 +275,8 @@ const Reports = () => {
         dailySales,
         paymentMethods,
         totalSales,
+        totalSalesNet,
+        totalTax,
         totalProfit,
         totalOrders,
         averageOrderValue,
@@ -502,13 +511,15 @@ const Reports = () => {
       <div style={styles.summaryGrid}>
         {[
           { title: 'Total Sales', value: formatPriceMK(reportData.totalSales), icon: '💰', color: '#e94560', delay: 1 },
-          { title: 'Total Profit', value: formatPriceMK(reportData.totalProfit), icon: '📈', color: '#2ecc71', delay: 2 },
-          { title: 'Total Orders', value: reportData.totalOrders, icon: '🛒', color: '#3498db', delay: 3 },
-          { title: 'Average Order', value: formatPriceMK(reportData.averageOrderValue), icon: '📊', color: '#9b59b6', delay: 4 },
-          { title: 'Avg Items / Order', value: reportData.averageItemsPerOrder.toFixed(1), icon: '📦', color: '#f39c12', delay: 5 },
-          { title: 'Gross Margin', value: `${reportData.grossMarginPercentage.toFixed(1)}%`, icon: '💹', color: '#16a085', delay: 6 },
-          { title: 'Avg Rev / Customer', value: formatPriceMK(reportData.averageRevenuePerCustomer), icon: '👥', color: '#8e44ad', delay: 7 },
-          { title: 'Reversal Rate', value: `${reportData.reversedOrderRate.toFixed(1)}%`, icon: '↺', color: '#c0392b', delay: 8 }
+          { title: 'Net Sales', value: formatPriceMK(reportData.totalSalesNet), icon: '💵', color: '#16a085', delay: 2 },
+          { title: 'Total Tax', value: formatPriceMK(reportData.totalTax), icon: '🧾', color: '#f39c12', delay: 3 },
+          { title: 'Total Profit', value: formatPriceMK(reportData.totalProfit), icon: '📈', color: '#2ecc71', delay: 4 },
+          { title: 'Total Orders', value: reportData.totalOrders, icon: '🛒', color: '#3498db', delay: 5 },
+          { title: 'Average Order', value: formatPriceMK(reportData.averageOrderValue), icon: '📊', color: '#9b59b6', delay: 6 },
+          { title: 'Avg Items / Order', value: reportData.averageItemsPerOrder.toFixed(1), icon: '📦', color: '#f39c12', delay: 7 },
+          { title: 'Gross Margin', value: `${reportData.grossMarginPercentage.toFixed(1)}%`, icon: '💹', color: '#16a085', delay: 8 },
+          { title: 'Avg Rev / Customer', value: formatPriceMK(reportData.averageRevenuePerCustomer), icon: '👥', color: '#8e44ad', delay: 9 },
+          { title: 'Reversal Rate', value: `${reportData.reversedOrderRate.toFixed(1)}%`, icon: '↺', color: '#c0392b', delay: 10 }
         ].map((item, index) => (
           <div 
             key={index}

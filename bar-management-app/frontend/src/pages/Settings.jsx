@@ -60,6 +60,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
     phone: '+265 999 123 456',
     email: 'info@barmanager.com',
     taxId: '',
+    taxCompliant: false,
     currency: 'MWK',
     receiptFooter: 'Thank you for your business!'
   });
@@ -741,6 +742,18 @@ const Settings = ({ initialMenu = 'settings' }) => {
                   <div style={{...styles.formGroup, gridColumn: '1 / -1'}}>
                     <label style={styles.label}>Receipt Footer Message</label>
                     <input type="text" style={styles.input} value={business.receiptFooter} onChange={(e) => setBusiness({...business, receiptFooter: e.target.value})} placeholder="Thank you for your business!" />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={business.taxCompliant}
+                        onChange={(e) => setBusiness({ ...business, taxCompliant: e.target.checked })}
+                        style={{ width: '16px', height: '16px' }}
+                      />
+                      Tax compliant (prices include 17.5% tax)
+                    </label>
+                    <span style={styles.helperText}>If enabled, receipts will include a tax breakdown for inclusive pricing.</span>
                   </div>
                 </div>
                 <div style={styles.formActions}>

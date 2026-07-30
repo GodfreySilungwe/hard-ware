@@ -19,10 +19,19 @@ const POS = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [receiptOrder, setReceiptOrder] = useState(null);
+  const [businessSettings, setBusinessSettings] = useState({ taxCompliant: false });
   const [clearCartOpen, setClearCartOpen] = useState(false);
 
   useEffect(() => {
     loadData();
+    const savedBusiness = localStorage.getItem('businessSettings');
+    if (savedBusiness) {
+      try {
+        setBusinessSettings(JSON.parse(savedBusiness));
+      } catch (err) {
+        console.error('Failed to parse business settings', err);
+      }
+    }
   }, []);
 
   const loadData = async () => {
@@ -87,6 +96,9 @@ const POS = () => {
   };
 
   const subtotal = cart.reduce((sum, item) => sum + (item.sellingPrice * item.quantity), 0);
+  const taxRate = 0.175;
+  const taxAmount = businessSettings.taxCompliant ? subtotal - subtotal / (1 + taxRate) : 0;
+  const netAmount = businessSettings.taxCompliant ? subtotal - taxAmount : subtotal;
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   const checkout = async () => {
@@ -108,6 +120,10 @@ const POS = () => {
         })),
         customer: selectedCustomer || null,
         paymentMethod: paymentMethod
+      ,
+        taxCompliant: businessSettings.taxCompliant,
+        taxAmount,
+        netAmount
       };
 
       const response = await api.post('/orders', orderData);

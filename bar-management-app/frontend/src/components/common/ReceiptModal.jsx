@@ -53,16 +53,39 @@ const ReceiptModal = ({ order, onClose }) => {
 
           <div style={styles.divider} />
 
-          {/* Totals */}
+          {/* Totals and tax breakdown */}
           <div style={styles.totals}>
-            <div style={styles.totalRow}>
-              <span>Subtotal:</span>
-              <span>{formatPriceMK(order.totalAmount)}</span>
-            </div>
-            <div style={styles.totalRowBig}>
-              <span><strong>TOTAL:</strong></span>
-              <span style={styles.totalAmount}>{formatPriceMK(order.totalAmount)}</span>
-            </div>
+            {order.taxCompliant ? (
+              <>
+                <div style={styles.totalRow}>
+                  <span>Inclusive Total:</span>
+                  <span>{formatPriceMK(order.totalAmount)}</span>
+                </div>
+                <div style={styles.totalRow}>
+                  <span>Tax (17.5% incl.):</span>
+                  <span>{formatPriceMK(order.taxAmount || 0)}</span>
+                </div>
+                <div style={styles.totalRow}>
+                  <span>Net (excl. tax):</span>
+                  <span>{formatPriceMK(order.netAmount || (order.totalAmount - (order.taxAmount || 0)))}</span>
+                </div>
+                <div style={styles.totalRowBig}>
+                  <span><strong>TOTAL:</strong></span>
+                  <span style={styles.totalAmount}>{formatPriceMK(order.totalAmount)}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={styles.totalRow}>
+                  <span>Subtotal:</span>
+                  <span>{formatPriceMK(order.totalAmount)}</span>
+                </div>
+                <div style={styles.totalRowBig}>
+                  <span><strong>TOTAL:</strong></span>
+                  <span style={styles.totalAmount}>{formatPriceMK(order.totalAmount)}</span>
+                </div>
+              </>
+            )}
           </div>
 
           <div style={styles.divider} />
