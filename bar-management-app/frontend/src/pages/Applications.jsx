@@ -23,6 +23,10 @@ const Applications = () => {
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+  const [showDecisionModal, setShowDecisionModal] = useState(false);
+  const [selectedRegistration, setSelectedRegistration] = useState(null);
+  const [decisionLoading, setDecisionLoading] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -52,10 +56,73 @@ const Applications = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const handleCloseConfirmationModal = () => {
+    setShowConfirmationModal(false);
+  };
+
+  const handleOpenDecisionModal = (registration) => {
+    setSelectedRegistration(registration);
+    setFormError('');
+    setFormSuccess('');
+    setShowDecisionModal(true);
+  };
+
+  const handleCloseDecisionModal = () => {
+    setShowDecisionModal(false);
+    setSelectedRegistration(null);
+  };
+
+  const handleApproveRegistration = async () => {
+    if (!selectedRegistration) return;
+
+    setDecisionLoading(true);
+    setFormError('');
+    setFormSuccess('');
+
+    try {
+      const response = await api.post(`/auth/approve-registration/${selectedRegistration._id}`, {
+        tenantName: selectedRegistration.tenantName || selectedRegistration.hardwareName || selectedRegistration.fullName || 'Hardware',
+        hardwareName: selectedRegistration.hardwareName || selectedRegistration.tenantName || selectedRegistration.fullName || 'Hardware',
+        temporaryPassword: selectedRegistration.password || 'temporary-password'
+      });
+
+      setFormSuccess(response.data?.message || 'Registration approved successfully.');
+      setShowDecisionModal(false);
+      setSelectedRegistration(null);
+      fetchData();
+    } catch (err) {
+      setFormError(err.response?.data?.message || 'Failed to approve registration.');
+    } finally {
+      setDecisionLoading(false);
+    }
+  };
+
+  const handleRejectRegistration = async () => {
+    if (!selectedRegistration) return;
+
+    setDecisionLoading(true);
+    setFormError('');
+    setFormSuccess('');
+
+    try {
+      const response = await api.post(`/auth/reject-registration/${selectedRegistration._id}`);
+
+      setFormSuccess(response.data?.message || 'Registration rejected successfully.');
+      setShowDecisionModal(false);
+      setSelectedRegistration(null);
+      fetchData();
+    } catch (err) {
+      setFormError(err.response?.data?.message || 'Failed to reject registration.');
+    } finally {
+      setDecisionLoading(false);
+    }
+  };
+
   const handleCreateHardware = async (e) => {
     e.preventDefault();
     setFormError('');
     setFormSuccess('');
+    setShowConfirmationModal(false);
     setFormLoading(true);
 
     const { tenantName, hardwareName, fullName, username, email, phone, password, confirmPassword } = formData;
@@ -90,6 +157,7 @@ const Applications = () => {
       });
 
       setFormSuccess(response.data?.message || 'Smart Inventory App account created successfully.');
+      setShowConfirmationModal(true);
       setFormData({
         tenantName: '',
         hardwareName: '',
@@ -141,11 +209,18 @@ const Applications = () => {
             <div style={styles.list}>
               {pendingRegistrations.map((registration) => (
                 <div key={registration._id} style={styles.listItem}>
-                  <div>
-                    <div style={styles.name}>{registration.fullName || registration.username}</div>
-                    <div style={styles.meta}>{registration.email}</div>
+                  <div style={styles.listItemMain}>
+                    <div>
+                      <div style={styles.name}>{registration.fullName || registration.username}</div>
+                      <div style={styles.meta}>{registration.email}</div>
+                    </div>
+                    <div style={styles.badge}>Awaiting approval</div>
                   </div>
-                  <div style={styles.badge}>Awaiting approval</div>
+                  <div style={styles.listItemActions}>
+                    <button type="button" style={styles.reviewButton} onClick={() => handleOpenDecisionModal(registration)}>
+                      Review
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -254,6 +329,43 @@ const Applications = () => {
           </form>
         </UnifiedCard>
       </div>
+
+      {showConfirmationModal && (
+        <div style={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="hardware-request-confirmation-title" onClick={handleCloseConfirmationModal}>
+          <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalIcon}>✅</div>
+            <h3 id="hardware-request-confirmation-title" style={styles.modalTitle}>New hardware request submitted</h3>
+            <p style={styles.modalText}>The Smart Inventory App request was submitted successfully. The owner can now review the new account details.</p>
+            <button type="button" style={styles.modalButton} onClick={handleCloseConfirmationModal}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {showDecisionModal && selectedRegistration && (
+        <div style={styles.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="registration-review-title" onClick={handleCloseDecisionModal}>
+          <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalIcon}>📝</div>
+            <h3 id="registration-review-title" style={styles.modalTitle}>Review application</h3>
+            <p style={styles.modalText}>
+              {selectedRegistration.fullName || selectedRegistration.username} is waiting for your decision.
+            </p>
+            <div style={styles.registrationDetails}>
+              <div style={styles.registrationDetail}><strong>Owner:</strong> {selectedRegistration.tenantName || selectedRegistration.hardwareName || 'Not provided'}</div>
+              <div style={styles.registrationDetail}><strong>Smart Inventory App:</strong> {selectedRegistration.hardwareName || selectedRegistration.tenantName || 'Not provided'}</div>
+              <div style={styles.registrationDetail}><strong>Email:</strong> {selectedRegistration.email || 'Not provided'}</div>
+              <div style={styles.registrationDetail}><strong>Phone:</strong> {selectedRegistration.phone || 'Not provided'}</div>
+            </div>
+            <div style={styles.modalActions}>
+              <button type="button" style={styles.rejectButton} onClick={handleRejectRegistration} disabled={decisionLoading}>
+                {decisionLoading ? 'Processing...' : 'Reject'}
+              </button>
+              <button type="button" style={styles.approveButton} onClick={handleApproveRegistration} disabled={decisionLoading}>
+                {decisionLoading ? 'Processing...' : 'Approve'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageContainer>
   );
 };
@@ -323,7 +435,19 @@ const styles = {
     backgroundColor: '#f8fafc',
     border: '1px solid #e5e7eb',
     borderRadius: '12px',
-    padding: '12px 14px'
+    padding: '12px 14px',
+    gap: '12px'
+  },
+  listItemMain: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flex: 1,
+    gap: '12px'
+  },
+  listItemActions: {
+    display: 'flex',
+    alignItems: 'center'
   },
   name: {
     fontWeight: '700',
@@ -341,6 +465,27 @@ const styles = {
     padding: '6px 10px',
     fontSize: '12px',
     fontWeight: '700'
+  },
+  reviewButton: {
+    padding: '8px 12px',
+    borderRadius: '999px',
+    border: '1px solid #e94560',
+    backgroundColor: '#fff',
+    color: '#e94560',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: '700'
+  },
+  button: {
+    padding: '14px 16px',
+    borderRadius: '12px',
+    border: 'none',
+    backgroundColor: '#e94560',
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: '16px',
+    fontWeight: '700',
+    marginTop: '10px'
   },
   loadingText: {
     color: '#6b7280',
@@ -361,6 +506,86 @@ const styles = {
   emptyText: {
     margin: 0,
     color: '#6b7280'
+  },
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '20px',
+    zIndex: 1000
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: '420px',
+    backgroundColor: '#fff',
+    borderRadius: '16px',
+    padding: '24px',
+    boxShadow: '0 18px 40px rgba(15, 23, 42, 0.22)',
+    textAlign: 'center'
+  },
+  modalIcon: {
+    fontSize: '42px',
+    marginBottom: '10px'
+  },
+  modalTitle: {
+    margin: '0 0 8px',
+    fontSize: '22px',
+    color: '#111827'
+  },
+  modalText: {
+    margin: '0 0 18px',
+    color: '#6b7280',
+    lineHeight: 1.5
+  },
+  registrationDetails: {
+    textAlign: 'left',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    marginBottom: '18px',
+    color: '#374151'
+  },
+  registrationDetail: {
+    fontSize: '14px'
+  },
+  modalActions: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: '10px',
+    flexWrap: 'wrap'
+  },
+  rejectButton: {
+    padding: '10px 16px',
+    borderRadius: '999px',
+    border: '1px solid #dc2626',
+    backgroundColor: '#fff',
+    color: '#dc2626',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: '700'
+  },
+  approveButton: {
+    padding: '10px 16px',
+    borderRadius: '999px',
+    border: 'none',
+    backgroundColor: '#e94560',
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: '700'
+  },
+  modalButton: {
+    padding: '10px 18px',
+    borderRadius: '999px',
+    border: 'none',
+    backgroundColor: '#e94560',
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: '700'
   }
 };
 

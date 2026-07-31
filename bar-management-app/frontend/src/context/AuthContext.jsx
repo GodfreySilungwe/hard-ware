@@ -32,7 +32,7 @@ export const AuthProvider = ({ children }) => {
           const authUser = res.data;
           const normalizedUser = {
             ...authUser,
-            role: authUser?.role === 'owner' ? 'owner' : authUser?.role || 'user',
+            role: authUser?.role?.toString().toLowerCase() || 'user',
             tenantId: authUser?.tenantId || null
           };
           setUser(normalizedUser);
@@ -62,7 +62,7 @@ export const AuthProvider = ({ children }) => {
       const { token: authToken, user: authUser } = res.data;
       const normalizedUser = {
         ...authUser,
-        role: authUser?.role === 'owner' ? 'owner' : authUser?.role || 'user',
+        role: authUser?.role?.toString().toLowerCase() || 'user',
         tenantId: authUser?.tenantId || null
       };
       setToken(authToken);
@@ -84,10 +84,15 @@ export const AuthProvider = ({ children }) => {
       setError(null);
       const res = await api.post('/auth/register', userData);
       const { token: authToken, user: authUser, message } = res.data;
+      const normalizedUser = authUser ? {
+        ...authUser,
+        role: authUser?.role?.toString().toLowerCase() || 'user',
+        tenantId: authUser?.tenantId || null
+      } : null;
 
-      if (authToken) {
+      if (authToken && normalizedUser) {
         setToken(authToken);
-        setUser(authUser);
+        setUser(normalizedUser);
       } else {
         setToken(null);
         setUser(null);

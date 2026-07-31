@@ -35,11 +35,14 @@ const Dashboard = () => {
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [todayOrders, setTodayOrders] = useState([]);
-  const { user } = useAuth();
+  const [hardwareBreakdown, setHardwareBreakdown] = useState([]);
+  const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    if (!authLoading) {
+      fetchDashboardData();
+    }
+  }, [user?.role, authLoading]);
 
   const fetchDashboardData = async () => {
     try {
@@ -54,7 +57,9 @@ const Dashboard = () => {
         api.get('/auth/tenant-summary').catch(() => ({ data: {} }))
       ];
 
-      if (!isOwnerRole) {
+      if (isOwnerRole) {
+        requests.push(api.get('/auth/tenants').catch(() => ({ data: [] })));
+      } else {
         requests.push(api.get('/products').catch(() => ({ data: [] })));
         requests.push(api.get('/orders').catch(() => ({ data: [] })));
       }
@@ -66,9 +71,10 @@ const Dashboard = () => {
       const results = await Promise.allSettled(requests);
 
       const summary = results[0]?.status === 'fulfilled' ? results[0].value.data || {} : {};
+      const ownerTenants = isOwnerRole && results[1]?.status === 'fulfilled' ? results[1].value.data || [] : [];
       const products = !isOwnerRole && results[1]?.status === 'fulfilled' ? results[1].value.data || [] : [];
       const ordersPayload = !isOwnerRole && results[2]?.status === 'fulfilled' ? results[2].value.data : [];
-      const customers = isSalesRole && results[3]?.status === 'fulfilled' ? results[3].value.data || [] : [];
+      const customers = isSalesRole && results[isOwnerRole ? 2 : 3]?.status === 'fulfilled' ? results[isOwnerRole ? 2 : 3].value.data || [] : [];
 
       const orders = Array.isArray(ordersPayload)
         ? ordersPayload
@@ -111,6 +117,7 @@ const Dashboard = () => {
         reversedOrders,
         averageOrderValue: resolvedSummary.averageOrderValue ?? 0
       });
+      setHardwareBreakdown(ownerTenants);
       setTodayOrders(todaysOrders.slice(0, 5));
       setLastUpdated(new Date().toLocaleTimeString());
 
@@ -249,6 +256,7 @@ const Dashboard = () => {
               <div style={styles.snapshotValue}>{stats.salesAccounts || 0}</div>
             </div>
           </div>
+
         </div>
       )}
 
@@ -517,6 +525,46 @@ const styles = {
     fontSize: '16px',
     fontWeight: '600',
     transition: 'all 0.3s ease'
+  },
+  tableHeaderRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '12px',
+    marginBottom: '10px',
+    flexWrap: 'wrap'
+  },
+  tableWrap: {
+    overflowX: 'auto',
+    border: '1px solid #e5e7eb',
+    borderRadius: '14px',
+    backgroundColor: '#ffffff'
+  },
+  summaryTable: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    minWidth: '640px'
+  },
+  tableHead: {
+    textAlign: 'left',
+    fontSize: '12px',
+    fontWeight: 700,
+    color: '#6b7280',
+    padding: '12px 14px',
+    backgroundColor: '#f8fafc',
+    borderBottom: '1px solid #e5e7eb'
+  },
+  tableCell: {
+    padding: '12px 14px',
+    fontSize: '13px',
+    color: '#111827',
+    borderBottom: '1px solid #eef2f7'
+  },
+  emptyTableCell: {
+    padding: '16px 14px',
+    fontSize: '13px',
+    color: '#6b7280',
+    textAlign: 'center'
   },
   lowStockGrid: {
     display: 'grid',

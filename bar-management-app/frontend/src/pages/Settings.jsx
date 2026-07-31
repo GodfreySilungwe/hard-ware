@@ -9,7 +9,7 @@ import { formatPriceMK } from '../utils/formatPrice';
 import { useAuth } from '../context/AuthContext';
 
 const Settings = ({ initialMenu = 'settings' }) => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [activeMenu, setActiveMenu] = useState(initialMenu);
   const [settingsSubTab, setSettingsSubTab] = useState('profile');
   const isOwnerRole = user?.role === 'owner';
@@ -27,17 +27,9 @@ const Settings = ({ initialMenu = 'settings' }) => {
     confirmPassword: ''
   });
   const [tenants, setTenants] = useState([]);
-  const [pendingRegistrations, setPendingRegistrations] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteAction, setDeleteAction] = useState(null);
-  const [rejectTarget, setRejectTarget] = useState(null);
-  const [inviteForm, setInviteForm] = useState({
-    tenantName: '',
-    hardwareName: '',
-    phone: '',
-    expiresInDays: '7'
-  });
-  
+
   // Profile state
   const [profile, setProfile] = useState({
     username: '',
@@ -77,30 +69,25 @@ const Settings = ({ initialMenu = 'settings' }) => {
   const refreshOwnerData = async () => {
     if (user?.role !== 'owner') {
       setTenants([]);
-      setPendingRegistrations([]);
       await refreshOwnerPerformance();
       return;
     }
 
     try {
-      const [tenantsRes, pendingRes] = await Promise.all([
-        api.get('/auth/tenants').catch(() => ({ data: [] })),
-        api.get('/auth/pending-registrations').catch(() => ({ data: [] }))
-      ]);
-
-      setTenants(tenantsRes.data || []);
-      setPendingRegistrations(pendingRes.data || []);
+      const response = await api.get('/auth/tenants');
+      setTenants(response.data || []);
       await refreshOwnerPerformance();
     } catch (err) {
       setTenants([]);
-      setPendingRegistrations([]);
       await refreshOwnerPerformance();
     }
   };
 
   useEffect(() => {
-    refreshOwnerData();
-  }, [user?.role]);
+    if (!authLoading) {
+      refreshOwnerData();
+    }
+  }, [user?.role, authLoading]);
 
   const [hardwareManagers, setHardwareManagers] = useState([]);
   const [salesAccounts, setSalesAccounts] = useState([]);
@@ -426,73 +413,6 @@ const Settings = ({ initialMenu = 'settings' }) => {
     }
   };
 
-  const handleApproveRegistration = async (registrationId) => {
-    setLoading(true);
-    setMessage('');
-    setError('');
-
-    try {
-      const response = await api.post(`/auth/approve-registration/${registrationId}`, {
-        tenantName: inviteForm.tenantName || 'Smart Inventory App',
-        hardwareName: inviteForm.hardwareName || 'Smart Inventory App'
-      });
-      setMessage(response.data?.message || 'Registration approved');
-      await refreshOwnerData();
-      notifyOwnerDataChanged();
-      setTimeout(() => setMessage(''), 4000);
-    } catch (err) {
-      setError(err.response?.data?.message || '❌ Failed to approve registration');
-      setTimeout(() => setError(''), 4000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRejectRegistration = async () => {
-    if (!rejectTarget) return;
-
-    setLoading(true);
-    setMessage('');
-    setError('');
-
-    try {
-      const response = await api.post(`/auth/reject-registration/${rejectTarget}`);
-      setMessage(response.data?.message || 'Registration rejected');
-      setRejectTarget(null);
-      await refreshOwnerData();
-      notifyOwnerDataChanged();
-      setTimeout(() => setMessage(''), 4000);
-    } catch (err) {
-      setError(err.response?.data?.message || '❌ Failed to reject registration');
-      setTimeout(() => setError(''), 4000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCreateInviteLink = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage('');
-    setError('');
-
-    try {
-      const response = await api.post('/auth/create-invite', {
-        tenantName: inviteForm.tenantName,
-        hardwareName: inviteForm.hardwareName,
-      phone: inviteForm.phone,
-      expiresInDays: inviteForm.expiresInDays
-    });
-
-    const inviteUrl = `${window.location.origin}/register?invite=${response.data?.invite?.token}`;
-    setMessage(`✅ Invite link ready: ${inviteUrl}`);
-    setInviteForm({ tenantName: '', hardwareName: '', phone: '', expiresInDays: '7' });
-      setTimeout(() => setError(''), 3000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleBusinessUpdate = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -505,36 +425,6 @@ const Settings = ({ initialMenu = 'settings' }) => {
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       setError('❌ Failed to save settings');
-      setTimeout(() => setError(''), 3000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCreateHardwareManager = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage('');
-    setError('');
-
-    try {
-      const response = await api.post('/auth/create-hardware-manager', {
-        fullName: salesAccountForm.fullName,
-        username: salesAccountForm.username,
-        email: salesAccountForm.email,
-        phone: salesAccountForm.phone,
-        password: salesAccountForm.password,
-        tenantName: inviteForm.tenantName,
-        hardwareName: inviteForm.hardwareName
-      });
-
-      setMessage(`✅ Smart Inventory App account created for ${response.data?.tenant?.name || inviteForm.tenantName}`);
-      setSalesAccountForm({ fullName: '', username: '', email: '', phone: '', password: '', confirmPassword: '' });
-      setInviteForm({ tenantName: '', hardwareName: '', expiresInDays: '7' });
-      await refreshHardwareManagers();
-      setTimeout(() => setMessage(''), 3000);
-    } catch (err) {
-      setError(err.response?.data?.message || '❌ Failed to create Smart Inventory App account');
       setTimeout(() => setError(''), 3000);
     } finally {
       setLoading(false);
@@ -607,7 +497,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
   const menuItems = isOwnerRole
     ? [
         { id: 'settings', label: '⚙️ Settings' },
-        { id: 'hardware', label: '🏢 Smart Inventory App' }
+        { id: 'hardware', label: '🏢 Management' }
       ]
     : [
         { id: 'settings', label: '⚙️ Settings' },
@@ -811,14 +701,6 @@ const Settings = ({ initialMenu = 'settings' }) => {
         }}
         onConfirm={deleteAction === 'tenant' ? handleDeleteTenant : handleDeleteSalesAccount}
       />
-      <DeleteConfirmModal
-        open={Boolean(rejectTarget)}
-        title="Reject registration"
-        description="Type delete to reject this pending signup."
-        onCancel={() => setRejectTarget(null)}
-        onConfirm={handleRejectRegistration}
-      />
-
       {activeMenu === 'sales-team' && (
         <div className="fade-in">
           <UnifiedCard title="👥 Create Sales Team">
@@ -883,114 +765,84 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
       {isOwnerRole && activeMenu === 'hardware' && (
         <div className="fade-in">
-          <UnifiedCard title="⚠️ Pending Smart Inventory App Applications">
-            <div style={{ marginBottom: '16px', padding: '12px 14px', borderRadius: '10px', backgroundColor: pendingRegistrations.length > 0 ? '#fff7ed' : '#f8fafc', border: pendingRegistrations.length > 0 ? '1px solid #fdba74' : '1px solid #e5e7eb' }}>
-              <strong>{pendingRegistrations.length}</strong> pending application{pendingRegistrations.length === 1 ? '' : 's'} waiting for review.
-            </div>
-            <div style={{ display: 'grid', gap: '10px' }}>
-              {pendingRegistrations.length === 0 ? (
-                <div style={{ color: '#888' }}>No pending applications.</div>
-              ) : pendingRegistrations.map((registration) => (
-                <div key={registration._id || registration.id} style={{ border: '1px solid #eee', borderRadius: '10px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                  <div>
-                    <div style={{ fontWeight: 700 }}>{registration.fullName || registration.username}</div>
-                    <div style={{ color: '#666', fontSize: '13px' }}>{registration.email}</div>
-                    <div style={{ color: '#888', fontSize: '12px', marginTop: '4px' }}>Username: {registration.username}</div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button type="button" style={styles.secondaryButton} onClick={() => handleApproveRegistration(registration._id || registration.id)}>Approve</button>
-                    <button type="button" style={styles.deleteButton} onClick={() => setRejectTarget(registration._id || registration.id)}>Reject</button>
-                  </div>
-                </div>
-              ))}
-            </div>
+          <UnifiedCard title="🏢 Management Overview">
+            <p style={{ marginTop: 0, color: '#6b7280' }}>
+              This section is focused on managing your existing Smart Inventory App accounts and users. New applications, onboarding, and approvals are handled in the Applications tab.
+            </p>
           </UnifiedCard>
 
           <div style={{ marginTop: '16px' }}>
-            <UnifiedCard title="➕ Smart Inventory App Creation Form">
-              <form onSubmit={handleCreateInviteLink} style={styles.form}>
-                <div style={styles.formGrid}>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Smart Inventory App Name</label>
-                    <input type="text" required style={styles.input} value={inviteForm.hardwareName} onChange={(e) => setInviteForm({ ...inviteForm, hardwareName: e.target.value })} />
-                  </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Owner Name</label>
-                    <input type="text" required style={styles.input} value={inviteForm.tenantName} onChange={(e) => setInviteForm({ ...inviteForm, tenantName: e.target.value })} />
-                  </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Owner Phone</label>
-                    <input type="tel" required style={styles.input} value={inviteForm.phone} onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })} placeholder="e.g. +265 99 123 4567" />
-                  </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Expiry (Days)</label>
-                    <input type="number" min="1" style={styles.input} value={inviteForm.expiresInDays} onChange={(e) => setInviteForm({ ...inviteForm, expiresInDays: e.target.value })} />
-                  </div>
+            <UnifiedCard title="🏢 Global Hardware Overview">
+              {tenants.length === 0 ? (
+                <div style={{ color: '#888' }}>No Smart Inventory App accounts found yet.</div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={styles.hardwareTable}>
+                    <thead>
+                      <tr>
+                        <th style={styles.hardwareTableHead}>Hardware</th>
+                        <th style={styles.hardwareTableHead}>Owner</th>
+                        <th style={styles.hardwareTableHead}>Manager</th>
+                        <th style={styles.hardwareTableHead}>Email</th>
+                        <th style={styles.hardwareTableHead}>Phone</th>
+                        <th style={styles.hardwareTableHead}>Users</th>
+                        <th style={styles.hardwareTableHead}>Sales accounts</th>
+                        <th style={styles.hardwareTableHead}>Status</th>
+                        <th style={styles.hardwareTableHead}>Created</th>
+                        <th style={styles.hardwareTableHead}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tenants.map((tenant) => {
+                        const tenantUsers = hardwareManagers.filter((manager) => (manager.tenantId || manager.tenant_id) === (tenant._id || tenant.id));
+                        const userSummary = tenantUsers.length > 0
+                          ? tenantUsers.map((manager) => manager.fullName || manager.username || 'Unnamed user').join(', ')
+                          : 'No users linked';
+
+                        return (
+                          <tr key={tenant._id || tenant.id}>
+                            <td style={styles.hardwareTableCell}>{tenant.hardwareName || tenant.name || 'Not provided'}</td>
+                            <td style={styles.hardwareTableCell}>{tenant.name || 'Not provided'}</td>
+                            <td style={styles.hardwareTableCell}>{tenant.registeredManagerInfo?.fullName || tenant.registeredManagerInfo?.username || tenant.ownerInfo?.fullName || tenant.ownerInfo?.username || 'Not provided'}</td>
+                            <td style={styles.hardwareTableCell}>{tenant.registeredManagerInfo?.email || tenant.ownerInfo?.email || 'Not provided'}</td>
+                            <td style={styles.hardwareTableCell}>{tenant.registeredManagerInfo?.phone || tenant.ownerInfo?.phone || 'Not provided'}</td>
+                            <td style={styles.hardwareTableCell}>{userSummary}</td>
+                            <td style={styles.hardwareTableCell}>{tenant.activeSalesAccountCount || 0}</td>
+                            <td style={styles.hardwareTableCell}>{tenant.status || 'active'}</td>
+                            <td style={styles.hardwareTableCell}>{formatDate(tenant.createdAt || tenant.created_at)}</td>
+                            <td style={styles.hardwareTableCell}>
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                {tenantUsers.map((manager) => (
+                                  <button
+                                    key={manager.id || manager._id}
+                                    type="button"
+                                    style={styles.secondaryButton}
+                                    onClick={() => handleResetManagerPassword(manager.id || manager._id)}
+                                  >
+                                    Reset password
+                                  </button>
+                                ))}
+                                {tenant.status !== 'suspended' && tenant.status !== 'deleted' && (
+                                  <button type="button" style={styles.secondaryButton} onClick={() => handleTenantAction(tenant._id || tenant.id, 'suspend')}>Suspend</button>
+                                )}
+                                {tenant.status === 'suspended' && (
+                                  <button type="button" style={styles.secondaryButton} onClick={() => handleTenantAction(tenant._id || tenant.id, 'restore')}>Restore</button>
+                                )}
+                                {tenant.status !== 'deleted' && (
+                                  <button type="button" style={styles.deleteButton} onClick={() => openDeleteModal(tenant._id || tenant.id, 'tenant')}>Delete</button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-                <div style={styles.formActions}>
-                  <Button type="submit" disabled={loading}>{loading ? 'Creating...' : 'Create Smart Inventory App'}</Button>
-                </div>
-              </form>
+              )}
             </UnifiedCard>
           </div>
 
-          <div style={{ marginTop: '16px' }}>
-            <UnifiedCard title="🏢 Existing Smart Inventory App Accounts">
-              <div style={{ display: 'grid', gap: '10px' }}>
-                {tenants.length === 0 ? (
-                  <div style={{ color: '#888' }}>No Smart Inventory App accounts found yet.</div>
-                ) : tenants.map((tenant) => (
-                  <div key={tenant._id || tenant.id} style={{ border: '1px solid #eee', borderRadius: '10px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{tenant.hardwareName || tenant.name}</div>
-                      <div style={{ color: '#666', fontSize: '13px' }}>{tenant.name}</div>
-                      <div style={{ color: '#888', fontSize: '12px', marginTop: '4px' }}>Registered by: {tenant.registeredManagerInfo?.fullName || tenant.registeredManagerInfo?.username || tenant.ownerInfo?.fullName || tenant.ownerInfo?.username || 'Not available'}</div>
-                      <div style={{ color: '#888', fontSize: '12px', marginTop: '4px' }}>Email: {tenant.registeredManagerInfo?.email || tenant.ownerInfo?.email || 'Not available'}</div>
-                      <div style={{ color: '#888', fontSize: '12px', marginTop: '4px' }}>Phone: {tenant.registeredManagerInfo?.phone || tenant.ownerInfo?.phone || 'Not available'}</div>
-                      <div style={{ color: '#888', fontSize: '12px', marginTop: '4px' }}>Created: {formatDate(tenant.createdAt || tenant.created_at)}</div>
-                      <div style={{ color: '#888', fontSize: '12px', marginTop: '4px' }}>Status: {tenant.status || 'active'}</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {tenant.status !== 'suspended' && tenant.status !== 'deleted' && (
-                        <button type="button" style={styles.secondaryButton} onClick={() => handleTenantAction(tenant._id || tenant.id, 'suspend')}>Suspend</button>
-                      )}
-                      {tenant.status === 'suspended' && (
-                        <button type="button" style={styles.secondaryButton} onClick={() => handleTenantAction(tenant._id || tenant.id, 'restore')}>Restore</button>
-                      )}
-                      {tenant.status !== 'deleted' && (
-                        <button type="button" style={styles.deleteButton} onClick={() => openDeleteModal(tenant._id || tenant.id, 'tenant')}>Delete</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </UnifiedCard>
-          </div>
-
-          <div style={{ marginTop: '16px' }}>
-            <UnifiedCard title="👥 Smart Inventory App Users">
-              <div style={{ display: 'grid', gap: '10px' }}>
-                {hardwareManagers.length === 0 ? (
-                  <div style={{ color: '#888' }}>No Smart Inventory App users found.</div>
-                ) : hardwareManagers.map((manager) => (
-                  <div key={manager.id} style={{ border: '1px solid #eee', borderRadius: '10px', padding: '14px', display: 'grid', gap: '8px' }}>
-                    <div style={{ fontWeight: 700, fontSize: '15px' }}>{manager.fullName || manager.username}</div>
-                    <div style={{ color: '#666', fontSize: '13px' }}>Username: {manager.username}</div>
-                    <div style={{ color: '#666', fontSize: '13px' }}>Email: {manager.email || 'Not available'}</div>
-                    <div style={{ color: '#666', fontSize: '13px' }}>Phone: {manager.phone || 'Not available'}</div>
-                    <div style={{ color: '#666', fontSize: '13px' }}>Tenant ID: {manager.tenantId || 'None'}</div>
-                    <div style={{ color: '#666', fontSize: '13px' }}>Status: {manager.isActive ? 'Active' : 'Inactive'}</div>
-                    <div style={{ color: '#666', fontSize: '13px' }}>Registration: {manager.registrationStatus || 'approved'}</div>
-                    <div style={{ color: '#888', fontSize: '12px' }}>Created: {formatDate(manager.createdAt)}</div>
-                    <div style={{ color: '#888', fontSize: '12px' }}>Updated: {formatDate(manager.updatedAt)}</div>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <button type="button" style={styles.secondaryButton} onClick={() => handleResetManagerPassword(manager.id)}>Reset Password</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </UnifiedCard>
-          </div>
         </div>
       )}
 
@@ -1144,20 +996,49 @@ const styles = {
   },
   secondaryButton: {
     padding: '8px 12px',
-    borderRadius: '8px',
-    border: '1px solid #ddd',
-    backgroundColor: 'white',
+    borderRadius: '999px',
+    border: '1px solid #e5e7eb',
+    backgroundColor: '#fff',
+    color: '#374151',
     cursor: 'pointer',
-    fontSize: '13px'
+    fontSize: '13px',
+    fontWeight: '600',
+    boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)'
   },
   deleteButton: {
     padding: '8px 12px',
-    borderRadius: '8px',
+    borderRadius: '999px',
     border: '1px solid #f8c8c8',
     backgroundColor: '#fef2f2',
     color: '#b91c1c',
     cursor: 'pointer',
-    fontSize: '13px'
+    fontSize: '13px',
+    fontWeight: '600'
+  },
+  hardwareTable: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    minWidth: '1080px',
+    backgroundColor: '#fff',
+    borderRadius: '12px',
+    overflow: 'hidden'
+  },
+  hardwareTableHead: {
+    textAlign: 'left',
+    padding: '12px 14px',
+    backgroundColor: '#f8fafc',
+    color: '#374151',
+    fontSize: '13px',
+    fontWeight: '700',
+    borderBottom: '1px solid #e5e7eb',
+    whiteSpace: 'nowrap'
+  },
+  hardwareTableCell: {
+    padding: '12px 14px',
+    borderBottom: '1px solid #f1f5f9',
+    fontSize: '13px',
+    color: '#374151',
+    verticalAlign: 'top'
   },
   success: {
     backgroundColor: '#d4edda',
