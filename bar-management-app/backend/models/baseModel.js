@@ -45,10 +45,67 @@ class QueryBuilder {
     }
 
     if (this.populatePaths.length) {
-      return results.map((record) => this.model._populateRecord(record, this.populatePaths));
+      return Promise.all(results.map((record) => this.model._populateRecord(record, this.populatePaths, this.req)));
     }
 
     return results;
+  }
+}
+
+class FindByIdBuilder {
+  constructor(model, id, req = null) {
+    this.model = model;
+    this.id = id;
+    this.req = req;
+    this.populatePaths = [];
+    this._promise = null;
+  }
+
+  populate(path) {
+    this.populatePaths.push(path);
+    return this;
+  }
+
+  async exec() {
+    if (!this._promise) {
+      this._promise = (async () => {
+        const item = await dynamodb.getEntity(this.model.entityType, this.id);
+        if (!item) {
+          return null;
+        }
+
+        const tenantScope = this.model.getTenantScope(this.req);
+        if (tenantScope && item.tenantId && item.tenantId !== tenantScope.tenantId) {
+          return null;
+        }
+
+        const model = new this.model(item);
+        Object.defineProperty(model, '_req', {
+          value: this.req,
+          writable: true,
+          enumerable: false,
+          configurable: true
+        });
+
+        if (this.populatePaths.length) {
+          for (const path of this.populatePaths) {
+            await model.populate(path, null, this.req);
+          }
+        }
+
+        return model;
+      })();
+    }
+
+    return this._promise;
+  }
+
+  then(resolve, reject) {
+    return this.exec().then(resolve, reject);
+  }
+
+  catch(reject) {
+    return this.exec().catch(reject);
   }
 }
 
@@ -128,18 +185,8 @@ class BaseModel {
     return new QueryBuilder(this, query, req);
   }
 
-  static async findById(id, req = null) {
-    const item = await dynamodb.getEntity(this.entityType, id);
-    if (!item) {
-      return null;
-    }
-
-    const tenantScope = this.getTenantScope(req);
-    if (tenantScope && item.tenantId && item.tenantId !== tenantScope.tenantId) {
-      return null;
-    }
-
-    return new this(item);
+  static findById(id, req = null) {
+    return new FindByIdBuilder(this, id, req);
   }
 
   static async findOne(query = {}, req = null) {
@@ -180,7 +227,7 @@ class BaseModel {
     return Object.values(grouped);
   }
 
-  static _populateRecord(record, populatePaths) {
+  static async _populateRecord(record, populatePaths, req) {
     const populated = { ...record };
     for (const path of populatePaths) {
       if (path === 'category' && populated.category) {
@@ -194,20 +241,20 @@ class BaseModel {
       }
       if (path === 'items.product' && Array.isArray(populated.items)) {
         const Product = require('./Product');
-        populated.items = populated.items.map((item) => {
+        populated.items = await Promise.all(populated.items.map(async (item) => {
           if (!item || !item.product) return { ...item, product: null };
 
           const productId = typeof item.product === 'string'
             ? item.product
-            : item.product._id || item.product.id;
+            : item.product?._id || item.product?.id;
           if (!productId) return { ...item, product: null };
 
-          const product = Product.findById(productId);
+          const product = await Product.findById(productId, req);
           return {
             ...item,
             product: product ? { _id: productId, name: product.name || 'Unknown' } : { _id: productId, name: 'Unknown' }
           };
-        });
+        }));
       }
     }
     return populated;
@@ -237,7 +284,9 @@ class BaseModel {
     return dynamodb.deleteEntity(this.constructor.entityType, id);
   }
 
-  populate(path) {
+  async populate(path, select, req = null) {
+    const requestContext = req || this._req || null;
+
     if (path === 'category' && this.category) {
       this.category = { _id: this.category, name: 'Category' };
     }
@@ -249,20 +298,22 @@ class BaseModel {
     }
     if (path === 'items.product' && Array.isArray(this.items)) {
       const Product = require('./Product');
-      this.items = this.items.map((item) => {
+      this.items = await Promise.all(this.items.map(async (item) => {
         if (!item || !item.product) return { ...item, product: null };
 
         const productId = typeof item.product === 'string'
           ? item.product
-          : item.product._id || item.product.id;
+          : item.product?._id || item.product?.id;
         if (!productId) return { ...item, product: null };
 
-        const product = Product.findById(productId);
+        const product = await Product.findById(productId, requestContext);
+        const productName = product?.name || 'Unknown';
         return {
           ...item,
-          product: product ? { _id: productId, name: product.name || 'Unknown' } : { _id: productId, name: 'Unknown' }
+          product: product ? { _id: productId, name: productName } : { _id: productId, name: 'Unknown' },
+          productName
         };
-      });
+      }));
     }
     return this;
   }

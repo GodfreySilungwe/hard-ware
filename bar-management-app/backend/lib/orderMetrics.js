@@ -1,6 +1,30 @@
 function normalizeNumber(value) {
-  const parsed = Number(value || 0);
+  if (value === undefined || value === null) return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const sanitized = String(value).replace(/[^\d.-]/g, '').replace(/,/g, '');
+  const parsed = Number(sanitized || 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getOrderTotalAmount(order) {
+  const orderAmount = normalizeNumber(order.totalAmount);
+  if (orderAmount > 0) {
+    return orderAmount;
+  }
+
+  if (!Array.isArray(order.items)) {
+    return 0;
+  }
+
+  return order.items.reduce((sum, item) => {
+    const subtotal = normalizeNumber(item.subtotal);
+    if (subtotal > 0) {
+      return sum + subtotal;
+    }
+    const priceAtSale = normalizeNumber(item.priceAtSale);
+    const quantity = normalizeNumber(item.quantity);
+    return sum + priceAtSale * quantity;
+  }, 0);
 }
 
 function getPaymentMethodLabel(method) {
@@ -28,11 +52,11 @@ function summarizeOrders(orders = [], options = {}) {
   const filteredOrders = (orders || []).filter((order) => includeReversed || order?.status !== 'reversed');
 
   // Gross sales (totalAmount), tax totals, and net sales (netAmount when present)
-  const totalSales = filteredOrders.reduce((sum, order) => sum + normalizeNumber(order.totalAmount), 0);
+  const totalSales = filteredOrders.reduce((sum, order) => sum + getOrderTotalAmount(order), 0);
   const totalTax = filteredOrders.reduce((sum, order) => sum + normalizeNumber(order.taxAmount), 0);
   const totalSalesNet = filteredOrders.reduce((sum, order) => {
-    // prefer netAmount if provided (for tax-compliant orders), otherwise fall back to totalAmount
-    return sum + (Number.isFinite(Number(order.netAmount)) ? normalizeNumber(order.netAmount) : normalizeNumber(order.totalAmount));
+    // prefer netAmount if provided (for tax-compliant orders), otherwise fall back to computed order total
+    return sum + (Number.isFinite(Number(order.netAmount)) ? normalizeNumber(order.netAmount) : getOrderTotalAmount(order));
   }, 0);
 
   const totalProfit = filteredOrders.reduce((sum, order) => sum + normalizeNumber(order.profit), 0);

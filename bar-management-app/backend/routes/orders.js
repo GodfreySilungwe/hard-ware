@@ -8,6 +8,37 @@ const { applyOrderReversal } = require('../lib/orderReversal');
 const { summarizeOrders, getPaymentMethodLabel } = require('../lib/orderMetrics');
 const { applyOrderToCustomerAccount } = require('../lib/customerAccountSync');
 
+const populateOrderItemProducts = async (order, req) => {
+  if (!order || !Array.isArray(order.items)) return order;
+
+  const items = await Promise.all(order.items.map(async (item) => {
+    const productId = typeof item.product === 'string'
+      ? item.product
+      : item.product?._id || item.product?.id;
+
+    const existingName = typeof item.product === 'object' ? item.product.name : null;
+    const product = productId ? await Product.findById(productId, req) : null;
+    const productName = existingName && existingName !== 'Product' && existingName !== 'Unknown'
+      ? existingName
+      : product?.name || 'Unknown';
+
+    return {
+      ...item,
+      product: productId ? { _id: productId, name: productName } : null,
+      productName
+    };
+  }));
+
+  return {
+    ...order,
+    items
+  };
+};
+
+const populateOrdersItemProducts = async (orders = [], req) => {
+  return Promise.all((orders || []).map((order) => populateOrderItemProducts(order, req)));
+};
+
 // Get all orders
 router.get('/', protect, async (req, res) => {
   try {
@@ -16,7 +47,8 @@ router.get('/', protect, async (req, res) => {
       .populate('items.product', 'name')
       .sort({ createdAt: -1 });
 
-    const normalizedOrders = orders.map((order) => ({
+    const populatedOrders = await populateOrdersItemProducts(orders, req);
+    const normalizedOrders = populatedOrders.map((order) => ({
       ...order,
       paymentMethodLabel: order.paymentMethodLabel || getPaymentMethodLabel(order.paymentMethod)
     }));
@@ -46,8 +78,9 @@ router.get('/today', protect, async (req, res) => {
       return !Number.isNaN(orderDate.getTime()) && orderDate >= startOfDay && orderDate <= endOfDay;
     });
 
-    const summary = summarizeOrders(todaysOrders, { includeReversed: false });
-    const reversedOrders = todaysOrders.filter((order) => order.status === 'reversed').length;
+    const populatedTodayOrders = await populateOrdersItemProducts(todaysOrders, req);
+    const summary = summarizeOrders(populatedTodayOrders, { includeReversed: false });
+    const reversedOrders = populatedTodayOrders.filter((order) => order.status === 'reversed').length;
 
     res.json({
       count: summary.count,
@@ -155,7 +188,11 @@ router.post('/', protect, async (req, res) => {
     });
 
     await order.save();
-    res.status(201).json(order);
+    const savedOrder = await Order.findById(order._id, req)
+      .populate('customer', 'name phone')
+      .populate('items.product', 'name');
+    const populatedOrder = await populateOrderItemProducts(savedOrder, req);
+    res.status(201).json(populatedOrder);
 
   } catch (error) {
     console.error('Error creating order:', error);
@@ -173,7 +210,9 @@ router.get('/:id', protect, async (req, res) => {
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
     }
-    res.json(order);
+
+    const populatedOrder = await populateOrderItemProducts(order, req);
+    res.json(populatedOrder);
   } catch (error) {
     console.error('Error fetching order:', error);
     res.status(500).json({ message: error.message });

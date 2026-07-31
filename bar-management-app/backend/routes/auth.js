@@ -658,24 +658,41 @@ router.get('/tenant-summary', protect, async (req, res) => {
 router.get('/tenants', protect, isOwner, async (req, res) => {
   try {
     const tenants = await Tenant.find();
-    const enrichedTenants = await Promise.all(tenants.map(async (tenant) => {
-      let ownerInfo = null;
-      if (tenant.ownerId) {
-        const owner = await User.findById(tenant.ownerId);
-        ownerInfo = owner ? {
-          id: owner._id || owner.id,
-          fullName: owner.fullName || owner.username,
-          username: owner.username,
-          email: owner.email,
-          phone: owner.phone
-        } : null;
+    const users = await User.find();
+
+    const usersById = new Map();
+    const managersByTenant = new Map();
+    const salesCountByTenant = new Map();
+
+    users.forEach((user) => {
+      const userId = user._id || user.id;
+      usersById.set(userId, user);
+
+      const tenantId = user.tenantId;
+      if (!tenantId) return;
+
+      if (user.role === 'hardware-manager' && !managersByTenant.has(tenantId)) {
+        managersByTenant.set(tenantId, user);
       }
 
+      if (user.role === 'sales' && user.isActive) {
+        salesCountByTenant.set(tenantId, (salesCountByTenant.get(tenantId) || 0) + 1);
+      }
+    });
+
+    const enrichedTenants = tenants.map((tenant) => {
       const tenantId = tenant._id || tenant.id;
-      const registeredManager = await User.findOne({
-        tenantId,
-        role: 'hardware-manager'
-      });
+      const owner = tenant.ownerId ? usersById.get(tenant.ownerId) : null;
+      const registeredManager = managersByTenant.get(tenantId) || null;
+      const activeSalesAccountCount = salesCountByTenant.get(tenantId) || 0;
+
+      const ownerInfo = owner ? {
+        id: owner._id || owner.id,
+        fullName: owner.fullName || owner.username,
+        username: owner.username,
+        email: owner.email,
+        phone: owner.phone
+      } : null;
 
       const registeredManagerInfo = registeredManager ? {
         id: registeredManager._id || registeredManager.id,
@@ -690,9 +707,10 @@ router.get('/tenants', protect, isOwner, async (req, res) => {
       return {
         ...tenant,
         ownerInfo,
-        registeredManagerInfo
+        registeredManagerInfo,
+        activeSalesAccountCount
       };
-    }));
+    });
 
     res.json(enrichedTenants);
   } catch (error) {
@@ -819,6 +837,62 @@ router.get('/hardware-managers', protect, isOwner, async (req, res) => {
     res.json(normalized);
   } catch (error) {
     console.error('Hardware manager list error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch('/change-password', protect, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current password and new password are required' });
+    }
+
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const passwordMatches = await bcrypt.compare(currentPassword, user.password);
+    if (!passwordMatches && user.password !== currentPassword) {
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    res.json({ message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch('/hardware-managers/:id/reset-password', protect, isOwner, async (req, res) => {
+  try {
+    const { newPassword } = req.body || {};
+    if (!newPassword || String(newPassword).length < 6) {
+      return res.status(400).json({ message: 'A new password of at least 6 characters is required' });
+    }
+
+    const manager = await User.findById(req.params.id);
+    if (!manager || manager.role !== 'hardware-manager') {
+      return res.status(404).json({ message: 'Hardware manager not found' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    manager.password = await bcrypt.hash(newPassword, salt);
+    manager.isActive = true;
+    await manager.save();
+
+    res.json({ message: `Password reset for ${manager.fullName || manager.username}` });
+  } catch (error) {
+    console.error('Reset manager password error:', error);
     res.status(500).json({ message: error.message });
   }
 });
