@@ -46,62 +46,53 @@ const Dashboard = () => {
       setLoading(true);
       setError(null);
 
-      let summary = {};
-      try {
-        const summaryRes = await api.get('/auth/tenant-summary');
-        summary = summaryRes.data || {};
-      } catch (err) {
-        console.log('No summary available:', err.message);
-      }
-      
-      let products = [];
-      try {
-        const productsRes = await api.get('/products');
-        products = productsRes.data;
-      } catch (err) {
-        console.log('No products:', err.message);
-      }
-      
-      let customers = [];
-      try {
-        const customersRes = await api.get('/customers');
-        customers = customersRes.data;
-      } catch (err) {
-        console.log('No customers:', err.message);
+      const role = user?.role;
+      const isOwnerRole = role === 'owner';
+      const isSalesRole = role === 'sales';
+
+      const requests = [
+        api.get('/auth/tenant-summary').catch(() => ({ data: {} }))
+      ];
+
+      if (!isOwnerRole) {
+        requests.push(api.get('/products').catch(() => ({ data: [] })));
+        requests.push(api.get('/orders').catch(() => ({ data: [] })));
       }
 
-      let orders = [];
-      let todaySummary = null;
-      try {
-        const todayRes = await api.get('/orders/today');
-        todaySummary = todayRes.data || {};
-        orders = Array.isArray(todaySummary.orders)
-          ? todaySummary.orders
+      if (isSalesRole) {
+        requests.push(api.get('/customers').catch(() => ({ data: [] })));
+      }
+
+      const results = await Promise.allSettled(requests);
+
+      const summary = results[0]?.status === 'fulfilled' ? results[0].value.data || {} : {};
+      const products = !isOwnerRole && results[1]?.status === 'fulfilled' ? results[1].value.data || [] : [];
+      const ordersPayload = !isOwnerRole && results[2]?.status === 'fulfilled' ? results[2].value.data : [];
+      const customers = isSalesRole && results[3]?.status === 'fulfilled' ? results[3].value.data || [] : [];
+
+      const orders = Array.isArray(ordersPayload)
+        ? ordersPayload
+        : Array.isArray(ordersPayload?.orders)
+          ? ordersPayload.orders
           : [];
-      } catch (err) {
-        console.log('No today summary:', err.message);
-      }
-
-      if (!orders.length) {
-        try {
-          const ordersRes = await api.get('/orders');
-          orders = Array.isArray(ordersRes.data)
-            ? ordersRes.data
-            : Array.isArray(ordersRes.data?.orders)
-              ? ordersRes.data.orders
-              : [];
-        } catch (err) {
-          console.log('No orders:', err.message);
-        }
-      }
 
       const today = new Date();
-      const resolvedSummary = resolveTodayOrderSummary(todaySummary, orders, today);
-      const todaysOrders = resolvedSummary.orders || [];
+      const resolvedSummary = isOwnerRole
+        ? { orders: [], count: 0, totalSales: 0, totalProfit: 0, totalTax: 0, totalSalesNet: 0, averageOrderValue: 0, reversedOrders: 0 }
+        : resolveTodayOrderSummary({}, orders, today);
+
+      const todaysOrders = Array.isArray(resolvedSummary.orders)
+        ? resolvedSummary.orders
+        : orders.filter((order) => {
+            const orderDate = new Date(order.createdAt || order.created_at || order.date || order.updatedAt || order.updated_at);
+            return !Number.isNaN(orderDate.getTime()) && orderDate.toDateString() === today.toDateString() && order.status !== 'reversed';
+          });
+
       const todaySales = resolvedSummary.totalSales ?? 0;
       const todayProfit = resolvedSummary.totalProfit ?? 0;
+      const todaySalesNet = resolvedSummary.totalSalesNet ?? 0;
       const reversedOrders = resolvedSummary.reversedOrders ?? 0;
-      
+
       setStats({
         pendingApprovals: summary.pendingTenants || 0,
         activeBars: summary.activeTenants || 0,
@@ -114,7 +105,7 @@ const Dashboard = () => {
         totalCustomers: customers.length || 0,
         todayOrders: todaysOrders.length,
         todaySales,
-        todaySalesNet: resolvedSummary.totalSalesNet ?? 0,
+        todaySalesNet,
         todayTax: resolvedSummary.totalTax ?? 0,
         todayProfit,
         reversedOrders,
@@ -122,7 +113,7 @@ const Dashboard = () => {
       });
       setTodayOrders(todaysOrders.slice(0, 5));
       setLastUpdated(new Date().toLocaleTimeString());
-      
+
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
       setError('Could not load dashboard data. Please try again.');
@@ -158,12 +149,8 @@ const Dashboard = () => {
         { title: 'Active Smart Inventory App Accounts', value: stats.activeHardwareAccounts, icon: faTools, color: '#3498db' },
         { title: 'Pending Applications', value: stats.pendingApplications, icon: faClipboardCheck, color: '#f39c12' }
       ]
-    : isHardwareManagerRole
+    : isHardwareManagerRole || isSalesRole
       ? [
-          { title: 'Today sales', value: formatPriceMK(stats.todaySales), icon: faChartLine, color: '#2ecc71' },
-          { title: 'Today net sales', value: formatPriceMK(stats.todaySalesNet), icon: faChartLine, color: '#16a085' },
-          { title: 'Today tax', value: formatPriceMK(stats.todayTax), icon: faChartLine, color: '#f39c12' },
-          { title: 'Today profit', value: formatPriceMK(stats.todayProfit), icon: faChartLine, color: '#3498db' },
           { title: 'Today orders', value: stats.todayOrders, icon: faClipboardCheck, color: '#e94560' },
           { title: 'Products', value: stats.totalProducts, icon: faTools, color: '#9b59b6' }
         ]
@@ -265,7 +252,7 @@ const Dashboard = () => {
         </div>
       )}
 
-      {isHardwareManagerRole && (
+      {(isHardwareManagerRole || isSalesRole) && (
         <div className="fade-in" style={styles.ordersPanel}>
           <div style={styles.panelHeader}>
             <h3 style={styles.panelTitle}>Today’s snapshot</h3>
@@ -275,6 +262,10 @@ const Dashboard = () => {
             <div style={{...styles.snapshotCard, borderColor: '#2ecc71'}}>
               <div style={styles.snapshotLabel}>Revenue</div>
               <div style={styles.snapshotValue}>{formatPriceMK(stats.todaySales)}</div>
+            </div>
+            <div style={{...styles.snapshotCard, borderColor: '#16a085'}}>
+              <div style={styles.snapshotLabel}>Net sales</div>
+              <div style={styles.snapshotValue}>{formatPriceMK(stats.todaySalesNet)}</div>
             </div>
             <div style={{...styles.snapshotCard, borderColor: '#3498db'}}>
               <div style={styles.snapshotLabel}>Profit</div>

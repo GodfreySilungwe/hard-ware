@@ -5,6 +5,41 @@ import UnifiedCard from '../components/common/UnifiedCard';
 import ExportButton from '../components/common/ExportButton';
 import { formatPriceMK } from '../utils/formatPrice';
 
+const toNumber = (value) => {
+  if (value === undefined || value === null) return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const sanitized = String(value).replace(/[^\d.-]/g, '').replace(/,/g, '');
+  const parsed = Number(sanitized || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getOrderDate = (order) => {
+  const timestamp = order?.createdAt || order?.created_at || order?.date || order?.updatedAt || order?.updated_at || null;
+  const parsedDate = timestamp ? new Date(timestamp) : new Date(0);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+};
+
+const getOrderTotalAmount = (order) => {
+  const orderAmount = toNumber(order?.totalAmount);
+  if (orderAmount > 0) return orderAmount;
+
+  const items = Array.isArray(order?.items) ? order.items : [];
+  return items.reduce((sum, item) => {
+    const subtotal = toNumber(item?.subtotal);
+    if (subtotal > 0) return sum + subtotal;
+
+    const priceAtSale = toNumber(item?.priceAtSale);
+    const quantity = toNumber(item?.quantity);
+    return sum + (priceAtSale * quantity);
+  }, 0);
+};
+
+const getOrderNetAmount = (order) => {
+  const netValue = toNumber(order?.netAmount);
+  if (netValue > 0) return netValue;
+  return getOrderTotalAmount(order);
+};
+
 const getPaymentMethodLabel = (method) => {
   const normalized = String(method || '').toLowerCase().trim();
   if (normalized === 'airtel_money' || normalized === 'airtelmoney') return 'Airtel Money';
@@ -130,8 +165,8 @@ const Reports = () => {
 
   const filterOrdersByCriteria = (ordersList, rangeStart, rangeEnd, includeReversed = true, productById = {}) => {
     return ordersList.filter(order => {
-      const orderDate = new Date(order.createdAt);
-      if (Number.isNaN(orderDate.getTime())) return false;
+      const orderDate = getOrderDate(order);
+      if (!orderDate) return false;
       if (orderDate < rangeStart || orderDate > rangeEnd) return false;
       if (paymentFilter !== 'all' && (order.paymentMethod || 'cash') !== paymentFilter) return false;
       if (!includeReversed && order.status === 'reversed') return false;
@@ -176,16 +211,13 @@ const Reports = () => {
       const previousFilteredOrders = filterOrdersByCriteria(orders, previousStart, previousEnd, false, productById);
       const rangeOrders = filterOrdersByCriteria(orders, currentStart, currentEnd, true, productById);
 
-      const totalSales = filteredOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
-      const totalTax = filteredOrders.reduce((sum, o) => sum + Number(o.taxAmount || 0), 0);
-      const totalSalesNet = filteredOrders.reduce((sum, o) => {
-        const net = Number.isFinite(Number(o.netAmount)) ? Number(o.netAmount) : Number(o.totalAmount || 0);
-        return sum + net;
-      }, 0);
-      const totalProfit = filteredOrders.reduce((sum, o) => sum + Number(o.profit || 0), 0);
+      const totalSales = filteredOrders.reduce((sum, order) => sum + getOrderTotalAmount(order), 0);
+      const totalTax = filteredOrders.reduce((sum, order) => sum + toNumber(order.taxAmount), 0);
+      const totalSalesNet = filteredOrders.reduce((sum, order) => sum + getOrderNetAmount(order), 0);
+      const totalProfit = filteredOrders.reduce((sum, order) => sum + toNumber(order.profit), 0);
       const totalOrders = filteredOrders.length;
       const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
-      const totalItems = filteredOrders.reduce((sum, order) => sum + (order.items || []).reduce((s, item) => s + (item.quantity || 0), 0), 0);
+      const totalItems = filteredOrders.reduce((sum, order) => sum + (order.items || []).reduce((s, item) => s + toNumber(item.quantity), 0), 0);
       const averageItemsPerOrder = totalOrders > 0 ? totalItems / totalOrders : 0;
 
       const customersMap = {};
@@ -194,7 +226,7 @@ const Reports = () => {
         if (!customersMap[name]) {
           customersMap[name] = 0;
         }
-        customersMap[name] += order.totalAmount;
+        customersMap[name] += getOrderTotalAmount(order);
       });
       const customerCount = Object.keys(customersMap).length;
       const averageRevenuePerCustomer = customerCount > 0 ? totalSales / customerCount : 0;
@@ -211,19 +243,20 @@ const Reports = () => {
       const totalReversedOrders = rangeOrders.filter(order => order.status === 'reversed').length;
       const reversedOrderRate = rangeOrders.length > 0 ? (totalReversedOrders / rangeOrders.length) * 100 : 0;
 
-      const totalSalesPrevious = previousFilteredOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+      const totalSalesPrevious = previousFilteredOrders.reduce((sum, order) => sum + getOrderTotalAmount(order), 0);
       const previousOrderCount = previousFilteredOrders.length;
       const salesGrowthPercentage = totalSalesPrevious > 0 ? ((totalSales - totalSalesPrevious) / totalSalesPrevious) * 100 : totalSales > 0 ? 100 : 0;
       const orderGrowthPercentage = previousOrderCount > 0 ? ((totalOrders - previousOrderCount) / previousOrderCount) * 100 : totalOrders > 0 ? 100 : 0;
 
       const dailySalesMap = {};
       filteredOrders.forEach(order => {
-        const date = new Date(order.createdAt).toLocaleDateString();
+        const orderDate = getOrderDate(order);
+        const date = orderDate ? orderDate.toISOString().slice(0, 10) : 'Unknown';
         if (!dailySalesMap[date]) {
           dailySalesMap[date] = { sales: 0, profit: 0, count: 0 };
         }
-        dailySalesMap[date].sales += order.totalAmount;
-        dailySalesMap[date].profit += order.profit;
+        dailySalesMap[date].sales += getOrderTotalAmount(order);
+        dailySalesMap[date].profit += toNumber(order.profit);
         dailySalesMap[date].count += 1;
       });
 
@@ -241,8 +274,8 @@ const Reports = () => {
           if (!productSalesMap[productName]) {
             productSalesMap[productName] = { quantity: 0, revenue: 0 };
           }
-          productSalesMap[productName].quantity += item.quantity || 0;
-          productSalesMap[productName].revenue += item.subtotal || 0;
+          productSalesMap[productName].quantity += toNumber(item.quantity);
+          productSalesMap[productName].revenue += toNumber(item.subtotal);
         });
       });
 
@@ -262,7 +295,7 @@ const Reports = () => {
           if (!categorySalesMap[categoryName]) {
             categorySalesMap[categoryName] = 0;
           }
-          categorySalesMap[categoryName] += item.subtotal || 0;
+          categorySalesMap[categoryName] += toNumber(item.subtotal);
         });
       });
 
@@ -280,7 +313,7 @@ const Reports = () => {
           paymentMethodsMap[method] = { count: 0, amount: 0 };
         }
         paymentMethodsMap[method].count += 1;
-        paymentMethodsMap[method].amount += order.totalAmount;
+        paymentMethodsMap[method].amount += getOrderTotalAmount(order);
       });
 
       const paymentMethods = Object.keys(paymentMethodsMap).map(method => ({

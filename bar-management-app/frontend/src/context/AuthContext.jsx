@@ -24,6 +24,8 @@ export const AuthProvider = ({ children }) => {
   // Load user on mount
   useEffect(() => {
     const loadUser = async () => {
+      setLoading(true);
+
       if (token) {
         try {
           const res = await api.get('/auth/me');
@@ -41,10 +43,14 @@ export const AuthProvider = ({ children }) => {
           setUser(null);
           setSuspensionNotice(null);
         }
+      } else {
+        setUser(null);
+        setSuspensionNotice(null);
       }
+
+      setLoading(false);
     };
 
-    setLoading(false);
     loadUser();
   }, [token]);
 

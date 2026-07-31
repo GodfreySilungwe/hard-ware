@@ -61,32 +61,14 @@ export const buildTodayOrderSummary = (orders = [], referenceDate = new Date(), 
     return order?.status === 'reversed' && Boolean(orderDate) && isSameCalendarDay(orderDate, referenceDate);
   }).length;
 
-  const payloadSales = summaryFallback?.totalSales;
-  const payloadProfit = summaryFallback?.totalProfit;
-  const payloadTax = summaryFallback?.totalTax;
-  const payloadSalesNet = summaryFallback?.totalSalesNet;
-
-  const resolvedSales = hasNumericPayload(payloadSales)
-    ? (toNumber(payloadSales) === 0 && totalSales > 0 ? totalSales : toNumber(payloadSales))
-    : totalSales;
-  const resolvedProfit = hasNumericPayload(payloadProfit)
-    ? (toNumber(payloadProfit) === 0 && totalProfit > 0 ? totalProfit : toNumber(payloadProfit))
-    : totalProfit;
-  const resolvedTax = hasNumericPayload(payloadTax)
-    ? (toNumber(payloadTax) === 0 && totalTax > 0 ? totalTax : toNumber(payloadTax))
-    : totalTax;
-  const resolvedSalesNet = hasNumericPayload(payloadSalesNet)
-    ? (toNumber(payloadSalesNet) === 0 && totalSalesNet > 0 ? totalSalesNet : toNumber(payloadSalesNet))
-    : totalSalesNet;
-
   return {
     orders: todayOrders,
     count: todayOrders.length,
-    totalSales: resolvedSales,
-    totalProfit: resolvedProfit,
-    totalTax: resolvedTax,
-    totalSalesNet: resolvedSalesNet,
-    averageOrderValue: todayOrders.length > 0 ? resolvedSales / todayOrders.length : 0,
+    totalSales,
+    totalProfit,
+    totalTax,
+    totalSalesNet,
+    averageOrderValue: todayOrders.length > 0 ? totalSales / todayOrders.length : 0,
     reversedOrders
   };
 };
@@ -96,19 +78,27 @@ export const resolveTodayOrderSummary = (summaryPayload = null, fallbackOrders =
     ? summaryPayload
     : null;
   const payloadOrders = Array.isArray(normalizedPayload?.orders) ? normalizedPayload.orders : [];
-  const sourceOrders = payloadOrders.length > 0 ? payloadOrders : fallbackOrders;
+  const sourceOrders = fallbackOrders.length > 0 ? fallbackOrders : payloadOrders;
   const summary = buildTodayOrderSummary(sourceOrders, referenceDate, normalizedPayload);
   const payloadCount = typeof normalizedPayload?.count === 'number' ? normalizedPayload.count : null;
-  const useFallbackTotals = payloadOrders.length === 0 && fallbackOrders.length > 0;
+  const payloadSales = normalizedPayload?.totalSales;
+  const payloadProfit = normalizedPayload?.totalProfit;
   const payloadTax = normalizedPayload?.totalTax;
   const payloadSalesNet = normalizedPayload?.totalSalesNet;
 
+  if (fallbackOrders.length > 0) {
+    return summary;
+  }
+
   return {
     ...summary,
-    count: useFallbackTotals ? summary.count : payloadCount ?? summary.count,
-    totalTax: useFallbackTotals ? summary.totalTax : (hasNumericPayload(payloadTax) ? toNumber(payloadTax) : summary.totalTax),
-    totalSalesNet: useFallbackTotals ? summary.totalSalesNet : (hasNumericPayload(payloadSalesNet) ? (
+    count: payloadCount ?? summary.count,
+    totalSales: hasNumericPayload(payloadSales) ? toNumber(payloadSales) : summary.totalSales,
+    totalProfit: hasNumericPayload(payloadProfit) ? toNumber(payloadProfit) : summary.totalProfit,
+    totalTax: hasNumericPayload(payloadTax) ? toNumber(payloadTax) : summary.totalTax,
+    totalSalesNet: hasNumericPayload(payloadSalesNet) ? (
       toNumber(payloadSalesNet) === 0 && summary.totalSalesNet > 0 ? summary.totalSalesNet : toNumber(payloadSalesNet)
-    ) : summary.totalSalesNet)
+    ) : summary.totalSalesNet,
+    averageOrderValue: summary.count > 0 ? summary.totalSales / summary.count : 0
   };
 };

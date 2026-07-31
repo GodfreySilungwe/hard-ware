@@ -172,8 +172,7 @@ const POS = () => {
           quantity: item.quantity
         })),
         customer: selectedCustomer || null,
-        paymentMethod: paymentMethod
-      ,
+        paymentMethod: paymentMethod,
         taxCompliant: businessSettings.taxCompliant,
         taxAmount,
         netAmount
@@ -181,10 +180,11 @@ const POS = () => {
 
       const response = await api.post('/orders', orderData);
       
-      const newOrder = response.data;
-      setReceiptOrder(newOrder);
+      const createdOrder = response.data;
+      const populatedOrderResponse = await api.get(`/orders/${createdOrder._id}`);
+      setReceiptOrder(populatedOrderResponse.data);
       
-      setSuccess(`✅ Order ${newOrder.orderNumber} completed!`);
+      setSuccess(`✅ Order ${createdOrder.orderNumber} completed!`);
       setCart([]);
       setSelectedCustomer('');
       await loadData();

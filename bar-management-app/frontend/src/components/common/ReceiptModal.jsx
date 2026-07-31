@@ -3,14 +3,21 @@ import { formatPriceMK } from '../../utils/formatPrice';
 const getItemName = (item) => {
   if (!item) return 'Unknown';
 
+  if (item.productName && item.productName !== 'Product' && item.productName !== 'Unknown') {
+    return item.productName;
+  }
+
   if (item.product && typeof item.product === 'object') {
-    const productName = item.product.name;
+    const productName = item.product.name || item.product.productName || item.product.title;
     if (productName && productName !== 'Product' && productName !== 'Unknown') return productName;
-    if (item.product._id) return item.product._id;
+    if (item.name && item.name !== 'Product' && item.name !== 'Unknown') return item.name;
+    if (item.product._id) return `Product #${item.product._id}`;
+    return 'Unknown';
   }
 
   if (item.product && typeof item.product === 'string') {
-    return item.product;
+    if (item.name && item.name !== 'Product' && item.name !== 'Unknown') return item.name;
+    return `Product #${item.product}`;
   }
 
   if (item.name && item.name !== 'Product' && item.name !== 'Unknown') return item.name;

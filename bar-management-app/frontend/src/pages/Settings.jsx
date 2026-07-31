@@ -324,11 +324,44 @@ const Settings = ({ initialMenu = 'settings' }) => {
     }
 
     try {
+      await api.patch('/auth/change-password', {
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword
+      });
+
       setMessage('✅ Password changed successfully!');
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
-      setError('❌ Failed to change password');
+      const serverMessage = err.response?.data?.message || '❌ Failed to change password';
+      setError(serverMessage);
+      setTimeout(() => setError(''), 3000);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetManagerPassword = async (managerId) => {
+    const newPassword = window.prompt('Enter the new password for this manager account (minimum 6 characters):');
+
+    if (!newPassword) {
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setError('❌ Password must be at least 6 characters');
+      setTimeout(() => setError(''), 3000);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await api.patch(`/auth/hardware-managers/${managerId}/reset-password`, { newPassword });
+      setMessage(response.data?.message || '✅ Manager password reset successfully');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (err) {
+      const serverMessage = err.response?.data?.message || '❌ Failed to reset manager password';
+      setError(serverMessage);
       setTimeout(() => setError(''), 3000);
     } finally {
       setLoading(false);
@@ -573,7 +606,8 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
   const menuItems = isOwnerRole
     ? [
-        { id: 'hardware', label: '� Smart Inventory App' }
+        { id: 'settings', label: '⚙️ Settings' },
+        { id: 'hardware', label: '🏢 Smart Inventory App' }
       ]
     : [
         { id: 'settings', label: '⚙️ Settings' },
@@ -949,6 +983,9 @@ const Settings = ({ initialMenu = 'settings' }) => {
                     <div style={{ color: '#666', fontSize: '13px' }}>Registration: {manager.registrationStatus || 'approved'}</div>
                     <div style={{ color: '#888', fontSize: '12px' }}>Created: {formatDate(manager.createdAt)}</div>
                     <div style={{ color: '#888', fontSize: '12px' }}>Updated: {formatDate(manager.updatedAt)}</div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button type="button" style={styles.secondaryButton} onClick={() => handleResetManagerPassword(manager.id)}>Reset Password</button>
+                    </div>
                   </div>
                 ))}
               </div>
