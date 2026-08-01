@@ -264,7 +264,9 @@ const Dashboard = () => {
         <div className="fade-in" style={styles.ordersPanel}>
           <div style={styles.panelHeader}>
             <h3 style={styles.panelTitle}>Today’s snapshot</h3>
-            <span style={styles.panelHint}>Revenue, profit, and recent activity at a glance</span>
+            <span style={styles.panelHint}>
+              {isSalesRole ? 'Revenue and recent activity at a glance' : 'Revenue, profit, and recent activity at a glance'}
+            </span>
           </div>
           <div style={styles.snapshotGrid}>
             <div style={{...styles.snapshotCard, borderColor: '#2ecc71'}}>
@@ -275,10 +277,12 @@ const Dashboard = () => {
               <div style={styles.snapshotLabel}>Net sales</div>
               <div style={styles.snapshotValue}>{formatPriceMK(stats.todaySalesNet)}</div>
             </div>
-            <div style={{...styles.snapshotCard, borderColor: '#3498db'}}>
-              <div style={styles.snapshotLabel}>Profit</div>
-              <div style={styles.snapshotValue}>{formatPriceMK(stats.todayProfit)}</div>
-            </div>
+            {!isSalesRole && (
+              <div style={{...styles.snapshotCard, borderColor: '#3498db'}}>
+                <div style={styles.snapshotLabel}>Profit</div>
+                <div style={styles.snapshotValue}>{formatPriceMK(stats.todayProfit)}</div>
+              </div>
+            )}
             <div style={{...styles.snapshotCard, borderColor: '#e94560'}}>
               <div style={styles.snapshotLabel}>Avg order</div>
               <div style={styles.snapshotValue}>{formatPriceMK(stats.averageOrderValue)}</div>

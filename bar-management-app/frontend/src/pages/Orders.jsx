@@ -94,6 +94,7 @@ const Orders = () => {
     return (user?.role === 'hardware-manager' || user?.role === 'owner') && order?.status !== 'reversed';
   };
 
+  const isSalesRole = user?.role === 'sales';
   const filteredOrders = getFilteredOrders();
   const totalSales = filteredOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
   const totalProfit = filteredOrders.reduce((sum, order) => sum + Number(order.profit || 0), 0);
@@ -156,7 +157,7 @@ const Orders = () => {
         {[
           { label: 'Total Orders', value: filteredOrders.length, icon: '📋', color: '#3498db', delay: 1 },
           { label: 'Total Sales', value: formatPriceMK(totalSales), icon: '💰', color: '#2ecc71', delay: 2 },
-          { label: 'Total Profit', value: formatPriceMK(totalProfit), icon: '📈', color: '#e94560', delay: 3 }
+          ...(!isSalesRole ? [{ label: 'Total Profit', value: formatPriceMK(totalProfit), icon: '📈', color: '#e94560', delay: 3 }] : [])
         ].map((item, index) => (
           <div 
             key={index}
@@ -202,7 +203,7 @@ const Orders = () => {
                     <th>Customer</th>
                     <th>Items</th>
                     <th>Amount</th>
-                    <th>Profit</th>
+                    {!isSalesRole && <th>Profit</th>}
                     <th>Payment</th>
                     <th>Date</th>
                     <th>Details</th>
@@ -230,7 +231,7 @@ const Orders = () => {
                           </span>
                         </td>
                         <td style={styles.amount}>{formatPriceMK(order.totalAmount)}</td>
-                        <td style={styles.profit}>+{formatPriceMK(order.profit)}</td>
+                        {!isSalesRole && <td style={styles.profit}>+{formatPriceMK(order.profit)}</td>}
                         <td>
                           <span style={{
                             ...styles.paymentBadge,
