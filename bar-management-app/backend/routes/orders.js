@@ -42,7 +42,43 @@ const populateOrdersItemProducts = async (orders = [], req) => {
 // Get all orders
 router.get('/', protect, async (req, res) => {
   try {
-    const orders = await Order.find({}, req)
+    const {
+      page = 1,
+      limit = 0,
+      status,
+      paymentMethod,
+      customerId,
+      startDate,
+      endDate
+    } = req.query;
+
+    const query = {};
+
+    if (status) {
+      query.status = status;
+    }
+
+    if (paymentMethod) {
+      query.paymentMethod = paymentMethod;
+    }
+
+    if (customerId) {
+      query.customer = customerId;
+    }
+
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        query.createdAt.$gte = new Date(startDate).toISOString();
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end.toISOString();
+      }
+    }
+
+    const orders = await Order.find(query, req)
       .populate('customer', 'name phone')
       .populate('items.product', 'name')
       .sort({ createdAt: -1 });
@@ -52,6 +88,22 @@ router.get('/', protect, async (req, res) => {
       ...order,
       paymentMethodLabel: order.paymentMethodLabel || getPaymentMethodLabel(order.paymentMethod)
     }));
+
+    if (Number(limit) > 0) {
+      const pageNumber = Math.max(Number(page), 1);
+      const offset = (pageNumber - 1) * Number(limit);
+      const pagedOrders = normalizedOrders.slice(offset, offset + Number(limit));
+      const totalCount = normalizedOrders.length;
+      const totalPages = Math.max(1, Math.ceil(totalCount / Number(limit)));
+
+      return res.json({
+        orders: pagedOrders,
+        totalCount,
+        totalPages,
+        page: pageNumber,
+        limit: Number(limit)
+      });
+    }
 
     res.json(normalizedOrders);
   } catch (error) {
@@ -68,17 +120,17 @@ router.get('/today', protect, async (req, res) => {
     const endOfDay = new Date();
     endOfDay.setHours(23, 59, 59, 999);
 
-    const allOrders = await Order.find({}, req)
+    const orders = await Order.find({
+      createdAt: {
+        $gte: startOfDay.toISOString(),
+        $lte: endOfDay.toISOString()
+      }
+    }, req)
       .populate('customer', 'name phone')
       .populate('items.product', 'name')
       .sort({ createdAt: -1 });
 
-    const todaysOrders = (allOrders || []).filter((order) => {
-      const orderDate = new Date(order.createdAt || order.created_at || order.date || order.updatedAt || order.updated_at || null);
-      return !Number.isNaN(orderDate.getTime()) && orderDate >= startOfDay && orderDate <= endOfDay;
-    });
-
-    const populatedTodayOrders = await populateOrdersItemProducts(todaysOrders, req);
+    const populatedTodayOrders = await populateOrdersItemProducts(orders, req);
     const summary = summarizeOrders(populatedTodayOrders, { includeReversed: false });
     const reversedOrders = populatedTodayOrders.filter((order) => order.status === 'reversed').length;
 
@@ -90,7 +142,7 @@ router.get('/today', protect, async (req, res) => {
       totalProfit: summary.totalProfit,
       orders: summary.orders,
       reversedOrders,
-      totalOrders: todaysOrders.length
+      totalOrders: populatedTodayOrders.length
     });
   } catch (error) {
     console.error('Error fetching today orders:', error);

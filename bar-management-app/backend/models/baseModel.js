@@ -171,8 +171,34 @@ class BaseModel {
             return value.includes(record[key]);
           }
 
-          if (typeof value === 'object' && value !== null && !Array.isArray(value) && value.$gte !== undefined) {
-            return (record[key] ?? 0) >= value.$gte;
+          if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+            const recordValue = record[key] ?? 0;
+
+            if (value.$gte !== undefined && recordValue < value.$gte) {
+              return false;
+            }
+            if (value.$lte !== undefined && recordValue > value.$lte) {
+              return false;
+            }
+            if (value.$gt !== undefined && recordValue <= value.$gt) {
+              return false;
+            }
+            if (value.$lt !== undefined && recordValue >= value.$lt) {
+              return false;
+            }
+            if (value.$ne !== undefined) {
+              return recordValue !== value.$ne;
+            }
+
+            // Fallback for exact object matching or unsupported operators.
+            return Object.entries(value).every(([subKey, subValue]) => {
+              if (subKey === '$gte') return recordValue >= subValue;
+              if (subKey === '$lte') return recordValue <= subValue;
+              if (subKey === '$gt') return recordValue > subValue;
+              if (subKey === '$lt') return recordValue < subValue;
+              if (subKey === '$ne') return recordValue !== subValue;
+              return record[key] === value;
+            });
           }
 
           return record[key] === value;

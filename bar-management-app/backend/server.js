@@ -29,7 +29,7 @@ app.use((req, res, next) => {
   next();
 });
 
-const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || `${process.env.CORS_ORIGIN || 'http://localhost:5173'},http://127.0.0.1:5173,http://localhost:3000,https://d9ygk9rkc9xij.cloudfront.net`).split(',').map(origin => origin.trim()).filter(Boolean);
+const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || `${process.env.CORS_ORIGIN || 'http://localhost:5173'},http://127.0.0.1:5173,http://localhost:3000,https://d9ygk9rkc9xij.cloudfront.net,https://www.smart-inventory-malawi.app`).split(',').map(origin => origin.trim()).filter(Boolean);
 
 const corsOptions = {
   origin: (origin, callback) => {

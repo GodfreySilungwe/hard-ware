@@ -1,5 +1,5 @@
 const { DynamoDBClient, DescribeTableCommand, CreateTableCommand } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand, GetCommand, ScanCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 const crypto = require('crypto');
 
 const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'sampla-hardware-table';
@@ -122,16 +122,19 @@ async function ensureTableExists() {
 
 async function listEntities(entityType) {
   await ensureTableExists();
-  // Use strongly consistent reads to ensure newly created users are visible
-  // immediately after creation (helps during register -> login flow)
-  const result = await docClient.send(new ScanCommand({
+  // Query by partition key (pk) to avoid scanning the entire table.
+  // This keeps behavior the same while improving performance for each entity type.
+  const result = await docClient.send(new QueryCommand({
     TableName: TABLE_NAME,
+    KeyConditionExpression: 'pk = :pk',
+    ExpressionAttributeValues: {
+      ':pk': String(entityType).toUpperCase()
+    },
     ConsistentRead: true
   }));
 
   return (result.Items || [])
-    .map(fromDynamoItem)
-    .filter((record) => record && record.entityType === String(entityType).toLowerCase());
+    .map(fromDynamoItem);
 }
 
 async function getEntity(entityType, id) {
