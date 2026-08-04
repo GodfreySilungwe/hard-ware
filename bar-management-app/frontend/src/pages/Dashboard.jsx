@@ -14,7 +14,6 @@ import UnifiedCard from '../components/common/UnifiedCard';
 import PageContainer from './PageContainer';
 import { formatPriceMK } from '../utils/formatPrice';
 import { useAuth } from '../context/AuthContext';
-import { resolveTodayOrderSummary } from '../utils/orderSummary';
 
 const Dashboard = () => {
   const [stats, setStats] = useState({
@@ -36,6 +35,8 @@ const Dashboard = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [todayOrders, setTodayOrders] = useState([]);
   const [hardwareBreakdown, setHardwareBreakdown] = useState([]);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
@@ -53,6 +54,10 @@ const Dashboard = () => {
       const isOwnerRole = role === 'owner';
       const isSalesRole = role === 'sales';
 
+      const query = {};
+      if (startDate) query.startDate = startDate;
+      if (endDate) query.endDate = endDate;
+
       const requests = [
         api.get('/auth/tenant-summary').catch(() => ({ data: {} }))
       ];
@@ -61,7 +66,7 @@ const Dashboard = () => {
         requests.push(api.get('/auth/tenants').catch(() => ({ data: [] })));
       } else {
         requests.push(api.get('/products').catch(() => ({ data: [] })));
-        requests.push(api.get('/orders').catch(() => ({ data: [] })));
+        requests.push(api.get('/orders/today', { params: query }).catch(() => ({ data: {} })));
       }
 
       if (isSalesRole) {
@@ -73,31 +78,17 @@ const Dashboard = () => {
       const summary = results[0]?.status === 'fulfilled' ? results[0].value.data || {} : {};
       const ownerTenants = isOwnerRole && results[1]?.status === 'fulfilled' ? results[1].value.data || [] : [];
       const products = !isOwnerRole && results[1]?.status === 'fulfilled' ? results[1].value.data || [] : [];
-      const ordersPayload = !isOwnerRole && results[2]?.status === 'fulfilled' ? results[2].value.data : [];
+      const todayPayload = !isOwnerRole && results[2]?.status === 'fulfilled' ? results[2].value.data : {};
       const customers = isSalesRole && results[isOwnerRole ? 2 : 3]?.status === 'fulfilled' ? results[isOwnerRole ? 2 : 3].value.data || [] : [];
 
-      const orders = Array.isArray(ordersPayload)
-        ? ordersPayload
-        : Array.isArray(ordersPayload?.orders)
-          ? ordersPayload.orders
-          : [];
-
-      const today = new Date();
-      const resolvedSummary = isOwnerRole
-        ? { orders: [], count: 0, totalSales: 0, totalProfit: 0, totalTax: 0, totalSalesNet: 0, averageOrderValue: 0, reversedOrders: 0 }
-        : resolveTodayOrderSummary({}, orders, today);
-
-      const todaysOrders = Array.isArray(resolvedSummary.orders)
-        ? resolvedSummary.orders
-        : orders.filter((order) => {
-            const orderDate = new Date(order.createdAt || order.created_at || order.date || order.updatedAt || order.updated_at);
-            return !Number.isNaN(orderDate.getTime()) && orderDate.toDateString() === today.toDateString() && order.status !== 'reversed';
-          });
-
-      const todaySales = resolvedSummary.totalSales ?? 0;
-      const todayProfit = resolvedSummary.totalProfit ?? 0;
-      const todaySalesNet = resolvedSummary.totalSalesNet ?? 0;
-      const reversedOrders = resolvedSummary.reversedOrders ?? 0;
+      const todaysOrders = Array.isArray(todayPayload.orders) ? todayPayload.orders : [];
+      const todayOrderCount = typeof todayPayload.count === 'number' ? todayPayload.count : todaysOrders.length;
+      const todaySales = todayPayload.totalSales ?? 0;
+      const todayProfit = todayPayload.totalProfit ?? 0;
+      const todaySalesNet = todayPayload.totalSalesNet ?? 0;
+      const todayTax = todayPayload.totalTax ?? 0;
+      const reversedOrders = todayPayload.reversedOrders ?? 0;
+      const averageOrderValue = todayPayload.averageOrderValue ?? 0;
 
       setStats({
         pendingApprovals: summary.pendingTenants || 0,
@@ -109,13 +100,13 @@ const Dashboard = () => {
         pendingApplications: summary.pendingTenants || 0,
         totalProducts: products.length || 0,
         totalCustomers: customers.length || 0,
-        todayOrders: todaysOrders.length,
+        todayOrders: todayOrderCount,
         todaySales,
         todaySalesNet,
-        todayTax: resolvedSummary.totalTax ?? 0,
+        todayTax,
         todayProfit,
         reversedOrders,
-        averageOrderValue: resolvedSummary.averageOrderValue ?? 0
+        averageOrderValue
       });
       setHardwareBreakdown(ownerTenants);
       setTodayOrders(todaysOrders.slice(0, 5));
@@ -145,7 +136,7 @@ const Dashboard = () => {
   const heroSubtitle = isOwnerRole
     ? 'Approve new Smart Inventory App applications, manage global accounts, and monitor your network from one place.'
     : isHardwareManagerRole
-      ? 'Review today’s sales activity, track daily orders, and keep your inventory operations moving.'
+      ? 'Review sales activity, track daily orders, and keep your inventory operations moving.'
       : isSalesRole
         ? 'Focus on point-of-sale activity, customer service, and daily orders from one view.'
         : 'Review recent activity and stay on top of your work.';
@@ -158,7 +149,7 @@ const Dashboard = () => {
       ]
     : isHardwareManagerRole || isSalesRole
       ? [
-          { title: 'Today orders', value: stats.todayOrders, icon: faClipboardCheck, color: '#e94560' },
+          { title: startDate || endDate ? 'Filtered orders' : 'Today orders', value: stats.todayOrders, icon: faClipboardCheck, color: '#e94560' },
           { title: 'Products', value: stats.totalProducts, icon: faTools, color: '#9b59b6' }
         ]
       : [
@@ -263,9 +254,11 @@ const Dashboard = () => {
       {(isHardwareManagerRole || isSalesRole) && (
         <div className="fade-in" style={styles.ordersPanel}>
           <div style={styles.panelHeader}>
-            <h3 style={styles.panelTitle}>Today’s snapshot</h3>
+            <h3 style={styles.panelTitle}>{startDate || endDate ? 'Backend filtered totals' : 'Today’s backend filtered totals'}</h3>
             <span style={styles.panelHint}>
-              {isSalesRole ? 'Revenue and recent activity at a glance' : 'Revenue, profit, and recent activity at a glance'}
+              {isSalesRole
+                ? 'This view uses backend filtered totals for the selected range, excluding reversed orders from sales metrics.'
+                : 'This view uses backend filtered totals for the selected range, excluding reversed orders from sales and profit metrics.'}
             </span>
           </div>
           <div style={styles.snapshotGrid}>
@@ -354,6 +347,48 @@ const styles = {
     fontSize: '13px',
     color: '#999',
     margin: '0'
+  },
+  dateControls: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    gap: '10px',
+    flexWrap: 'wrap'
+  },
+  dateInputLabel: {
+    display: 'flex',
+    flexDirection: 'column',
+    fontSize: '13px',
+    color: '#555',
+    gap: '4px'
+  },
+  dateInput: {
+    padding: '8px 10px',
+    borderRadius: '8px',
+    border: '1px solid #ddd',
+    backgroundColor: 'white',
+    minWidth: '160px'
+  },
+  applyBtn: {
+    padding: '8px 18px',
+    borderRadius: '999px',
+    border: '1px solid #e94560',
+    backgroundColor: '#e94560',
+    color: 'white',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: '600',
+    transition: 'all 0.3s ease'
+  },
+  clearBtn: {
+    padding: '8px 18px',
+    borderRadius: '999px',
+    border: '1px solid #ccc',
+    backgroundColor: 'white',
+    color: '#333',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: '600',
+    transition: 'all 0.3s ease'
   },
   refreshBtn: {
     padding: '10px 18px',

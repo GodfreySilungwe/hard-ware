@@ -20,39 +20,94 @@ const Orders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [limit] = useState(20);
+  const [hasMore, setHasMore] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [pageTotals, setPageTotals] = useState({ totalSales: 0, totalProfit: 0 });
   const [expandedOrder, setExpandedOrder] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [reverseTarget, setReverseTarget] = useState(null);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const { user } = useAuth();
 
   useEffect(() => {
     loadOrders();
-  }, []);
+  }, [page, filter]);
 
-  const loadOrders = async () => {
+  const loadOrders = async (pageOverride) => {
+    setLoading(true);
     try {
-      const res = await api.get('/orders');
-      setOrders(res.data);
+      const currentPage = pageOverride || page;
+      const params = { page: currentPage, limit };
+      let endpoint = '/orders';
+
+      if (filter === 'today') {
+        const today = new Date().toISOString().slice(0, 10);
+        params.startDate = today;
+        params.endDate = today;
+      }
+
+      if (startDate) {
+        params.startDate = startDate;
+      }
+      if (endDate) {
+        params.endDate = endDate;
+      }
+
+      const res = await api.get(endpoint, { params });
+      const payload = res.data;
+      const data = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload.orders)
+          ? payload.orders
+          : [];
+
+      const normalizedOrders = data.map((order) => ({
+        ...order,
+        paymentMethodLabel: order.paymentMethodLabel || getPaymentMethodLabel(order.paymentMethod)
+      }));
+
+      const count = typeof payload.totalCount === 'number' ? payload.totalCount : normalizedOrders.length;
+      const metricOrders = typeof payload.count === 'number' ? payload.count : normalizedOrders.filter((order) => order.status !== 'reversed').length;
+      const pages = typeof payload.totalPages === 'number' ? payload.totalPages : Math.max(1, Math.ceil(count / limit));
+      const totalSales = typeof payload.totalSales === 'number' ? payload.totalSales : normalizedOrders.filter((order) => order.status !== 'reversed').reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+      const totalProfit = typeof payload.totalProfit === 'number' ? payload.totalProfit : normalizedOrders.filter((order) => order.status !== 'reversed').reduce((sum, order) => sum + Number(order.profit || 0), 0);
+
+      setOrders(normalizedOrders);
+      setPageTotals({ totalSales, totalProfit, metricOrders });
+      setTotalCount(count);
+      setTotalPages(pages);
+      setHasMore(currentPage < pages);
     } catch (err) {
       console.error('Error loading orders:', err);
+      setOrders([]);
+      setPageTotals({ totalSales: 0, totalProfit: 0, metricOrders: 0 });
+      setTotalCount(0);
+      setTotalPages(1);
+      setHasMore(false);
     } finally {
       setLoading(false);
     }
   };
 
-  const getFilteredOrders = () => {
-    const baseOrders = orders.filter((order) => order.status !== 'reversed');
-
-    if (filter === 'today') {
-      const today = new Date().toDateString();
-      return baseOrders.filter((order) => new Date(order.createdAt).toDateString() === today);
-    }
-    return baseOrders;
-  };
-
   const toggleExpand = (orderId) => {
     setExpandedOrder(expandedOrder === orderId ? null : orderId);
+  };
+
+  const handleDateApply = () => {
+    setPage(1);
+    loadOrders();
+  };
+
+  const handleClearDates = () => {
+    setStartDate('');
+    setEndDate('');
+    setPage(1);
+    loadOrders();
   };
 
   const handleReverseOrder = async () => {
@@ -94,10 +149,23 @@ const Orders = () => {
     return (user?.role === 'hardware-manager' || user?.role === 'owner') && order?.status !== 'reversed';
   };
 
+  const handlePrevPage = () => {
+    if (page > 1) {
+      setPage(page - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (hasMore) {
+      setPage(page + 1);
+    }
+  };
+
   const isSalesRole = user?.role === 'sales';
-  const filteredOrders = getFilteredOrders();
-  const totalSales = filteredOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
-  const totalProfit = filteredOrders.reduce((sum, order) => sum + Number(order.profit || 0), 0);
+  const filteredOrders = orders;
+  const totalSales = pageTotals.totalSales;
+  const totalProfit = pageTotals.totalProfit;
+  const metricOrders = pageTotals.metricOrders ?? totalCount;
 
   if (loading) {
     return (
@@ -121,10 +189,32 @@ const Orders = () => {
       />
       {message && <div style={styles.success}>{message}</div>}
       {error && <div style={styles.error}>{error}</div>}
-      {message && <div style={styles.success}>{message}</div>}
-      {error && <div style={styles.error}>{error}</div>}
       <div style={styles.header}>
-        <p style={styles.subtitle}>View all orders and transactions</p>
+        <div>
+          <p style={styles.subtitle}>View all orders and transactions</p>
+          <div style={styles.dateFilterRow}>
+            <label style={styles.dateInputLabel}>
+              From
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                style={styles.dateInput}
+              />
+            </label>
+            <label style={styles.dateInputLabel}>
+              To
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                style={styles.dateInput}
+              />
+            </label>
+            <button style={styles.applyBtn} onClick={handleDateApply}>Apply</button>
+            <button style={styles.clearBtn} onClick={handleClearDates}>Clear</button>
+          </div>
+        </div>
         <div style={styles.filters}>
           {['all', 'today'].map((filterOption, index) => (
             <button
@@ -134,7 +224,12 @@ const Orders = () => {
                 ...styles.filterBtn,
                 ...(filter === filterOption ? styles.filterBtnActive : {})
               }}
-              onClick={() => setFilter(filterOption)}
+              onClick={() => {
+                setFilter(filterOption);
+                setPage(1);
+                setStartDate('');
+                setEndDate('');
+              }}
               onMouseEnter={(e) => {
                 if (filter !== filterOption) {
                   e.currentTarget.style.backgroundColor = '#f0f0f0';
@@ -155,9 +250,9 @@ const Orders = () => {
       {/* Summary Cards with Animations */}
       <div style={styles.summary}>
         {[
-          { label: 'Total Orders', value: filteredOrders.length, icon: '📋', color: '#3498db', delay: 1 },
-          { label: 'Total Sales', value: formatPriceMK(totalSales), icon: '💰', color: '#2ecc71', delay: 2 },
-          ...(!isSalesRole ? [{ label: 'Total Profit', value: formatPriceMK(totalProfit), icon: '📈', color: '#e94560', delay: 3 }] : [])
+          { label: 'Total orders', value: metricOrders, icon: '📋', color: '#3498db', delay: 1 },
+          { label: 'Total sales', value: formatPriceMK(totalSales), icon: '💰', color: '#2ecc71', delay: 2 },
+          ...(!isSalesRole ? [{ label: 'Total profit', value: formatPriceMK(totalProfit), icon: '📈', color: '#e94560', delay: 3 }] : [])
         ].map((item, index) => (
           <div 
             key={index}
@@ -183,6 +278,17 @@ const Orders = () => {
             </div>
           </div>
         ))}
+      </div>
+
+      <div style={styles.pagination}>
+        <button style={styles.paginationBtn} onClick={handlePrevPage} disabled={page === 1}>
+          ← Previous
+        </button>
+        <span style={styles.pageInfo}>Page {page} of {totalPages}</span>
+        <span style={styles.pageInfo}>(Total orders: {totalCount})</span>
+        <button style={styles.paginationBtn} onClick={handleNextPage} disabled={!hasMore}>
+          Next →
+        </button>
       </div>
 
       {/* Orders List */}
@@ -359,6 +465,72 @@ const styles = {
     backgroundColor: '#e94560',
     color: 'white',
     borderColor: '#e94560'
+  },
+  dateFilterRow: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    gap: '10px',
+    flexWrap: 'wrap',
+    marginTop: '10px'
+  },
+  dateInputLabel: {
+    display: 'flex',
+    flexDirection: 'column',
+    fontSize: '13px',
+    color: '#555',
+    gap: '4px'
+  },
+  dateInput: {
+    padding: '8px 10px',
+    borderRadius: '8px',
+    border: '1px solid #ddd',
+    backgroundColor: 'white',
+    minWidth: '160px'
+  },
+  applyBtn: {
+    padding: '8px 18px',
+    borderRadius: '999px',
+    border: '1px solid #e94560',
+    backgroundColor: '#e94560',
+    color: 'white',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: '600',
+    transition: 'all 0.3s ease'
+  },
+  clearBtn: {
+    padding: '8px 18px',
+    borderRadius: '999px',
+    border: '1px solid #ccc',
+    backgroundColor: 'white',
+    color: '#333',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: '600',
+    transition: 'all 0.3s ease'
+  },
+  pagination: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '12px',
+    margin: '18px 0'
+  },
+  paginationBtn: {
+    padding: '8px 14px',
+    borderRadius: '999px',
+    border: '1px solid #ddd',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: '600',
+    minWidth: '100px',
+    transition: 'all 0.2s ease'
+  },
+  pageInfo: {
+    fontSize: '14px',
+    color: '#333',
+    fontWeight: '600'
   },
   summary: {
     display: 'grid',

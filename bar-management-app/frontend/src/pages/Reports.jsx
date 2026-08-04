@@ -50,22 +50,20 @@ const getPaymentMethodLabel = (method) => {
   return String(method || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim() || 'Unknown';
 };
 
-const getProductNameFromItem = (item, productById = {}) => {
+const getProductNameFromItem = (item) => {
   const rawName = item?.product?.name || item?.name || '';
   if (rawName && rawName !== 'Product' && rawName !== 'Unknown') {
     return rawName;
   }
-
-  if (typeof item?.product === 'string') {
-    return productById[item.product]?.name || 'Unknown';
-  }
-
-  const productId = item?.product?._id || item?.product?.id;
-  if (productId) {
-    return productById[productId]?.name || 'Unknown';
-  }
-
   return rawName || 'Unknown';
+};
+
+const formatLocalDateString = (date) => {
+  if (!(date instanceof Date)) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 import {
@@ -163,25 +161,10 @@ const Reports = () => {
     };
   };
 
-  const filterOrdersByCriteria = (ordersList, rangeStart, rangeEnd, includeReversed = true, productById = {}) => {
+  const filterOrdersByCriteria = (ordersList, includeReversed = true) => {
     return ordersList.filter(order => {
-      const orderDate = getOrderDate(order);
-      if (!orderDate) return false;
-      if (orderDate < rangeStart || orderDate > rangeEnd) return false;
-      if (paymentFilter !== 'all' && (order.paymentMethod || 'cash') !== paymentFilter) return false;
+      if (!order) return false;
       if (!includeReversed && order.status === 'reversed') return false;
-      if (statusFilter !== 'all' && (order.status || 'completed') !== statusFilter) return false;
-      if (customerFilter !== 'all') {
-        const customerName = order.customer?.name || order.customerName || '';
-        if (!customerName || customerName !== customerFilter) return false;
-      }
-      if (productFilter !== 'all') {
-        const hasProduct = (order.items || []).some((item) => {
-          const productName = getProductNameFromItem(item, productById);
-          return productName === productFilter;
-        });
-        if (!hasProduct) return false;
-      }
       return true;
     });
   };
@@ -191,34 +174,72 @@ const Reports = () => {
       setLoading(true);
       setError(null);
 
-      const ordersRes = await api.get('/orders');
-      const orders = ordersRes.data;
-      const productsRes = await api.get('/products');
-
-      const productById = {};
-      (productsRes.data || []).forEach((product) => {
-        if (product._id) {
-          productById[product._id] = product;
-        }
-      });
-
       const { currentStart, currentEnd } = getDateRangeBounds();
       const rangeLengthMs = currentEnd.getTime() - currentStart.getTime();
       const previousEnd = new Date(currentStart.getTime() - 1);
       const previousStart = new Date(previousEnd.getTime() - rangeLengthMs);
 
-      const filteredOrders = filterOrdersByCriteria(orders, currentStart, currentEnd, false, productById);
-      const previousFilteredOrders = filterOrdersByCriteria(orders, previousStart, previousEnd, false, productById);
-      const rangeOrders = filterOrdersByCriteria(orders, currentStart, currentEnd, true, productById);
+      const buildParams = (start, end) => {
+        const params = {
+          startDate: formatLocalDateString(start),
+          endDate: formatLocalDateString(end)
+        };
+        if (paymentFilter !== 'all') params.paymentMethod = paymentFilter;
+        if (statusFilter !== 'all') params.status = statusFilter;
+        if (customerFilter !== 'all') params.customerName = customerFilter;
+        if (productFilter !== 'all') params.productName = productFilter;
+        return params;
+      };
 
-      const totalSales = filteredOrders.reduce((sum, order) => sum + getOrderTotalAmount(order), 0);
-      const totalTax = filteredOrders.reduce((sum, order) => sum + toNumber(order.taxAmount), 0);
-      const totalSalesNet = filteredOrders.reduce((sum, order) => sum + getOrderNetAmount(order), 0);
-      const totalProfit = filteredOrders.reduce((sum, order) => sum + toNumber(order.profit), 0);
-      const totalOrders = filteredOrders.length;
-      const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
-      const totalItems = filteredOrders.reduce((sum, order) => sum + (order.items || []).reduce((s, item) => s + toNumber(item.quantity), 0), 0);
-      const averageItemsPerOrder = totalOrders > 0 ? totalItems / totalOrders : 0;
+      const currentParams = buildParams(currentStart, currentEnd);
+      const previousParams = buildParams(previousStart, previousEnd);
+
+      const [ordersRes, previousRes, productsRes] = await Promise.all([
+        api.get('/orders', { params: currentParams }),
+        api.get('/orders', { params: previousParams }),
+        api.get('/products')
+      ]);
+
+      const orders = Array.isArray(ordersRes.data)
+        ? ordersRes.data
+        : Array.isArray(ordersRes.data.orders)
+          ? ordersRes.data.orders
+          : [];
+
+      const previousOrders = Array.isArray(previousRes.data)
+        ? previousRes.data
+        : Array.isArray(previousRes.data.orders)
+          ? previousRes.data.orders
+          : [];
+
+      const filteredOrders = filterOrdersByCriteria(orders, false);
+      const previousFilteredOrders = filterOrdersByCriteria(previousOrders, false);
+      const rangeOrders = filterOrdersByCriteria(orders, true);
+
+      const totalSales = typeof ordersRes.data.totalSales === 'number'
+        ? ordersRes.data.totalSales
+        : filteredOrders.reduce((sum, order) => sum + getOrderTotalAmount(order), 0);
+      const totalTax = typeof ordersRes.data.totalTax === 'number'
+        ? ordersRes.data.totalTax
+        : filteredOrders.reduce((sum, order) => sum + toNumber(order.taxAmount), 0);
+      const totalSalesNet = typeof ordersRes.data.totalSalesNet === 'number'
+        ? ordersRes.data.totalSalesNet
+        : filteredOrders.reduce((sum, order) => sum + getOrderNetAmount(order), 0);
+      const totalProfit = typeof ordersRes.data.totalProfit === 'number'
+        ? ordersRes.data.totalProfit
+        : filteredOrders.reduce((sum, order) => sum + toNumber(order.profit), 0);
+      const totalOrders = typeof ordersRes.data.count === 'number'
+        ? ordersRes.data.count
+        : filteredOrders.length;
+      const averageOrderValue = typeof ordersRes.data.averageOrderValue === 'number'
+        ? ordersRes.data.averageOrderValue
+        : (totalOrders > 0 ? totalSales / totalOrders : 0);
+      const totalItems = typeof ordersRes.data.totalItems === 'number'
+        ? ordersRes.data.totalItems
+        : filteredOrders.reduce((sum, order) => sum + (order.items || []).reduce((s, item) => s + toNumber(item.quantity), 0), 0);
+      const averageItemsPerOrder = typeof ordersRes.data.averageItemsPerOrder === 'number'
+        ? ordersRes.data.averageItemsPerOrder
+        : (totalOrders > 0 ? totalItems / totalOrders : 0);
 
       const customersMap = {};
       filteredOrders.forEach(order => {
@@ -243,8 +264,8 @@ const Reports = () => {
       const totalReversedOrders = rangeOrders.filter(order => order.status === 'reversed').length;
       const reversedOrderRate = rangeOrders.length > 0 ? (totalReversedOrders / rangeOrders.length) * 100 : 0;
 
-      const totalSalesPrevious = previousFilteredOrders.reduce((sum, order) => sum + getOrderTotalAmount(order), 0);
-      const previousOrderCount = previousFilteredOrders.length;
+      const totalSalesPrevious = typeof previousRes.data.totalSales === 'number' ? previousRes.data.totalSales : previousFilteredOrders.reduce((sum, order) => sum + getOrderTotalAmount(order), 0);
+      const previousOrderCount = typeof previousRes.data.count === 'number' ? previousRes.data.count : previousFilteredOrders.length;
       const salesGrowthPercentage = totalSalesPrevious > 0 ? ((totalSales - totalSalesPrevious) / totalSalesPrevious) * 100 : totalSales > 0 ? 100 : 0;
       const orderGrowthPercentage = previousOrderCount > 0 ? ((totalOrders - previousOrderCount) / previousOrderCount) * 100 : totalOrders > 0 ? 100 : 0;
 
@@ -270,7 +291,7 @@ const Reports = () => {
       const productSalesMap = {};
       filteredOrders.forEach(order => {
         (order.items || []).forEach(item => {
-          const productName = getProductNameFromItem(item, productById);
+          const productName = getProductNameFromItem(item);
           if (!productSalesMap[productName]) {
             productSalesMap[productName] = { quantity: 0, revenue: 0 };
           }
@@ -557,6 +578,10 @@ const Reports = () => {
             </select>
           </label>
         </div>
+      </div>
+
+      <div style={styles.reportNote} className="reports-reportNote">
+        Backend filtered totals are shown here for the selected date range and filters. Reversed orders are excluded from sales, tax, and profit totals.
       </div>
 
       {/* Export Buttons */}
@@ -883,6 +908,16 @@ const styles = {
     borderRadius: '12px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
   },
+  reportNote: {
+    margin: '16px 0',
+    padding: '14px 18px',
+    borderRadius: '14px',
+    backgroundColor: '#f8fafc',
+    border: '1px solid #d1d5db',
+    color: '#334155',
+    fontSize: '14px',
+    lineHeight: '1.6'
+  },
   portfolioGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
@@ -1104,9 +1139,14 @@ styleSheet.textContent = `
   .delay-5 { animation-delay: 0.25s; }
   .delay-6 { animation-delay: 0.3s; }
   @media (max-width: 900px) {
+    .reports-page {
+      padding: 0 10px;
+    }
+
     .reports-filterContainer {
       flex-direction: column;
       align-items: stretch;
+      gap: 12px;
     }
 
     .reports-filterGroup {
@@ -1118,8 +1158,13 @@ styleSheet.textContent = `
       gap: 8px;
     }
 
+    .reports-filterButtons button,
+    .reports-refreshBtn {
+      width: 100%;
+    }
+
     .reports-exportSection {
-      grid-template-columns: repeat(1, minmax(0, 1fr));
+      grid-template-columns: 1fr;
     }
 
     .reports-summaryGrid,
@@ -1131,6 +1176,11 @@ styleSheet.textContent = `
     .reports-summaryCard {
       flex-direction: column;
       align-items: flex-start;
+      width: 100%;
+    }
+
+    .reports-chartWrapper {
+      width: 100%;
     }
 
     .reports-tableWrapper {
@@ -1143,13 +1193,12 @@ styleSheet.textContent = `
   }
 
   @media (max-width: 640px) {
-    .reports-filterButtons button,
-    .reports-refreshBtn {
-      width: 100%;
-    }
-
     .reports-filterPanel {
       padding: 12px;
+    }
+
+    .reports-filterGrid {
+      grid-template-columns: 1fr;
     }
 
     .reports-exportSection {
@@ -1167,6 +1216,7 @@ styleSheet.textContent = `
 
     .reports-tableWrapper table {
       font-size: 12px;
+      min-width: auto;
     }
 
     .reports-tableWrapper th,

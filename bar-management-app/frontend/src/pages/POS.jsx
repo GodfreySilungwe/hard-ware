@@ -574,9 +574,10 @@ const POS = () => {
 
       {/* Receipt Modal */}
       {receiptOrder && (
-        <ReceiptModal 
-          order={receiptOrder} 
-          onClose={() => setReceiptOrder(null)} 
+        <ReceiptModal
+          order={receiptOrder}
+          onClose={() => setReceiptOrder(null)}
+          businessSettings={businessSettings}
         />
       )}
     </PageContainer>

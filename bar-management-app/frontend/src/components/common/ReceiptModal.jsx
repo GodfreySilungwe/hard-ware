@@ -1,5 +1,16 @@
 import { formatPriceMK } from '../../utils/formatPrice';
 
+const getBusinessSettings = () => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const saved = localStorage.getItem('businessSettings');
+    return saved ? JSON.parse(saved) : {};
+  } catch (err) {
+    console.error('Failed to parse business settings for receipt:', err);
+    return {};
+  }
+};
+
 const getItemName = (item) => {
   if (!item) return 'Unknown';
 
@@ -24,8 +35,14 @@ const getItemName = (item) => {
   return 'Unknown';
 };
 
-const ReceiptModal = ({ order, onClose }) => {
+const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
   if (!order) return null;
+
+  const settings = businessSettings.name ? businessSettings : getBusinessSettings();
+  const businessName = settings.name || 'Smart Inventory App';
+  const businessAddress = settings.address || '';
+  const businessPhone = settings.phone || '';
+  const businessEmail = settings.email || '';
 
   const handlePrint = () => {
     window.print();
@@ -39,7 +56,10 @@ const ReceiptModal = ({ order, onClose }) => {
         <div id="receipt" style={styles.receipt}>
           {/* Header */}
           <div style={styles.header}>
-            <h1 style={styles.barName}>Smart Inventory App</h1>
+            <h1 style={styles.barName}>{businessName}</h1>
+            {businessAddress && <p style={styles.address}>{businessAddress}</p>}
+            {businessPhone && <p style={styles.phone}>{businessPhone}</p>}
+            {businessEmail && <p style={styles.phone}>{businessEmail}</p>}
             <div style={styles.divider} />
           </div>
 
