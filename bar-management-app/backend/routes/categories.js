@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const Category = require('../models/Category');
+const Product = require('../models/Product');
 const { protect } = require('../middleware/auth');
+const { canDeleteCategory } = require('../lib/deletionRules');
 
 // Get all categories
 router.get('/', protect, async (req, res) => {
@@ -66,10 +68,18 @@ router.put('/:id', protect, async (req, res) => {
 // Delete category
 router.delete('/:id', protect, async (req, res) => {
   try {
-    const category = await Category.findByIdAndDelete(req.params.id, req);
+    const category = await Category.findById(req.params.id, req);
     if (!category) {
       return res.status(404).json({ message: 'Category not found' });
     }
+
+    const attachedProducts = await Product.find({ category: category._id || category.id }, req);
+    const { allowed, reason } = canDeleteCategory({ attachedProducts });
+    if (!allowed) {
+      return res.status(400).json({ message: reason });
+    }
+
+    await Category.findByIdAndDelete(req.params.id, req);
     res.json({ message: 'Category deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Product = require('../models/Product');
 const { protect } = require('../middleware/auth');
+const { canDeleteProduct } = require('../lib/deletionRules');
 
 // Get all products
 router.get('/', protect, async (req, res) => {
@@ -95,10 +96,17 @@ router.put('/:id', protect, async (req, res) => {
 // Delete product
 router.delete('/:id', protect, async (req, res) => {
   try {
-    const product = await Product.findByIdAndDelete(req.params.id, req);
+    const product = await Product.findById(req.params.id, req);
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
+
+    const { allowed, reason } = canDeleteProduct(product);
+    if (!allowed) {
+      return res.status(400).json({ message: reason });
+    }
+
+    await Product.findByIdAndDelete(req.params.id, req);
     res.json({ message: 'Product deleted successfully' });
   } catch (error) {
     console.error('Error deleting product:', error);
