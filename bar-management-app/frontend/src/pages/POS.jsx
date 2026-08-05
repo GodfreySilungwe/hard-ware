@@ -7,7 +7,7 @@ import ReceiptModal from '../components/common/ReceiptModal';
 import { formatPriceMK } from '../utils/formatPrice';
 
 const POS = () => {
-  const [products, setProducts] = useState([]);
+  const [loadedProducts, setLoadedProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [cart, setCart] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -16,6 +16,7 @@ const POS = () => {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingProducts, setLoadingProducts] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [receiptOrder, setReceiptOrder] = useState(null);
@@ -23,6 +24,12 @@ const POS = () => {
   const [clearCartOpen, setClearCartOpen] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [highlightedProductId, setHighlightedProductId] = useState(null);
+  const [productOffset, setProductOffset] = useState(0);
+  const [visibleProductCount, setVisibleProductCount] = useState(10);
+  const [hasMoreProducts, setHasMoreProducts] = useState(true);
+  const [backendSearchResults, setBackendSearchResults] = useState([]);
+  const [backendSearchLoading, setBackendSearchLoading] = useState(false);
+  const productGridRef = useRef(null);
   const feedbackTimerRef = useRef(null);
   const audioContextRef = useRef(null);
 
@@ -36,9 +43,7 @@ const POS = () => {
         console.error('Failed to parse business settings', err);
       }
     }
-  }, []);
 
-  useEffect(() => {
     return () => {
       if (feedbackTimerRef.current) {
         clearTimeout(feedbackTimerRef.current);
@@ -46,19 +51,78 @@ const POS = () => {
     };
   }, []);
 
+  const loadProducts = async (offset = 0, category = selectedCategory) => {
+    if (loadingProducts) return;
+    setLoadingProducts(true);
+    try {
+      const params = new URLSearchParams();
+      params.append('limit', '20');
+      params.append('offset', String(offset));
+      if (category && category !== 'all') {
+        params.append('category', category);
+      }
+      const response = await api.get(`/products?${params.toString()}`);
+      const nextProducts = Array.isArray(response.data)
+        ? response.data
+        : Array.isArray(response.data?.products)
+          ? response.data.products
+          : [];
+      setLoadedProducts((prev) => (offset === 0 ? nextProducts : [...(Array.isArray(prev) ? prev : []), ...nextProducts]));
+      setProductOffset(offset + nextProducts.length);
+      setHasMoreProducts(nextProducts.length === 20);
+      if (offset === 0) {
+        setVisibleProductCount(10);
+      }
+    } catch (err) {
+      console.error('Error loading products:', err);
+      setError('Failed to load products');
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
+
+  const resetProducts = async (category = selectedCategory) => {
+    setLoadedProducts([]);
+    setProductOffset(0);
+    setVisibleProductCount(10);
+    setHasMoreProducts(true);
+    setBackendSearchResults([]);
+    setSearchTerm('');
+    await loadProducts(0, category);
+  };
+
   const loadData = async () => {
     try {
-      const [productsRes, customersRes, categoriesRes] = await Promise.all([
-        api.get('/products'),
+      const [customersRes, categoriesRes] = await Promise.all([
         api.get('/customers'),
         api.get('/categories')
       ]);
-      setProducts(productsRes.data);
-      setCustomers(customersRes.data);
+      const customerData = customersRes.data;
+      setCustomers(Array.isArray(customerData) ? customerData : Array.isArray(customerData?.customers) ? customerData.customers : []);
       setCategories(categoriesRes.data);
+      await loadProducts(0, selectedCategory);
     } catch (err) {
       console.error('Error loading data:', err);
       setError('Failed to load data');
+    }
+  };
+
+  const handleCategorySelect = async (categoryId) => {
+    setSelectedCategory(categoryId);
+    await resetProducts(categoryId);
+  };
+
+  const handleProductScroll = () => {
+    if (!productGridRef.current || searchTerm.trim()) return;
+    const { scrollTop, scrollHeight, clientHeight } = productGridRef.current;
+    const nearBottom = scrollHeight - scrollTop - clientHeight < 120;
+    if (!nearBottom) return;
+
+    if (visibleProductCount < loadedProducts.length) {
+      setVisibleProductCount((prev) => Math.min(prev + 10, loadedProducts.length));
+    }
+    if (loadedProducts.length - visibleProductCount <= 10 && hasMoreProducts && !loadingProducts) {
+      loadProducts(productOffset, selectedCategory);
     }
   };
 
@@ -199,19 +263,76 @@ const POS = () => {
     }
   };
 
-  const filteredProducts = products.filter((product) => {
+  const localSearchMatches = loadedProducts.filter((product) => {
     const matchesCategory = selectedCategory === 'all'
       ? true
       : product.category?._id === selectedCategory || product.category === selectedCategory;
 
     const query = searchTerm.trim().toLowerCase();
-    const matchesSearch = !query ||
+    if (!matchesCategory || !query) {
+      return false;
+    }
+
+    return (
       product.name?.toLowerCase().includes(query) ||
       product.unit?.toLowerCase().includes(query) ||
-      product.category?.name?.toLowerCase().includes(query);
-
-    return matchesCategory && matchesSearch;
+      product.category?.name?.toLowerCase().includes(query)
+    );
   });
+
+  const hasLocalSearchMatches = localSearchMatches.length > 0;
+
+  useEffect(() => {
+    let cancel = false;
+    const query = searchTerm.trim();
+
+    if (!query) {
+      setBackendSearchResults([]);
+      setBackendSearchLoading(false);
+      return () => { cancel = true; };
+    }
+
+    if (hasLocalSearchMatches) {
+      setBackendSearchResults([]);
+      setBackendSearchLoading(false);
+      return () => { cancel = true; };
+    }
+
+    const timeout = setTimeout(async () => {
+      setBackendSearchLoading(true);
+      try {
+        const params = new URLSearchParams();
+        params.append('search', query);
+        params.append('limit', '3');
+        if (selectedCategory && selectedCategory !== 'all') {
+          params.append('category', selectedCategory);
+        }
+        const response = await api.get(`/products?${params.toString()}`);
+        if (!cancel) {
+          setBackendSearchResults(Array.isArray(response.data) ? response.data : []);
+        }
+      } catch (err) {
+        console.error('Error searching products:', err);
+        if (!cancel) {
+          setBackendSearchResults([]);
+        }
+      } finally {
+        if (!cancel) {
+          setBackendSearchLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancel = true;
+      clearTimeout(timeout);
+    };
+  }, [searchTerm, selectedCategory, hasLocalSearchMatches]);
+
+  const displayedProducts = loadedProducts.slice(0, visibleProductCount);
+  const filteredProducts = searchTerm.trim()
+    ? (localSearchMatches.length > 0 ? localSearchMatches : backendSearchResults)
+    : displayedProducts;
 
   return (
     <PageContainer title="🛒 Point of Sale">
@@ -227,6 +348,19 @@ const POS = () => {
       {feedbackMessage && <div style={styles.feedbackToast}>{feedbackMessage}</div>}
 
       <style>{`
+        @media (max-width: 1024px) {
+          .pos-mobile-category-filter {
+            gap: 6px !important;
+          }
+          .pos-mobile-category-filter button {
+            display: none !important;
+          }
+          .pos-mobile-category-btn {
+            padding: 7px 12px !important;
+            font-size: 12px !important;
+          }
+        }
+
         @media (max-width: 768px) {
           .pos-mobile-stack {
             grid-template-columns: 1fr !important;
@@ -236,13 +370,6 @@ const POS = () => {
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
             max-height: none !important;
             padding: 2px 0 !important;
-          }
-          .pos-mobile-category-filter {
-            gap: 6px !important;
-          }
-          .pos-mobile-category-btn {
-            padding: 7px 12px !important;
-            font-size: 12px !important;
           }
           .pos-mobile-cart-item {
             flex-direction: column !important;
@@ -297,7 +424,7 @@ const POS = () => {
                   ...styles.categoryBtn,
                   ...(selectedCategory === 'all' ? styles.categoryBtnActive : {})
                 }}
-                onClick={() => setSelectedCategory('all')}
+                onClick={() => handleCategorySelect('all')}
               >
                 All
               </button>
@@ -309,48 +436,59 @@ const POS = () => {
                     ...styles.categoryBtn,
                     ...(selectedCategory === cat._id ? styles.categoryBtnActive : {})
                   }}
-                  onClick={() => setSelectedCategory(cat._id)}
+                  onClick={() => handleCategorySelect(cat._id)}
                 >
                   {cat.name}
                 </button>
               ))}
             </div>
 
-            <div style={styles.productGrid} className="pos-mobile-product-grid">
-              {filteredProducts.map((product, index) => (
-                <button
-                  key={product._id}
-                  className={`fade-in delay-${(index % 6) + 1} pos-mobile-product-btn`}
-                  style={{
-                    ...styles.productBtn,
-                    ...(product.currentStock <= 0 ? styles.productOutOfStock : {}),
-                    ...(highlightedProductId === product._id ? styles.productBtnActive : {})
-                  }}
-                  onClick={() => addToCart(product)}
-                  disabled={product.currentStock <= 0}
-                  onMouseEnter={(e) => {
-                    if (product.currentStock > 0) {
-                      e.currentTarget.style.transform = 'translateY(-6px)';
-                      e.currentTarget.style.boxShadow = '0 8px 30px rgba(0,0,0,0.12)';
-                      e.currentTarget.style.borderColor = '#e94560';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
-                    e.currentTarget.style.borderColor = '#e0e0e0';
-                  }}
-                >
-                  <div style={styles.productName}>{product.name}</div>
-                  <div style={styles.productPrice}>{formatPriceMK(product.sellingPrice)}</div>
-                  <div style={styles.productUnit}>{product.unit || 'piece'}</div>
-                  <div style={styles.productStock}>
-                    {product.currentStock > 0 ? `📦 ${product.currentStock}` : '❌ Out of Stock'}
-                  </div>
-                </button>
-              ))}
-              {filteredProducts.length === 0 && (
+            <div
+              style={styles.productGrid}
+              className="pos-mobile-product-grid"
+              ref={productGridRef}
+              onScroll={handleProductScroll}
+            >
+              {loadingProducts && loadedProducts.length === 0 ? (
+                <div style={styles.emptyState}>Loading products...</div>
+              ) : filteredProducts.length === 0 ? (
                 <div style={styles.emptyState}>No Smart Inventory App products found</div>
+              ) : (
+                filteredProducts.map((product, index) => (
+                  <button
+                    key={product._id}
+                    className={`fade-in delay-${(index % 6) + 1} pos-mobile-product-btn`}
+                    style={{
+                      ...styles.productBtn,
+                      ...(product.currentStock <= 0 ? styles.productOutOfStock : {}),
+                      ...(highlightedProductId === product._id ? styles.productBtnActive : {})
+                    }}
+                    onClick={() => addToCart(product)}
+                    disabled={product.currentStock <= 0}
+                    onMouseEnter={(e) => {
+                      if (product.currentStock > 0) {
+                        e.currentTarget.style.transform = 'translateY(-6px)';
+                        e.currentTarget.style.boxShadow = '0 8px 30px rgba(0,0,0,0.12)';
+                        e.currentTarget.style.borderColor = '#e94560';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
+                      e.currentTarget.style.borderColor = '#e0e0e0';
+                    }}
+                  >
+                    <div style={styles.productName}>{product.name}</div>
+                    <div style={styles.productPrice}>{formatPriceMK(product.sellingPrice)}</div>
+                    <div style={styles.productUnit}>{product.unit || 'piece'}</div>
+                    <div style={styles.productStock}>
+                      {product.currentStock > 0 ? `📦 ${product.currentStock}` : '❌ Out of Stock'}
+                    </div>
+                  </button>
+                ))
+              )}
+              {loadingProducts && loadedProducts.length > 0 && (
+                <div style={styles.loadingMore}>Loading more products…</div>
               )}
             </div>
           </UnifiedCard>
@@ -692,6 +830,12 @@ productUnit: {
     textAlign: 'center',
     color: '#888',
     padding: '40px 0',
+    gridColumn: '1 / -1'
+  },
+  loadingMore: {
+    textAlign: 'center',
+    color: '#666',
+    padding: '12px 0',
     gridColumn: '1 / -1'
   },
   customerSection: {

@@ -8,6 +8,8 @@ import { formatPriceMK } from '../utils/formatPrice';
 
 const Customers = () => {
   const [customers, setCustomers] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
@@ -19,13 +21,17 @@ const Customers = () => {
   });
 
   useEffect(() => {
-    loadCustomers();
+    loadCustomers(1);
   }, []);
 
-  const loadCustomers = async () => {
+  const loadCustomers = async (page = 1) => {
+    setLoading(true);
     try {
-      const res = await api.get('/customers');
-      setCustomers(res.data);
+      const res = await api.get(`/customers?page=${page}&limit=10`);
+      const payload = res.data;
+      setCustomers(Array.isArray(payload.customers) ? payload.customers : Array.isArray(payload) ? payload : []);
+      setCurrentPage(payload.page || page);
+      setTotalPages(payload.totalPages || 1);
     } catch (err) {
       console.error('Error loading customers:', err);
     } finally {
@@ -56,11 +62,16 @@ const Customers = () => {
     try {
       await api.delete(`/customers/${deleteTarget._id}`);
       setDeleteTarget(null);
-      await loadCustomers();
+      await loadCustomers(currentPage);
     } catch (err) {
       console.error('Error deleting customer:', err);
       alert('Failed to delete customer');
     }
+  };
+
+  const handlePageChange = async (newPage) => {
+    if (newPage < 1 || newPage > totalPages) return;
+    await loadCustomers(newPage);
   };
 
   if (loading) {
@@ -184,6 +195,25 @@ const Customers = () => {
           </div>
         ))}
       </div>
+      <div style={styles.paginationControls}>
+        <button
+          style={styles.paginationButton}
+          onClick={() => handlePageChange(currentPage - 1)}
+          disabled={currentPage <= 1}
+        >
+          Previous
+        </button>
+        <span style={styles.paginationInfo}>
+          Page {currentPage} of {totalPages}
+        </span>
+        <button
+          style={styles.paginationButton}
+          onClick={() => handlePageChange(currentPage + 1)}
+          disabled={currentPage >= totalPages}
+        >
+          Next
+        </button>
+      </div>
     </PageContainer>
   );
 };
@@ -269,6 +299,24 @@ const styles = {
     justifyContent: 'space-between',
     fontSize: '13px',
     color: '#666'
+  },
+  paginationControls: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '12px',
+    marginTop: '20px'
+  },
+  paginationButton: {
+    padding: '10px 16px',
+    borderRadius: '8px',
+    border: '1px solid #ddd',
+    backgroundColor: 'white',
+    cursor: 'pointer'
+  },
+  paginationInfo: {
+    fontSize: '14px',
+    color: '#555'
   },
   form: {
     display: 'flex',
