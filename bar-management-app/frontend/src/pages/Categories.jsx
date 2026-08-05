@@ -48,13 +48,24 @@ const Categories = () => {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
+
+    const attachedProducts = Array.isArray(deleteTarget.attachedProducts)
+      ? deleteTarget.attachedProducts.length
+      : 0;
+
+    if (attachedProducts > 0) {
+      alert('Cannot delete a category that still has products attached.');
+      setDeleteTarget(null);
+      return;
+    }
+
     try {
       await api.delete(`/categories/${deleteTarget._id}`);
       setDeleteTarget(null);
       await loadCategories();
     } catch (err) {
       console.error('Error deleting category:', err);
-      alert('Failed to delete category');
+      alert(err?.response?.data?.message || 'Failed to delete category');
     }
   };
 
@@ -148,7 +159,20 @@ const Categories = () => {
                 >
                   ✏️
                 </button>
-                <button style={styles.deleteBtn} onClick={() => setDeleteTarget(category)}>
+                <button
+                  style={{
+                    ...styles.deleteBtn,
+                    opacity: Array.isArray(category.attachedProducts) && category.attachedProducts.length > 0 ? 0.45 : 1,
+                    cursor: Array.isArray(category.attachedProducts) && category.attachedProducts.length > 0 ? 'not-allowed' : 'pointer'
+                  }}
+                  onClick={() => {
+                    if (Array.isArray(category.attachedProducts) && category.attachedProducts.length > 0) {
+                      alert('This category still has products attached and cannot be deleted.');
+                      return;
+                    }
+                    setDeleteTarget(category);
+                  }}
+                >
                   🗑️
                 </button>
               </div>

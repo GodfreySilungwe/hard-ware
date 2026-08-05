@@ -35,9 +35,17 @@ const Dashboard = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [todayOrders, setTodayOrders] = useState([]);
   const [hardwareBreakdown, setHardwareBreakdown] = useState([]);
+  const [paymentSummary, setPaymentSummary] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const { user, loading: authLoading } = useAuth();
+
+  const formatLocalDateString = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   useEffect(() => {
     if (!authLoading) {
@@ -55,8 +63,16 @@ const Dashboard = () => {
       const isSalesRole = role === 'sales';
 
       const query = {};
-      if (startDate) query.startDate = startDate;
-      if (endDate) query.endDate = endDate;
+      if (startDate) {
+        const [ys, ms, ds] = startDate.split('-').map((p) => Number(p));
+        const sLocal = new Date(ys, ms - 1, ds, 0, 0, 0, 0);
+        query.startDateUtc = sLocal.toISOString();
+      }
+      if (endDate) {
+        const [ye, me, de] = endDate.split('-').map((p) => Number(p));
+        const eLocal = new Date(ye, me - 1, de, 23, 59, 59, 999);
+        query.endDateUtc = eLocal.toISOString();
+      }
 
       const requests = [
         api.get('/auth/tenant-summary').catch(() => ({ data: {} }))
@@ -66,7 +82,14 @@ const Dashboard = () => {
         requests.push(api.get('/auth/tenants').catch(() => ({ data: [] })));
       } else {
         requests.push(api.get('/products').catch(() => ({ data: [] })));
-        requests.push(api.get('/orders/today', { params: query }).catch(() => ({ data: {} })));
+        if (startDate || endDate) {
+          requests.push(api.get('/orders/today', { params: query }).catch(() => ({ data: {} })));
+        } else {
+          const now = new Date();
+          const startLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+          const endLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+          requests.push(api.get('/orders/today', { params: { startDateUtc: startLocal.toISOString(), endDateUtc: endLocal.toISOString() } }).catch(() => ({ data: {} })));
+        }
       }
 
       if (isSalesRole) {
@@ -82,6 +105,7 @@ const Dashboard = () => {
       const customers = isSalesRole && results[isOwnerRole ? 2 : 3]?.status === 'fulfilled' ? results[isOwnerRole ? 2 : 3].value.data || [] : [];
 
       const todaysOrders = Array.isArray(todayPayload.orders) ? todayPayload.orders : [];
+      const paymentSummaryData = Array.isArray(todayPayload.paymentMethods) ? todayPayload.paymentMethods : [];
       const todayOrderCount = typeof todayPayload.count === 'number' ? todayPayload.count : todaysOrders.length;
       const todaySales = todayPayload.totalSales ?? 0;
       const todayProfit = todayPayload.totalProfit ?? 0;
@@ -109,6 +133,7 @@ const Dashboard = () => {
         averageOrderValue
       });
       setHardwareBreakdown(ownerTenants);
+      setPaymentSummary(paymentSummaryData);
       setTodayOrders(todaysOrders.slice(0, 5));
       setLastUpdated(new Date().toLocaleTimeString());
 
@@ -285,6 +310,39 @@ const Dashboard = () => {
               <div style={styles.snapshotValue}>{stats.reversedOrders || 0}</div>
             </div>
           </div>
+          {paymentSummary.length > 0 && (
+            <div style={{ ...styles.summarySection, marginTop: '20px' }}>
+              <div style={styles.summaryHeaderRow}>
+                <div>
+                  <div style={styles.sectionEyebrow}>Payment mix</div>
+                  <h4 style={styles.sectionTitle}>Sales proceeds by payment method</h4>
+                </div>
+                <div style={styles.summaryBadge}>{paymentSummary.length} methods</div>
+              </div>
+
+              <div style={styles.summaryList}>
+                {paymentSummary.map((method) => (
+                  <div key={method.method} style={styles.summaryItem}>
+                    <div style={styles.summaryItemMeta}>
+                      <span style={{
+                        ...styles.summaryDot,
+                        backgroundColor: method.method?.toLowerCase().includes('cash') ? '#16a085' :
+                          method.method?.toLowerCase().includes('card') ? '#3b82f6' :
+                          method.method?.toLowerCase().includes('airtel') ? '#f59e0b' :
+                          method.method?.toLowerCase().includes('mpamba') ? '#8b5cf6' : '#14b8a6'
+                      }} />
+                      <div>
+                        <div style={styles.summaryTitle}>{method.method}</div>
+                        <div style={styles.summaryMeta}>{method.count} transaction{method.count === 1 ? '' : 's'}</div>
+                      </div>
+                    </div>
+                    <div style={styles.summaryAmount}>{formatPriceMK(method.amount || 0)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {todayOrders.length === 0 ? (
             <div style={styles.emptyState}>No orders recorded today yet.</div>
           ) : (
@@ -578,6 +636,87 @@ const styles = {
     border: '1px solid #e5e7eb',
     borderRadius: '14px',
     backgroundColor: '#ffffff'
+  },
+  summarySection: {
+    background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+    border: '1px solid #e2e8f0',
+    borderRadius: '18px',
+    padding: '18px',
+    boxShadow: '0 8px 20px rgba(15, 23, 42, 0.04)'
+  },
+  summaryHeaderRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '12px',
+    marginBottom: '16px',
+    flexWrap: 'wrap'
+  },
+  sectionEyebrow: {
+    fontSize: '11px',
+    fontWeight: '700',
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    color: '#94a3b8',
+    marginBottom: '4px'
+  },
+  sectionTitle: {
+    fontSize: '16px',
+    fontWeight: '700',
+    color: '#0f172a',
+    margin: 0
+  },
+  summaryBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '6px 12px',
+    borderRadius: '999px',
+    fontSize: '12px',
+    fontWeight: '700',
+    backgroundColor: '#ecfeff',
+    color: '#0f766e',
+    border: '1px solid #a7f3d0'
+  },
+  summaryList: {
+    display: 'grid',
+    gap: '10px'
+  },
+  summaryItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '14px 16px',
+    borderRadius: '12px',
+    backgroundColor: '#ffffff',
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 2px 8px rgba(15, 23, 42, 0.02)'
+  },
+  summaryItemMeta: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px'
+  },
+  summaryDot: {
+    width: '12px',
+    height: '12px',
+    borderRadius: '50%',
+    boxShadow: '0 0 0 4px rgba(255,255,255,0.9)'
+  },
+  summaryTitle: {
+    fontSize: '14px',
+    fontWeight: '700',
+    color: '#0f172a'
+  },
+  summaryMeta: {
+    fontSize: '12px',
+    color: '#64748b',
+    marginTop: '3px'
+  },
+  summaryAmount: {
+    fontSize: '15px',
+    fontWeight: '800',
+    color: '#0f172a'
   },
   summaryTable: {
     width: '100%',

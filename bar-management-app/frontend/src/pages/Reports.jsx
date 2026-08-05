@@ -180,9 +180,12 @@ const Reports = () => {
       const previousStart = new Date(previousEnd.getTime() - rangeLengthMs);
 
       const buildParams = (start, end) => {
+        // send explicit UTC bounds so server groups by client's local day
+        const startLocal = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0, 0);
+        const endLocal = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
         const params = {
-          startDate: formatLocalDateString(start),
-          endDate: formatLocalDateString(end)
+          startDateUtc: startLocal.toISOString(),
+          endDateUtc: endLocal.toISOString()
         };
         if (paymentFilter !== 'all') params.paymentMethod = paymentFilter;
         if (statusFilter !== 'all') params.status = statusFilter;
@@ -195,164 +198,44 @@ const Reports = () => {
       const previousParams = buildParams(previousStart, previousEnd);
 
       const [ordersRes, previousRes, productsRes] = await Promise.all([
-        api.get('/orders', { params: currentParams }),
-        api.get('/orders', { params: previousParams }),
+        api.get('/orders', { params: { ...currentParams, summaryOnly: true } }),
+        api.get('/orders', { params: { ...previousParams, summaryOnly: true } }),
         api.get('/products')
       ]);
 
-      const orders = Array.isArray(ordersRes.data)
-        ? ordersRes.data
-        : Array.isArray(ordersRes.data.orders)
-          ? ordersRes.data.orders
-          : [];
+      const currentSummary = ordersRes.data || {};
+      const previousSummary = previousRes.data || {};
 
-      const previousOrders = Array.isArray(previousRes.data)
-        ? previousRes.data
-        : Array.isArray(previousRes.data.orders)
-          ? previousRes.data.orders
-          : [];
-
-      const filteredOrders = filterOrdersByCriteria(orders, false);
-      const previousFilteredOrders = filterOrdersByCriteria(previousOrders, false);
-      const rangeOrders = filterOrdersByCriteria(orders, true);
-
-      const totalSales = typeof ordersRes.data.totalSales === 'number'
-        ? ordersRes.data.totalSales
-        : filteredOrders.reduce((sum, order) => sum + getOrderTotalAmount(order), 0);
-      const totalTax = typeof ordersRes.data.totalTax === 'number'
-        ? ordersRes.data.totalTax
-        : filteredOrders.reduce((sum, order) => sum + toNumber(order.taxAmount), 0);
-      const totalSalesNet = typeof ordersRes.data.totalSalesNet === 'number'
-        ? ordersRes.data.totalSalesNet
-        : filteredOrders.reduce((sum, order) => sum + getOrderNetAmount(order), 0);
-      const totalProfit = typeof ordersRes.data.totalProfit === 'number'
-        ? ordersRes.data.totalProfit
-        : filteredOrders.reduce((sum, order) => sum + toNumber(order.profit), 0);
-      const totalOrders = typeof ordersRes.data.count === 'number'
-        ? ordersRes.data.count
-        : filteredOrders.length;
-      const averageOrderValue = typeof ordersRes.data.averageOrderValue === 'number'
-        ? ordersRes.data.averageOrderValue
-        : (totalOrders > 0 ? totalSales / totalOrders : 0);
-      const totalItems = typeof ordersRes.data.totalItems === 'number'
-        ? ordersRes.data.totalItems
-        : filteredOrders.reduce((sum, order) => sum + (order.items || []).reduce((s, item) => s + toNumber(item.quantity), 0), 0);
-      const averageItemsPerOrder = typeof ordersRes.data.averageItemsPerOrder === 'number'
-        ? ordersRes.data.averageItemsPerOrder
-        : (totalOrders > 0 ? totalItems / totalOrders : 0);
-
-      const customersMap = {};
-      filteredOrders.forEach(order => {
-        const name = order.customer?.name || order.customerName || 'Walk-in';
-        if (!customersMap[name]) {
-          customersMap[name] = 0;
-        }
-        customersMap[name] += getOrderTotalAmount(order);
-      });
-      const customerCount = Object.keys(customersMap).length;
-      const averageRevenuePerCustomer = customerCount > 0 ? totalSales / customerCount : 0;
-
-      const repeatCustomerCount = Object.keys(customersMap).filter(name => {
-        return filteredOrders.filter(order => (order.customer?.name || order.customerName || 'Walk-in') === name).length > 1;
-      }).length;
-
-      const topCustomers = Object.keys(customersMap)
-        .map(name => ({ name, revenue: customersMap[name] }))
-        .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 10);
-
-      const totalReversedOrders = rangeOrders.filter(order => order.status === 'reversed').length;
-      const reversedOrderRate = rangeOrders.length > 0 ? (totalReversedOrders / rangeOrders.length) * 100 : 0;
-
-      const totalSalesPrevious = typeof previousRes.data.totalSales === 'number' ? previousRes.data.totalSales : previousFilteredOrders.reduce((sum, order) => sum + getOrderTotalAmount(order), 0);
-      const previousOrderCount = typeof previousRes.data.count === 'number' ? previousRes.data.count : previousFilteredOrders.length;
+      const totalSales = typeof currentSummary.totalSales === 'number' ? currentSummary.totalSales : 0;
+      const totalTax = typeof currentSummary.totalTax === 'number' ? currentSummary.totalTax : 0;
+      const totalSalesNet = typeof currentSummary.totalSalesNet === 'number' ? currentSummary.totalSalesNet : 0;
+      const totalProfit = typeof currentSummary.totalProfit === 'number' ? currentSummary.totalProfit : 0;
+      const totalOrders = typeof currentSummary.totalOrders === 'number' ? currentSummary.totalOrders : (typeof currentSummary.count === 'number' ? currentSummary.count : 0);
+      const averageOrderValue = typeof currentSummary.averageOrderValue === 'number' ? currentSummary.averageOrderValue : 0;
+      const averageItemsPerOrder = typeof currentSummary.averageItemsPerOrder === 'number' ? currentSummary.averageItemsPerOrder : 0;
+      const averageRevenuePerCustomer = typeof currentSummary.averageRevenuePerCustomer === 'number' ? currentSummary.averageRevenuePerCustomer : 0;
+      const topCustomers = Array.isArray(currentSummary.topCustomers) ? currentSummary.topCustomers : [];
+      const topProducts = Array.isArray(currentSummary.topProducts) ? currentSummary.topProducts : [];
+      const topProfitProducts = Array.isArray(currentSummary.topProfitProducts) ? currentSummary.topProfitProducts : [];
+      const categorySales = Array.isArray(currentSummary.categorySales) ? currentSummary.categorySales : [];
+      const dailySales = Array.isArray(currentSummary.dailySales) ? currentSummary.dailySales : [];
+      const paymentMethods = Array.isArray(currentSummary.paymentMethods) ? currentSummary.paymentMethods : [];
+      const totalSalesPrevious = typeof previousSummary.totalSales === 'number' ? previousSummary.totalSales : 0;
+      const previousOrderCount = typeof previousSummary.totalOrders === 'number' ? previousSummary.totalOrders : (typeof previousSummary.count === 'number' ? previousSummary.count : 0);
       const salesGrowthPercentage = totalSalesPrevious > 0 ? ((totalSales - totalSalesPrevious) / totalSalesPrevious) * 100 : totalSales > 0 ? 100 : 0;
       const orderGrowthPercentage = previousOrderCount > 0 ? ((totalOrders - previousOrderCount) / previousOrderCount) * 100 : totalOrders > 0 ? 100 : 0;
+      const reversedOrderRate = typeof currentSummary.reversedOrderRate === 'number' ? currentSummary.reversedOrderRate : 0;
 
-      const dailySalesMap = {};
-      filteredOrders.forEach(order => {
-        const orderDate = getOrderDate(order);
-        const date = orderDate ? orderDate.toISOString().slice(0, 10) : 'Unknown';
-        if (!dailySalesMap[date]) {
-          dailySalesMap[date] = { sales: 0, profit: 0, count: 0 };
-        }
-        dailySalesMap[date].sales += getOrderTotalAmount(order);
-        dailySalesMap[date].profit += toNumber(order.profit);
-        dailySalesMap[date].count += 1;
-      });
-
-      const dailySales = Object.keys(dailySalesMap).map(date => ({
-        date,
-        sales: dailySalesMap[date].sales,
-        profit: dailySalesMap[date].profit,
-        count: dailySalesMap[date].count
-      })).sort((a, b) => new Date(a.date) - new Date(b.date));
-
-      const productSalesMap = {};
-      filteredOrders.forEach(order => {
-        (order.items || []).forEach(item => {
-          const productName = getProductNameFromItem(item);
-          if (!productSalesMap[productName]) {
-            productSalesMap[productName] = { quantity: 0, revenue: 0 };
-          }
-          productSalesMap[productName].quantity += toNumber(item.quantity);
-          productSalesMap[productName].revenue += toNumber(item.subtotal);
-        });
-      });
-
-      const topProducts = Object.keys(productSalesMap)
-        .map(name => ({
-          name,
-          quantity: productSalesMap[name].quantity,
-          revenue: productSalesMap[name].revenue
-        }))
-        .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 10);
-
-      const categorySalesMap = {};
-      filteredOrders.forEach(order => {
-        (order.items || []).forEach(item => {
-          const categoryName = item.product?.category?.name || 'Uncategorized';
-          if (!categorySalesMap[categoryName]) {
-            categorySalesMap[categoryName] = 0;
-          }
-          categorySalesMap[categoryName] += toNumber(item.subtotal);
-        });
-      });
-
-      const categorySales = Object.keys(categorySalesMap)
-        .map(name => ({
-          name,
-          revenue: categorySalesMap[name]
-        }))
-        .sort((a, b) => b.revenue - a.revenue);
-
-      const paymentMethodsMap = {};
-      filteredOrders.forEach(order => {
-        const method = order.paymentMethod || 'unknown';
-        if (!paymentMethodsMap[method]) {
-          paymentMethodsMap[method] = { count: 0, amount: 0 };
-        }
-        paymentMethodsMap[method].count += 1;
-        paymentMethodsMap[method].amount += getOrderTotalAmount(order);
-      });
-
-      const paymentMethods = Object.keys(paymentMethodsMap).map(method => ({
-        method: getPaymentMethodLabel(method),
-        count: paymentMethodsMap[method].count,
-        amount: paymentMethodsMap[method].amount
-      }));
-
-      const customerNames = [...new Set((orders || []).map((order) => order.customer?.name || order.customerName).filter(Boolean))];
-      const productNames = [...new Set((productsRes.data || []).map((product) => product.name).filter(Boolean))];
+      const customerNames = Array.isArray(currentSummary.customerNames) ? currentSummary.customerNames : [];
+      const productNames = Array.isArray(currentSummary.productNames) ? currentSummary.productNames : [];
 
       setReportData({
-        sales: filteredOrders,
         topProducts,
         topCustomers,
         categorySales,
         dailySales,
         paymentMethods,
+        topProfitProducts,
         totalSales,
         totalSalesNet,
         totalTax,
@@ -377,12 +260,25 @@ const Reports = () => {
     }
   };
 
+  const safeDailySales = Array.isArray(reportData.dailySales) ? reportData.dailySales : [];
+  const safeTopProducts = Array.isArray(reportData.topProducts) ? reportData.topProducts : [];
+  const safeCategorySales = Array.isArray(reportData.categorySales) ? reportData.categorySales : [];
+  const safeTopProfitProducts = Array.isArray(reportData.topProfitProducts) ? reportData.topProfitProducts : [];
+  const safePaymentMethods = Array.isArray(reportData.paymentMethods) ? reportData.paymentMethods : [];
+
+  // Ensure numeric values for charting and surface mismatches between summed daily profit and totalProfit
+  const numericDailySales = safeDailySales.map(d => ({ date: d.date, sales: Number(d.sales || 0), profit: Number(d.profit || 0) }));
+  const computedDailyProfitTotal = numericDailySales.reduce((s, d) => s + d.profit, 0);
+  if (Math.abs(computedDailyProfitTotal - (reportData.totalProfit || 0)) > 0.0001) {
+    console.warn('Reports: dailySales profit sum does not match totalProfit', { computedDailyProfitTotal, totalProfit: reportData.totalProfit });
+  }
+
   const dailySalesChartData = {
-    labels: reportData.dailySales.map(d => d.date),
+    labels: numericDailySales.map(d => d.date),
     datasets: [
       {
         label: 'Sales (MK)',
-        data: reportData.dailySales.map(d => d.sales),
+        data: numericDailySales.map(d => d.sales),
         backgroundColor: 'rgba(233, 69, 96, 0.6)',
         borderColor: '#e94560',
         borderWidth: 2,
@@ -391,7 +287,7 @@ const Reports = () => {
       },
       {
         label: 'Profit (MK)',
-        data: reportData.dailySales.map(d => d.profit),
+        data: numericDailySales.map(d => d.profit),
         backgroundColor: 'rgba(46, 204, 113, 0.6)',
         borderColor: '#2ecc71',
         borderWidth: 2,
@@ -402,11 +298,11 @@ const Reports = () => {
   };
 
   const topProductsChartData = {
-    labels: reportData.topProducts.map(p => p.name),
+    labels: safeTopProducts.map(p => p.name),
     datasets: [
       {
         label: 'Revenue (MK)',
-        data: reportData.topProducts.map(p => p.revenue),
+        data: safeTopProducts.map(p => p.revenue),
         backgroundColor: [
           '#e94560', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
           '#1abc9c', '#e67e22', '#2c3e50', '#e74c3c', '#00bcd4'
@@ -418,11 +314,11 @@ const Reports = () => {
   };
 
   const categoryChartData = {
-    labels: reportData.categorySales.map(c => c.name),
+    labels: safeCategorySales.map(c => c.name),
     datasets: [
       {
         label: 'Revenue (MK)',
-        data: reportData.categorySales.map(c => c.revenue),
+        data: safeCategorySales.map(c => c.revenue),
         backgroundColor: [
           '#e94560', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
           '#1abc9c', '#e67e22', '#2c3e50'
@@ -432,14 +328,31 @@ const Reports = () => {
     ]
   };
 
-  const paymentChartData = {
-    labels: reportData.paymentMethods.map(p => p.method),
+  const topProfitProductsChartData = {
+    labels: safeTopProfitProducts.map(p => p.name),
     datasets: [
       {
-        label: 'Transactions',
-        data: reportData.paymentMethods.map(p => p.count),
-        backgroundColor: ['#2ecc71', '#3498db', '#f39c12', '#9b59b6'],
-        borderWidth: 1
+        label: 'Profit (MK)',
+        data: safeTopProfitProducts.map(p => Number(p.profit ?? 0)),
+        backgroundColor: [
+          '#2ecc71', '#16a085', '#3498db', '#f39c12', '#9b59b6',
+          '#1abc9c', '#e67e22', '#2c3e50', '#e74c3c', '#00bcd4'
+        ],
+        borderWidth: 1,
+        borderRadius: 4
+      }
+    ]
+  };
+
+  const paymentChartData = {
+    labels: safePaymentMethods.map(p => p.label || p.method),
+    datasets: [
+      {
+        label: 'Sales (MK)',
+        data: safePaymentMethods.map(p => p.amount),
+        backgroundColor: ['#2ecc71', '#3498db', '#f39c12', '#9b59b6', '#1abc9c'],
+        borderWidth: 1,
+        borderRadius: 4
       }
     ]
   };
@@ -649,7 +562,7 @@ const Reports = () => {
 
       {/* Charts Grid with Animations */}
       <div style={styles.chartsGrid} className="reports-chartsGrid">
-        <div className="fade-in delay-1" style={styles.chartWrapper}>
+        <div className="fade-in delay-1 reports-chartWrapper" style={styles.chartWrapper}>
           <UnifiedCard title="📈 Daily Sales & Profit Trend" style={styles.chartCard}>
             <div style={styles.chartContainer}>
               {reportData.dailySales.length > 0 ? (
@@ -664,7 +577,7 @@ const Reports = () => {
           </UnifiedCard>
         </div>
 
-        <div className="fade-in delay-2" style={styles.chartWrapper}>
+        <div className="fade-in delay-2 reports-chartWrapper" style={styles.chartWrapper}>
           <UnifiedCard title="🏆 Top Selling Products" style={styles.chartCard}>
             <div style={styles.chartContainer}>
               {reportData.topProducts.length > 0 ? (
@@ -685,7 +598,7 @@ const Reports = () => {
           </UnifiedCard>
         </div>
 
-        <div className="fade-in delay-3" style={styles.chartWrapper}>
+        <div className="fade-in delay-3 reports-chartWrapper" style={styles.chartWrapper}>
           <UnifiedCard title="📁 Sales by Category" style={styles.chartCard}>
             <div style={styles.chartContainer}>
               {reportData.categorySales.length > 0 ? (
@@ -709,30 +622,150 @@ const Reports = () => {
           </UnifiedCard>
         </div>
 
-        <div className="fade-in delay-4" style={styles.chartWrapper}>
-          <UnifiedCard title="💳 Payment Methods" style={styles.chartCard}>
-            <div style={styles.chartContainer}>
-              {reportData.paymentMethods.length > 0 ? (
-                <Pie data={paymentChartData} options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: {
-                      position: 'right',
-                      labels: { font: { size: 11 } }
+        <div className="fade-in delay-4 reports-chartWrapper" style={styles.chartWrapper}>
+          <UnifiedCard title="💹 Top Profit Products" style={styles.chartCard}>
+            <div style={styles.profitCardLayout}>
+              <div style={styles.chartBlock}>
+                <div style={styles.chartContainer}>
+                  {reportData.topProfitProducts.length > 0 ? (
+                    <Bar data={topProfitProductsChartData} options={{
+                      ...chartOptions,
+                      plugins: {
+                        ...chartOptions.plugins,
+                        legend: { display: false }
+                      }
+                    }} />
+                  ) : (
+                    <div style={styles.noData}>
+                      <p style={styles.noDataIcon}>💹</p>
+                      <p>No profit data available</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {reportData.topProfitProducts.length > 0 && (
+                <div style={styles.profitTableContainer}>
+                  <table style={styles.profitTable}>
+                    <thead>
+                      <tr>
+                        <th style={styles.profitTableHeader}>Product</th>
+                        <th style={styles.profitTableHeader}>Profit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reportData.topProfitProducts.slice(0, 5).map((product) => (
+                        <tr key={product.name} style={styles.profitTableRow}>
+                          <td style={styles.profitTableCell}>{product.name}</td>
+                          <td style={{ ...styles.profitTableCell, ...styles.profitTableAmount }}>
+                            {formatPriceMK(product.profit || 0)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </UnifiedCard>
+        </div>
+
+        <div className="fade-in delay-4 reports-chartWrapper" style={styles.chartWrapper}>
+          <UnifiedCard title="💳 Sales by Payment Method" style={styles.chartCard}>
+            <div style={styles.paymentCardLayout}>
+              <div style={styles.paymentCardsRow}>
+                <div style={styles.paymentStatPill}>
+                  <span style={styles.paymentStatLabel}>Total sales</span>
+                  <strong style={styles.paymentStatValue}>{formatPriceMK(reportData.totalSales || 0)}</strong>
+                </div>
+                <div style={styles.paymentStatPillAccent}>
+                  <span style={styles.paymentStatLabel}>Methods</span>
+                  <strong style={styles.paymentStatValue}>{reportData.paymentMethods.length || 0}</strong>
+                </div>
+              </div>
+
+              <div style={styles.chartContainer}>
+                {reportData.paymentMethods.length > 0 ? (
+                  <Bar data={paymentChartData} options={{
+                    ...chartOptions,
+                    plugins: {
+                      ...chartOptions.plugins,
+                      legend: { display: false }
+                    },
+                    scales: {
+                      ...chartOptions.scales,
+                      y: {
+                        ...chartOptions.scales.y,
+                        ticks: {
+                          callback: function(value) {
+                            return 'MK ' + Number(value).toLocaleString();
+                          }
+                        }
+                      }
                     }
-                  }
-                }} />
-              ) : (
-                <div style={styles.noData}>
-                  <p style={styles.noDataIcon}>💳</p>
-                  <p>No payment data available</p>
+                  }} />
+                ) : (
+                  <div style={styles.noData}>
+                    <p style={styles.noDataIcon}>💳</p>
+                    <p>No payment data available</p>
+                  </div>
+                )}
+              </div>
+
+              {reportData.paymentMethods.length > 0 && (
+                <div style={styles.paymentMiniTable}>
+                  <div style={styles.paymentMiniHeader}>
+                    <span>Method</span>
+                    <span>Value</span>
+                  </div>
+                  {reportData.paymentMethods.slice(0, 4).map((payment) => (
+                    <div key={payment.method} style={styles.paymentMiniRow}>
+                      <div style={styles.paymentMethodNameWrap}>
+                        <span style={{
+                          ...styles.paymentDot,
+                          backgroundColor: payment.method?.toLowerCase().includes('cash') ? '#2ecc71' :
+                            payment.method?.toLowerCase().includes('card') ? '#3498db' :
+                            payment.method?.toLowerCase().includes('airtel') ? '#f39c12' :
+                            payment.method?.toLowerCase().includes('mpamba') ? '#9b59b6' : '#16a085'
+                        }} />
+                        <span>{payment.label || payment.method}</span>
+                      </div>
+                      <strong style={styles.paymentMiniAmount}>{formatPriceMK(payment.amount || 0)}</strong>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
           </UnifiedCard>
         </div>
       </div>
+
+      {reportData.paymentMethods.length > 0 && (
+        <div className="fade-in delay-5" style={{ marginTop: '20px' }}>
+          <UnifiedCard title="💵 Payment Summary by Amount">
+            <div style={styles.tableWrapper} className="reports-tableWrapper">
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Payment Method</th>
+                    <th>Transactions</th>
+                    <th>Sales Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportData.paymentMethods.map((payment) => (
+                    <tr key={payment.method} style={styles.tableRow}>
+                      <td style={styles.productName}>{payment.label || payment.method}</td>
+                      <td>{payment.count}</td>
+                      <td style={styles.revenue}>{formatPriceMK(payment.amount || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </UnifiedCard>
+        </div>
+      )}
 
       {/* Top Customers Table */}
       {reportData.topCustomers.length > 0 && (
@@ -815,8 +848,8 @@ const Reports = () => {
           </UnifiedCard>
         </div>
       )}
-      </div>
-    </PageContainer>
+    </div>
+  </PageContainer>
   );
 };
 
@@ -994,10 +1027,141 @@ const styles = {
     marginBottom: '0'
   },
   chartContainer: {
-    minHeight: '240px',
+    minHeight: '220px',
     height: '100%',
     width: '100%',
     position: 'relative'
+  },
+  profitCardLayout: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px',
+    minWidth: 0
+  },
+  chartBlock: {
+    width: '100%',
+    minWidth: 0
+  },
+  profitTableContainer: {
+    backgroundColor: '#f8fafc',
+    border: '1px solid #e5e7eb',
+    borderRadius: '12px',
+    padding: '10px',
+    overflow: 'hidden',
+    minWidth: 0,
+    width: '100%'
+  },
+  profitTable: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: '12px',
+    tableLayout: 'fixed'
+  },
+  profitTableHeader: {
+    textAlign: 'left',
+    padding: '8px 6px',
+    color: '#64748b',
+    borderBottom: '1px solid #e5e7eb',
+    fontWeight: '600'
+  },
+  profitTableRow: {
+    borderBottom: '1px solid #f1f5f9'
+  },
+  profitTableCell: {
+    padding: '8px 6px',
+    color: '#1f2937',
+    maxWidth: '120px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
+  },
+  profitTableAmount: {
+    fontWeight: '700',
+    color: '#16a085',
+    textAlign: 'right'
+  },
+  paymentCardLayout: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px'
+  },
+  paymentCardsRow: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: '10px'
+  },
+  paymentStatPill: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    background: 'linear-gradient(135deg, #ecfdf5 0%, #dcfce7 100%)',
+    border: '1px solid #bbf7d0',
+    borderRadius: '12px',
+    padding: '10px 12px'
+  },
+  paymentStatPillAccent: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+    border: '1px solid #bfdbfe',
+    borderRadius: '12px',
+    padding: '10px 12px'
+  },
+  paymentStatLabel: {
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#475569',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em'
+  },
+  paymentStatValue: {
+    fontSize: '16px',
+    color: '#0f172a',
+    fontWeight: '800'
+  },
+  paymentMiniTable: {
+    backgroundColor: '#f8fafc',
+    border: '1px solid #e2e8f0',
+    borderRadius: '12px',
+    padding: '8px 10px'
+  },
+  paymentMiniHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '11px',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    color: '#64748b',
+    padding: '4px 0 8px'
+  },
+  paymentMiniRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 0',
+    borderTop: '1px solid #e2e8f0'
+  },
+  paymentMethodNameWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#334155'
+  },
+  paymentDot: {
+    width: '10px',
+    height: '10px',
+    borderRadius: '50%',
+    display: 'inline-block',
+    boxShadow: '0 0 0 3px rgba(255,255,255,0.8)'
+  },
+  paymentMiniAmount: {
+    fontSize: '12px',
+    color: '#0f172a',
+    fontWeight: '800'
   },
   noData: {
     textAlign: 'center',
@@ -1181,6 +1345,10 @@ styleSheet.textContent = `
 
     .reports-chartWrapper {
       width: 100%;
+    }
+
+    .reports-chartWrapper > div {
+      min-height: 260px;
     }
 
     .reports-tableWrapper {

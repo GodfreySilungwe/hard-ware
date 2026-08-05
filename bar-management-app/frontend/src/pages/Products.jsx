@@ -81,13 +81,20 @@ const Products = () => {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
+
+    if (Number(deleteTarget.currentStock ?? 0) > 0) {
+      alert('Cannot delete a product while stock is still available.');
+      setDeleteTarget(null);
+      return;
+    }
+
     try {
       await api.delete(`/products/${deleteTarget._id}`);
       setDeleteTarget(null);
       await loadData();
     } catch (err) {
       console.error('Error deleting product:', err);
-      alert('Failed to delete product');
+      alert(err?.response?.data?.message || 'Failed to delete product');
     }
   };
 

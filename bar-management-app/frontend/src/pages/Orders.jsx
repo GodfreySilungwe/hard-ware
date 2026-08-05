@@ -38,6 +38,13 @@ const Orders = () => {
     loadOrders();
   }, [page, filter]);
 
+  const formatLocalDateString = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const loadOrders = async (pageOverride) => {
     setLoading(true);
     try {
@@ -46,16 +53,22 @@ const Orders = () => {
       let endpoint = '/orders';
 
       if (filter === 'today') {
-        const today = new Date().toISOString().slice(0, 10);
-        params.startDate = today;
-        params.endDate = today;
+        const now = new Date();
+        const startLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        const endLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        params.startDateUtc = startLocal.toISOString();
+        params.endDateUtc = endLocal.toISOString();
       }
 
       if (startDate) {
-        params.startDate = startDate;
+        const [ys, ms, ds] = startDate.split('-').map((p) => Number(p));
+        const sLocal = new Date(ys, ms - 1, ds, 0, 0, 0, 0);
+        params.startDateUtc = sLocal.toISOString();
       }
       if (endDate) {
-        params.endDate = endDate;
+        const [ye, me, de] = endDate.split('-').map((p) => Number(p));
+        const eLocal = new Date(ye, me - 1, de, 23, 59, 59, 999);
+        params.endDateUtc = eLocal.toISOString();
       }
 
       const res = await api.get(endpoint, { params });

@@ -114,20 +114,14 @@ const Settings = ({ initialMenu = 'settings' }) => {
     }
 
     try {
-      const response = await api.get('/orders');
-      const orders = Array.isArray(response.data) ? response.data : [];
-      const reversedOrders = orders.filter((order) => order.status === 'reversed');
-      const validOrders = orders.filter((order) => order.status !== 'reversed');
-      const totalSales = validOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
-      const totalProfit = validOrders.reduce((sum, order) => sum + Number(order.profit || 0), 0);
-      const totalOrders = validOrders.length;
-      const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
-      const totalItems = validOrders.reduce((sum, order) => {
-        const items = Array.isArray(order.items) ? order.items : [];
-        return sum + items.reduce((itemSum, item) => itemSum + Number(item.quantity || 0), 0);
-      }, 0);
-      const averageItemsPerOrder = totalOrders > 0 ? totalItems / totalOrders : 0;
-      const reversalRate = orders.length > 0 ? Math.round((reversedOrders.length / orders.length) * 100) : 0;
+      const response = await api.get('/orders', { params: { summaryOnly: true } });
+      const payload = response.data || {};
+      const totalSales = typeof payload.totalSales === 'number' ? payload.totalSales : 0;
+      const totalProfit = typeof payload.totalProfit === 'number' ? payload.totalProfit : 0;
+      const totalOrders = typeof payload.totalOrders === 'number' ? payload.totalOrders : (typeof payload.count === 'number' ? payload.count : 0);
+      const averageOrderValue = typeof payload.averageOrderValue === 'number' ? payload.averageOrderValue : 0;
+      const averageItemsPerOrder = typeof payload.averageItemsPerOrder === 'number' ? payload.averageItemsPerOrder : 0;
+      const reversalRate = typeof payload.reversedOrderRate === 'number' ? payload.reversedOrderRate : 0;
 
       setOwnerPerformance({
         totalSales,
