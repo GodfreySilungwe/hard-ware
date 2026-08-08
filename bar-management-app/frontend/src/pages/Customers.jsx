@@ -37,17 +37,22 @@ const Customers = () => {
       const res = await api.get(`/orders?customerId=${id}&paymentMethod=credit`);
       const orders = Array.isArray(res.data) ? res.data : Array.isArray(res.data.orders) ? res.data.orders : [];
       const productMap = new Map();
-      let totalDue = 0;
+      const outstandingBalance = Number(customers.find((c) => (c._id === id || c.id === id))?.creditBalance || 0);
+      let totalOrderDue = 0;
       for (const order of orders) {
         const orderDue = Number(order.dueAmount || 0) || 0;
-        totalDue += orderDue;
+        totalOrderDue += orderDue;
+      }
+      const dueFactor = totalOrderDue > 0 ? outstandingBalance / totalOrderDue : 0;
+      for (const order of orders) {
+        const orderDue = Number(order.dueAmount || 0) || 0;
         const orderTotal = Number(order.totalAmount) || 0;
         if (!Array.isArray(order.items)) continue;
         for (const item of order.items) {
           const productId = item.product?._id || item.product || item.product?.id;
           const name = item.productName || item.product?.name || item.name || 'Unknown';
           const subtotal = Number(item.subtotal || (item.priceAtSale * (item.quantity || 0))) || 0;
-          const dueShare = orderTotal > 0 ? (subtotal / orderTotal) * orderDue : 0;
+          const dueShare = orderTotal > 0 ? (subtotal / orderTotal) * orderDue * dueFactor : 0;
           const existingProd = productMap.get(productId) || { name, quantity: 0, subtotal: 0, due: 0 };
           existingProd.quantity += Number(item.quantity || 0);
           existingProd.subtotal += subtotal;
@@ -56,7 +61,7 @@ const Customers = () => {
         }
       }
       const productsData = Array.from(productMap.entries()).map(([prodId, data]) => ({ productId: prodId, ...data }));
-      setCreditData((prev) => ({ ...prev, [id]: { loading: false, expanded: true, products: productsData, totalDue } }));
+      setCreditData((prev) => ({ ...prev, [id]: { loading: false, expanded: true, products: productsData, totalDue: outstandingBalance } }));
     } catch (err) {
       console.error('Error loading credit orders:', err);
       setCreditData((prev) => ({ ...prev, [id]: { loading: false, expanded: true, products: [], totalDue: 0, error: true } }));
@@ -302,9 +307,9 @@ const Customers = () => {
                           </div>
                         ))}
                         <div style={{ ...styles.creditRow, marginTop: 8, borderTop: '1px dashed #eee', paddingTop: 8 }}>
-                          <strong style={{ flex: 1 }}>Total Due</strong>
+                          <strong style={{ flex: 1 }}>Outstanding Balance</strong>
                           <span style={{ width: 80 }} />
-                          <strong style={{ width: 120, textAlign: 'right' }}>{formatPriceMK(creditData[customer._id].totalDue || 0)}</strong>
+                          <strong style={{ width: 120, textAlign: 'right' }}>{formatPriceMK(Number(customer.creditBalance || 0))}</strong>
                         </div>
                         {getLatestSettlement(customer) && (
                           <div style={styles.settlementMeta}>
@@ -504,16 +509,19 @@ const styles = {
   settleControls: {
     display: 'flex',
     gap: 8,
-    alignItems: 'center'
+    alignItems: 'center',
+    flexWrap: 'wrap'
   },
   settleInput: {
     flex: 1,
+    minWidth: 0,
     padding: '8px 10px',
     borderRadius: 8,
     border: '1px solid #ddd'
   },
   settleButton: {
     padding: '8px 12px',
+    minWidth: 110,
     borderRadius: 8,
     border: '1px solid #e94560',
     backgroundColor: '#fff5f5',

@@ -372,6 +372,14 @@ const Reports = () => {
       }
     },
     scales: {
+      x: {
+        ticks: {
+          autoSkip: false,
+          maxRotation: 90,
+          minRotation: 90,
+          align: 'end'
+        }
+      },
       y: {
         beginAtZero: true,
         ticks: {

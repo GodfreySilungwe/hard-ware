@@ -68,12 +68,12 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
   
   const navItems = {
     owner: [
-      { path: '/', label: 'Dashboard', icon: faChartBar },
+      { path: '/dashboard', label: 'Dashboard', icon: faChartBar },
       { path: '/hardware', label: 'Smart Inventory App', icon: faTools },
       { path: '/applications', label: 'Applications', icon: faTools, showBadge: true }
     ],
     'hardware-manager': [
-      { path: '/', label: 'Dashboard', icon: faChartBar },
+      { path: '/dashboard', label: 'Dashboard', icon: faChartBar },
       { path: '/products', label: 'Products', icon: faBox },
       { path: '/categories', label: 'Categories', icon: faTags },
       { path: '/customers', label: 'Customers', icon: faUsers },
@@ -86,7 +86,7 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
       { path: '/sales-team', label: 'Sales Team', icon: faUsers }
     ],
     sales: [
-      { path: '/', label: 'Dashboard', icon: faChartBar },
+      { path: '/dashboard', label: 'Dashboard', icon: faChartBar },
       { path: '/pos', label: 'POS', icon: faCashRegister },
       { path: '/customers', label: 'Customers', icon: faUsers },
       { path: '/orders', label: 'Orders', icon: faClipboardList }

@@ -16,6 +16,14 @@ import { formatPriceMK } from '../utils/formatPrice';
 import { useAuth } from '../context/AuthContext';
 
 const Dashboard = () => {
+  const formatLocalDateString = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getTodayString = () => formatLocalDateString(new Date());
   const [stats, setStats] = useState({
     pendingApprovals: 0,
     activeBars: 0,
@@ -37,23 +45,66 @@ const Dashboard = () => {
   const [hardwareBreakdown, setHardwareBreakdown] = useState([]);
   const [paymentSummary, setPaymentSummary] = useState([]);
   const [dashboardSummary, setDashboardSummary] = useState(null);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(getTodayString());
+  const [endDate, setEndDate] = useState(getTodayString());
+  const [periodFilter, setPeriodFilter] = useState('today');
   const [productPage, setProductPage] = useState(1);
   const { user, loading: authLoading } = useAuth();
 
-  const formatLocalDateString = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+  const setDateRange = (from, to, filter) => {
+    setStartDate(from);
+    setEndDate(to);
+    setPeriodFilter(filter);
+  };
+
+  const handlePeriodChange = (filter) => {
+    const now = new Date();
+    if (filter === 'today') {
+      const today = formatLocalDateString(now);
+      setDateRange(today, today, 'today');
+      return;
+    }
+
+    if (filter === 'month') {
+      const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      setDateRange(formatLocalDateString(firstOfMonth), formatLocalDateString(now), 'month');
+      return;
+    }
+
+    if (filter === 'year') {
+      const firstOfYear = new Date(now.getFullYear(), 0, 1);
+      setDateRange(formatLocalDateString(firstOfYear), formatLocalDateString(now), 'year');
+      return;
+    }
+
+    setDateRange('', '', 'custom');
   };
 
   useEffect(() => {
     if (!authLoading) {
       fetchDashboardData();
     }
-  }, [user?.role, authLoading, productPage]);
+  }, [user?.role, authLoading, productPage, startDate, endDate]);
+
+  useEffect(() => {
+    if (periodFilter !== 'today') return;
+
+    const now = new Date();
+    const today = formatLocalDateString(now);
+    if (startDate !== today || endDate !== today) {
+      setDateRange(today, today, 'today');
+      return;
+    }
+
+    const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+    const timeoutMs = nextMidnight.getTime() - now.getTime() + 10;
+    const timer = setTimeout(() => {
+      const nextDay = formatLocalDateString(new Date());
+      setDateRange(nextDay, nextDay, 'today');
+    }, timeoutMs);
+
+    return () => clearTimeout(timer);
+  }, [periodFilter, startDate, endDate]);
 
   const fetchDashboardData = async () => {
     try {
@@ -103,7 +154,8 @@ const Dashboard = () => {
       // fetch extended dashboard summary
       const dashboardQuery = { ...query, productPage, productLimit: 10 };
       const dashboardRes = await api.get('/dashboard/summary', { params: dashboardQuery }).catch(() => ({ data: null }));
-      setDashboardSummary(dashboardRes.data || null);
+      const dashboardData = dashboardRes.data || null;
+      setDashboardSummary(dashboardData);
 
       const summary = results[0]?.status === 'fulfilled' ? results[0].value.data || {} : {};
       const ownerTenants = isOwnerRole && results[1]?.status === 'fulfilled' ? results[1].value.data || [] : [];
@@ -112,7 +164,11 @@ const Dashboard = () => {
       const customers = isSalesRole && results[isOwnerRole ? 2 : 3]?.status === 'fulfilled' ? results[isOwnerRole ? 2 : 3].value.data || [] : [];
 
       const todaysOrders = Array.isArray(todayPayload.orders) ? todayPayload.orders : [];
-      const paymentSummaryData = Array.isArray(todayPayload.paymentMethods) ? todayPayload.paymentMethods : [];
+      const paymentSummaryData = Array.isArray(dashboardData?.paymentProceeds)
+        ? dashboardData.paymentProceeds
+        : Array.isArray(todayPayload.paymentMethods)
+          ? todayPayload.paymentMethods
+          : [];
       const todayOrderCount = typeof todayPayload.count === 'number' ? todayPayload.count : todaysOrders.length;
       const todaySales = todayPayload.totalSales ?? 0;
       const todayProfit = todayPayload.totalProfit ?? 0;
@@ -173,29 +229,22 @@ const Dashboard = () => {
         ? 'Focus on point-of-sale activity, customer service, and daily orders from one view.'
         : 'Review recent activity and stay on top of your work.';
 
-  const productSummaryTotals = dashboardSummary?.productSummaryTotals || dashboardSummary?.productSummary?.reduce((totals, p) => ({
-    startQty: totals.startQty + Number(p.startQty || 0),
-    soldQty: totals.soldQty + Number(p.soldQty || 0),
-    closingQty: totals.closingQty + Number(p.closingQty || 0),
-    remainingValue: totals.remainingValue + Number(p.remainingValue || 0),
-    totalAmount: totals.totalAmount + Number(p.totalAmount || 0)
-  }), {
-    startQty: 0,
-    soldQty: 0,
-    closingQty: 0,
-    remainingValue: 0,
-    totalAmount: 0
-  });
+  const productSummaryTotals = {
+    remainingValue: dashboardSummary?.inventoryValueAtCost ?? dashboardSummary?.productSummaryTotals?.remainingValue ?? dashboardSummary?.productSummary?.reduce((totals, p) => totals + Number(p.remainingValue || 0), 0) ?? 0,
+    remainingSellingValue: dashboardSummary?.inventoryValueAtSellingPrice ?? dashboardSummary?.productSummaryTotals?.remainingSellingValue ?? dashboardSummary?.productSummary?.reduce((totals, p) => totals + Number(p.remainingSellingValue || 0), 0) ?? 0
+  };
 
   const unsettledCustomerTotals = dashboardSummary?.unsettledCustomers?.reduce((totals, c) => ({
     outstandingBalanceTotal: totals.outstandingBalanceTotal + Number(c.outstandingBalanceTotal || 0),
-    outstandingBalancePeriod: totals.outstandingBalancePeriod + Number(c.outstandingBalancePeriod || 0),
     openCreditOrders: totals.openCreditOrders + Number(c.openCreditOrders || 0)
   }), {
     outstandingBalanceTotal: 0,
-    outstandingBalancePeriod: 0,
     openCreditOrders: 0
-  }) || { outstandingBalanceTotal: 0, outstandingBalancePeriod: 0, openCreditOrders: 0 };
+  });
+
+  const paymentSummaryTotal = paymentSummary.reduce((sum, method) => {
+    return sum + Number(method.amount || 0);
+  }, 0);
 
   const visibleStats = isOwnerRole
     ? [
@@ -256,6 +305,83 @@ const Dashboard = () => {
           </button>
         </div>
       </div>
+
+      {isHardwareManagerRole && dashboardSummary && (
+        <div style={styles.managerInventoryGrid} className="fade-in">
+          <div style={styles.managerInventoryCard}>
+            <div style={styles.managerInventoryLabel}>Remaining Inventory Value</div>
+            <div style={styles.managerInventoryValue}>{formatPriceMK(productSummaryTotals.remainingValue)}</div>
+            <div style={styles.managerInventorySubtext}>At cost price</div>
+          </div>
+          <div style={styles.managerInventoryCard}>
+            <div style={styles.managerInventoryLabel}>Remaining Inventory Value</div>
+            <div style={styles.managerInventoryValue}>{formatPriceMK(productSummaryTotals.remainingSellingValue)}</div>
+            <div style={styles.managerInventorySubtext}>At selling price</div>
+          </div>
+        </div>
+      )}
+
+      {!isOwnerRole && (
+        <div style={styles.periodFilterBar}>
+          <span style={styles.periodLabel}>Period:</span>
+          <button
+            style={{
+              ...styles.periodButton,
+              ...(periodFilter === 'today' ? styles.periodButtonActive : {})
+            }}
+            onClick={() => handlePeriodChange('today')}
+          >
+            Today
+          </button>
+          <button
+            style={{
+              ...styles.periodButton,
+              ...(periodFilter === 'month' ? styles.periodButtonActive : {})
+            }}
+            onClick={() => handlePeriodChange('month')}
+          >
+            Month
+          </button>
+          <button
+            style={{
+              ...styles.periodButton,
+              ...(periodFilter === 'year' ? styles.periodButtonActive : {})
+            }}
+            onClick={() => handlePeriodChange('year')}
+          >
+            Year
+          </button>
+          <button
+            style={{
+              ...styles.periodButton,
+              ...(periodFilter === 'custom' ? styles.periodButtonActive : {})
+            }}
+            onClick={() => handlePeriodChange('custom')}
+          >
+            Custom
+          </button>
+          {periodFilter === 'custom' && (
+            <div style={styles.customRangeRow}>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                style={styles.periodDateInput}
+              />
+              <span style={styles.periodDateSeparator}>to</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                style={styles.periodDateInput}
+              />
+              <button style={styles.applyDateButton} onClick={fetchDashboardData}>
+                Apply
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Stats Grid */}
         {visibleStats.length > 0 && (
@@ -340,15 +466,15 @@ const Dashboard = () => {
               <div style={styles.handoverValue}>{formatPriceMK(dashboardSummary.handover.nonCreditPosSales)}</div>
             </div>
             <div style={styles.handoverCard}>
-              <div style={styles.handoverLabel}>Credit Sales (Period)</div>
+              <div style={styles.handoverLabel}>Credit Sales (this period)</div>
               <div style={styles.handoverValue}>{formatPriceMK(dashboardSummary.handover.creditSalesPeriod)}</div>
             </div>
             <div style={styles.handoverCard}>
-              <div style={styles.handoverLabel}>Settled Credit Cash</div>
+              <div style={styles.handoverLabel}>Credit Collected (this period)</div>
               <div style={styles.handoverValue}>{formatPriceMK(dashboardSummary.handover.settledCreditCash)}</div>
             </div>
             <div style={styles.handoverCard}>
-              <div style={styles.handoverLabel}>Cumulative Credits (All)</div>
+              <div style={styles.handoverLabel}>Outstanding Credits (All)</div>
               <div style={styles.handoverValue}>{formatPriceMK(dashboardSummary.handover.accumulatedCredits)}</div>
             </div>
             <div style={styles.handoverCard}>
@@ -371,10 +497,15 @@ const Dashboard = () => {
                   <div style={styles.tableCellSmall}>Sold Qty</div>
                   <div style={styles.tableCellSmall}>Closing Qty</div>
                   <div style={styles.tableCellAmount}>Total Amount (Sold)</div>
-                  <div style={styles.tableCellAmount}>Remaining Products (costprice)</div>
                 </div>
-                {dashboardSummary.productSummary.map((p) => (
-                  <div key={p.productId} style={styles.tableRow}>
+                {dashboardSummary.productSummary.map((p, index) => (
+                  <div
+                    key={p.productId}
+                    style={{
+                      ...styles.tableRow,
+                      backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8fbff'
+                    }}
+                  >
                     <div style={styles.tableCellMain}>
                       <a href={`/products?highlight=${p.productId}`} style={{ color: '#111', textDecoration: 'underline' }}>{p.name || 'Unknown'}</a>
                     </div>
@@ -382,7 +513,6 @@ const Dashboard = () => {
                     <div style={styles.tableCellSmall}>{p.soldQty}</div>
                     <div style={styles.tableCellSmall}>{p.closingQty}</div>
                     <div style={styles.tableCellAmount}>{formatPriceMK(p.totalAmount)}</div>
-                    <div style={styles.tableCellAmount}>{formatPriceMK(Number(p.remainingValue ?? 0))}</div>
                   </div>
                 ))}
                 <div style={{ ...styles.tableRow, ...styles.tableRowTotal }}>
@@ -391,7 +521,6 @@ const Dashboard = () => {
                   <div style={styles.tableCellSmall}>{productSummaryTotals.soldQty}</div>
                   <div style={styles.tableCellSmall}>{productSummaryTotals.closingQty}</div>
                   <div style={styles.tableCellAmount}>{formatPriceMK(productSummaryTotals.totalAmount)}</div>
-                  <div style={styles.tableCellAmount}>{formatPriceMK(productSummaryTotals.remainingValue)}</div>
                 </div>
               </div>
             </div>
@@ -425,18 +554,22 @@ const Dashboard = () => {
                 <div style={{ ...styles.tableRow, ...styles.tableHeaderRow }}>
                   <div style={styles.tableCellMain}>Customer</div>
                   <div style={styles.tableCellSmall}>Phone</div>
-                  <div style={styles.tableCellAmount}>Outstanding (Total)</div>
-                  <div style={styles.tableCellAmount}>Outstanding (Period)</div>
+                  <div style={styles.tableCellAmount}>Outstanding</div>
                   <div style={styles.tableCellSmall}>Open Credit Orders</div>
                 </div>
-                {dashboardSummary.unsettledCustomers.map((c) => (
-                  <div key={c.customerId} style={styles.tableRow}>
+                {dashboardSummary.unsettledCustomers.map((c, index) => (
+                  <div
+                    key={c.customerId}
+                    style={{
+                      ...styles.tableRow,
+                      backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8fbff'
+                    }}
+                  >
                     <div style={styles.tableCellMain}>
                       <a href={`/customers?highlight=${c.customerId}`} style={{ color: '#111', textDecoration: 'underline' }}>{c.name}</a>
                     </div>
                     <div style={styles.tableCellSmall}>{c.phone}</div>
                     <div style={styles.tableCellAmount}>{formatPriceMK(c.outstandingBalanceTotal)}</div>
-                    <div style={styles.tableCellAmount}>{formatPriceMK(c.outstandingBalancePeriod)}</div>
                     <div style={styles.tableCellSmall}>{c.openCreditOrders}</div>
                   </div>
                 ))}
@@ -444,7 +577,6 @@ const Dashboard = () => {
                   <div style={styles.tableCellMain}>Totals</div>
                   <div style={styles.tableCellSmall} />
                   <div style={styles.tableCellAmount}>{formatPriceMK(unsettledCustomerTotals.outstandingBalanceTotal)}</div>
-                  <div style={styles.tableCellAmount}>{formatPriceMK(unsettledCustomerTotals.outstandingBalancePeriod)}</div>
                   <div style={styles.tableCellSmall}>{unsettledCustomerTotals.openCreditOrders}</div>
                 </div>
               </div>
@@ -472,16 +604,21 @@ const Dashboard = () => {
                       backgroundColor: method.method?.toLowerCase().includes('cash') ? '#16a085' :
                         method.method?.toLowerCase().includes('card') ? '#3b82f6' :
                         method.method?.toLowerCase().includes('airtel') ? '#f59e0b' :
-                        method.method?.toLowerCase().includes('mpamba') ? '#8b5cf6' : '#14b8a6'
+                        method.method?.toLowerCase().includes('mpamba') ? '#8b5cf6' :
+                        method.method?.toLowerCase().includes('credit') ? '#0ea5e9' : '#14b8a6'
                     }} />
                     <div>
-                      <div style={styles.summaryTitle}>{method.method}</div>
+                      <div style={styles.summaryTitle}>{method.label || method.method}</div>
                       <div style={styles.summaryMeta}>{method.count} transaction{method.count === 1 ? '' : 's'}</div>
                     </div>
                   </div>
                   <div style={styles.summaryAmount}>{formatPriceMK(method.amount || 0)}</div>
                 </div>
               ))}
+            </div>
+            <div style={styles.summaryTotalRow}>
+              <div style={styles.summaryTotalLabel}>Total proceeds</div>
+              <div style={styles.summaryAmount}>{formatPriceMK(paymentSummaryTotal)}</div>
             </div>
           </div>
         </div>
@@ -535,13 +672,15 @@ const styles = {
   section: { marginTop: 18 },
   sectionTitle: { fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: 0 },
   tableContainer: { width: '100%', maxHeight: '360px', overflowX: 'auto', overflowY: 'auto', border: '1px solid #f0f0f0', borderRadius: 8, backgroundColor: '#ffffff' },
-  table: { width: '100%', borderCollapse: 'collapse', minWidth: '520px', backgroundColor: '#ffffff' },
-  tableRow: { display: 'flex', padding: '8px 12px', alignItems: 'center', gap: 12, borderBottom: '1px solid #fafafa', transition: 'background 0.2s ease', cursor: 'pointer' },
+  table: { width: '100%', borderCollapse: 'collapse', minWidth: '720px', backgroundColor: '#ffffff' },
+  tableRow: { display: 'flex', flexWrap: 'nowrap', padding: '8px 12px', alignItems: 'center', gap: 12, borderBottom: '1px solid #fafafa', transition: 'background 0.2s ease', cursor: 'pointer' },
   tableHeaderRow: { cursor: 'default', backgroundColor: '#f8fafc', fontWeight: 700, position: 'sticky', top: 0, zIndex: 2 },
-  tableCellMain: { flex: 2, minWidth: 220 },
-  tableCellSmall: { width: 80, minWidth: 80, textAlign: 'right' },
-  tableCellAmount: { width: 140, minWidth: 140, textAlign: 'right' },
+  tableCellMain: { flex: '2 1 220px', minWidth: 220, textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  tableCellSmall: { flex: '0 0 100px', minWidth: 100, textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  tableCellAmount: { flex: '0 0 180px', minWidth: 180, textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   tableRowTotal: { backgroundColor: '#eef2ff', fontWeight: 700, position: 'sticky', bottom: 0, zIndex: 2 },
+  summaryTotalRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid #f3f4f6', fontWeight: 700, marginTop: '12px' },
+  summaryTotalLabel: { color: '#334155' },
   paginationRow: { display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', padding: '10px 0' },
   paginationButton: { padding: '8px 14px', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: '#ffffff', cursor: 'pointer', color: '#111827', fontWeight: 600 },
   paginationInfo: { fontSize: '14px', color: '#4b5563' },
@@ -569,6 +708,68 @@ const styles = {
     fontSize: '13px',
     color: '#999',
     margin: '0'
+  },
+  periodFilterBar: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '14px 18px',
+    borderRadius: '18px',
+    backgroundColor: '#f8fafc',
+    border: '1px solid #e2e8f0',
+    marginBottom: '20px'
+  },
+  periodLabel: {
+    fontSize: '13px',
+    fontWeight: '700',
+    color: '#334155',
+    marginRight: '8px'
+  },
+  periodButton: {
+    padding: '10px 16px',
+    borderRadius: '999px',
+    border: '1px solid #d1d5db',
+    backgroundColor: '#ffffff',
+    color: '#334155',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: '700',
+    transition: 'all 0.2s ease',
+    boxShadow: '0 4px 14px rgba(15, 23, 42, 0.05)'
+  },
+  periodButtonActive: {
+    backgroundColor: '#e94560',
+    borderColor: '#e94560',
+    color: 'white',
+    boxShadow: '0 10px 25px rgba(233, 69, 96, 0.18)'
+  },
+  customRangeRow: {
+    display: 'flex',
+    gap: '10px',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginTop: '10px'
+  },
+  periodDateInput: {
+    padding: '10px 12px',
+    borderRadius: '12px',
+    border: '1px solid #d1d5db',
+    backgroundColor: 'white',
+    minWidth: '140px'
+  },
+  periodDateSeparator: {
+    color: '#6b7280'
+  },
+  applyDateButton: {
+    padding: '10px 16px',
+    borderRadius: '999px',
+    border: '1px solid #e94560',
+    backgroundColor: '#e94560',
+    color: 'white',
+    cursor: 'pointer',
+    fontWeight: '700',
+    transition: 'all 0.2s ease'
   },
   dateControls: {
     display: 'flex',
@@ -634,6 +835,39 @@ const styles = {
   },
   statItem: {
     width: '100%'
+  },
+  managerInventoryGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '12px',
+    marginBottom: '24px'
+  },
+  managerInventoryCard: {
+    backgroundColor: '#ffffff',
+    border: '1px solid #e5e7eb',
+    borderRadius: '16px',
+    padding: '20px',
+    boxShadow: '0 10px 25px rgba(15, 23, 42, 0.05)',
+    minHeight: '120px',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between'
+  },
+  managerInventoryLabel: {
+    fontSize: '14px',
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: '8px'
+  },
+  managerInventoryValue: {
+    fontSize: '28px',
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: '8px'
+  },
+  managerInventorySubtext: {
+    fontSize: '13px',
+    color: '#64748b'
   },
   ordersPanel: {
     backgroundColor: '#fff',

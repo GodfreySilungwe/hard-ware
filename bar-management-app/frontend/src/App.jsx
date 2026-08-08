@@ -20,7 +20,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const Applications = lazy(() => import('./pages/Applications'));
 
 const RootRoute = () => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, isOwner, isHardwareManager, isSales, loading } = useAuth();
 
   if (loading) {
     return <div style={styles.loading}>Loading...</div>;
@@ -30,11 +30,11 @@ const RootRoute = () => {
     return <Navigate to="/login" replace />;
   }
 
-  return (
-    <Layout>
-      <Dashboard />
-    </Layout>
-  );
+  if (isSales) {
+    return <Navigate to="/pos" replace />;
+  }
+
+  return <Navigate to="/dashboard" replace />;
 };
 
 const styles = {
@@ -62,6 +62,13 @@ function App() {
             <Route path="/" element={
               <ProtectedRoute>
                 <RootRoute />
+              </ProtectedRoute>
+            } />
+            <Route path="/dashboard" element={
+              <ProtectedRoute allowSalesAndManagement>
+                <Layout>
+                  <Dashboard />
+                </Layout>
               </ProtectedRoute>
             } />
             <Route path="/pos" element={

@@ -258,6 +258,10 @@ const POS = () => {
       setSuccess(`✅ Order ${createdOrder.orderNumber} completed!`);
       setCart([]);
       setSelectedCustomer('');
+      setPaymentMethod('cash');
+      setDiscountAmount('');
+      setPaidAmount('');
+
       await loadData();
       
       setTimeout(() => setSuccess(''), 5000);
@@ -508,7 +512,14 @@ const POS = () => {
               <select
                 style={styles.customerSelect}
                 value={selectedCustomer}
-                onChange={(e) => setSelectedCustomer(e.target.value)}
+                onChange={(e) => {
+                  const newCustomer = e.target.value;
+                  setSelectedCustomer(newCustomer);
+                  if (!newCustomer && paymentMethod === 'credit') {
+                    setPaymentMethod('cash');
+                    setPaidAmount('');
+                  }
+                }}
               >
                 <option value="">Walk-in Customer</option>
                 {customers.map(customer => (
@@ -532,20 +543,6 @@ const POS = () => {
                       </div>
                     </div>
 
-                      {paymentMethod === 'credit' && (
-                        <div style={{ marginTop: 10 }}>
-                          <label style={{ display: 'block', marginBottom: 6 }}>Amount paid (optional):</label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={paidAmount}
-                            onChange={(e) => setPaidAmount(e.target.value)}
-                            placeholder="0.00"
-                            style={{ padding: '8px 10px', width: '100%', boxSizing: 'border-box' }}
-                          />
-                        </div>
-                      )}
                     <div style={styles.cartItemActions} className="pos-mobile-cart-item-actions">
                       <button
                         style={styles.cartItemBtn}
@@ -579,6 +576,21 @@ const POS = () => {
               )}
             </div>
 
+            {paymentMethod === 'credit' && cart.length > 0 && (
+              <div style={styles.creditPaidSection}>
+                <label style={styles.creditPaidLabel}>Amount paid (optional):</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={paidAmount}
+                  onChange={(e) => setPaidAmount(e.target.value)}
+                  placeholder="0.00"
+                  style={{ padding: '8px 10px', width: '100%', boxSizing: 'border-box' }}
+                />
+              </div>
+            )}
+
             {cart.length > 0 && (
               <div style={styles.totals}>
                 <div style={styles.totalRow}>
@@ -586,20 +598,18 @@ const POS = () => {
                   <span style={styles.totalAmount}>{formatPriceMK(subtotal)}</span>
                 </div>
 
-                <div style={styles.totalRow}>
+                <div style={styles.discountRow}>
                   <span>Discount:</span>
-                  <span>
-                    <input
-                      type="number"
-                      min="0"
-                      max={subtotal}
-                      step="0.01"
-                      value={discountAmount}
-                      onChange={(e) => setDiscountAmount(e.target.value)}
-                      placeholder="0.00"
-                      style={{ padding: '6px 8px', width: 100, boxSizing: 'border-box' }}
-                    />
-                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    max={subtotal}
+                    step="0.01"
+                    value={discountAmount}
+                    onChange={(e) => setDiscountAmount(e.target.value)}
+                    placeholder="0.00"
+                    style={styles.discountInput}
+                  />
                 </div>
 
                 <div style={styles.totalRow}>
@@ -770,7 +780,7 @@ const POS = () => {
                   e.currentTarget.style.boxShadow = 'none';
                 }}
               >
-                {loading ? '⏳ Processing...' : `💰 Checkout ${formatPriceMK(subtotal)}`}
+                {loading ? '⏳ Processing...' : `💰 Checkout ${formatPriceMK(discountedTotal)}`}
               </button>
             </div>
           </UnifiedCard>
@@ -908,6 +918,15 @@ productUnit: {
   customerSection: {
     marginBottom: '15px'
   },
+  creditPaidSection: {
+    marginBottom: '15px'
+  },
+  creditPaidLabel: {
+    display: 'block',
+    marginBottom: '6px',
+    fontSize: '14px',
+    fontWeight: '500'
+  },
   customerSelect: {
     width: '100%',
     padding: '10px 12px',
@@ -971,6 +990,23 @@ productUnit: {
     padding: '12px 0',
     borderTop: '2px solid #e0e0e0',
     marginBottom: '15px'
+  },
+  discountRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: '16px',
+    padding: '4px 0',
+    gap: '12px'
+  },
+  discountInput: {
+    width: '120px',
+    padding: '8px 10px',
+    borderRadius: '8px',
+    border: '1px solid #ddd',
+    fontSize: '14px',
+    textAlign: 'right',
+    backgroundColor: '#fbfbfb'
   },
   totalRow: {
     display: 'flex',
