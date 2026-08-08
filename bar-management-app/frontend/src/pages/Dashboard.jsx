@@ -36,8 +36,10 @@ const Dashboard = () => {
   const [todayOrders, setTodayOrders] = useState([]);
   const [hardwareBreakdown, setHardwareBreakdown] = useState([]);
   const [paymentSummary, setPaymentSummary] = useState([]);
+  const [dashboardSummary, setDashboardSummary] = useState(null);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [productPage, setProductPage] = useState(1);
   const { user, loading: authLoading } = useAuth();
 
   const formatLocalDateString = (date) => {
@@ -51,7 +53,7 @@ const Dashboard = () => {
     if (!authLoading) {
       fetchDashboardData();
     }
-  }, [user?.role, authLoading]);
+  }, [user?.role, authLoading, productPage]);
 
   const fetchDashboardData = async () => {
     try {
@@ -97,6 +99,11 @@ const Dashboard = () => {
       }
 
       const results = await Promise.allSettled(requests);
+
+      // fetch extended dashboard summary
+      const dashboardQuery = { ...query, productPage, productLimit: 10 };
+      const dashboardRes = await api.get('/dashboard/summary', { params: dashboardQuery }).catch(() => ({ data: null }));
+      setDashboardSummary(dashboardRes.data || null);
 
       const summary = results[0]?.status === 'fulfilled' ? results[0].value.data || {} : {};
       const ownerTenants = isOwnerRole && results[1]?.status === 'fulfilled' ? results[1].value.data || [] : [];
@@ -166,6 +173,30 @@ const Dashboard = () => {
         ? 'Focus on point-of-sale activity, customer service, and daily orders from one view.'
         : 'Review recent activity and stay on top of your work.';
 
+  const productSummaryTotals = dashboardSummary?.productSummaryTotals || dashboardSummary?.productSummary?.reduce((totals, p) => ({
+    startQty: totals.startQty + Number(p.startQty || 0),
+    soldQty: totals.soldQty + Number(p.soldQty || 0),
+    closingQty: totals.closingQty + Number(p.closingQty || 0),
+    remainingValue: totals.remainingValue + Number(p.remainingValue || 0),
+    totalAmount: totals.totalAmount + Number(p.totalAmount || 0)
+  }), {
+    startQty: 0,
+    soldQty: 0,
+    closingQty: 0,
+    remainingValue: 0,
+    totalAmount: 0
+  });
+
+  const unsettledCustomerTotals = dashboardSummary?.unsettledCustomers?.reduce((totals, c) => ({
+    outstandingBalanceTotal: totals.outstandingBalanceTotal + Number(c.outstandingBalanceTotal || 0),
+    outstandingBalancePeriod: totals.outstandingBalancePeriod + Number(c.outstandingBalancePeriod || 0),
+    openCreditOrders: totals.openCreditOrders + Number(c.openCreditOrders || 0)
+  }), {
+    outstandingBalanceTotal: 0,
+    outstandingBalancePeriod: 0,
+    openCreditOrders: 0
+  }) || { outstandingBalanceTotal: 0, outstandingBalancePeriod: 0, openCreditOrders: 0 };
+
   const visibleStats = isOwnerRole
     ? [
         { title: 'Total Smart Inventory App Accounts', value: stats.totalHardwareAccounts, icon: faWarehouse, color: '#2ecc71' },
@@ -173,10 +204,7 @@ const Dashboard = () => {
         { title: 'Pending Applications', value: stats.pendingApplications, icon: faClipboardCheck, color: '#f39c12' }
       ]
     : isHardwareManagerRole || isSalesRole
-      ? [
-          { title: startDate || endDate ? 'Filtered orders' : 'Today orders', value: stats.todayOrders, icon: faClipboardCheck, color: '#e94560' },
-          { title: 'Products', value: stats.totalProducts, icon: faTools, color: '#9b59b6' }
-        ]
+      ? []
       : [
           { title: 'Products', value: stats.totalProducts, icon: faChartLine, color: '#9b59b6' },
           { title: 'Customers', value: stats.totalCustomers, icon: faUsers, color: '#1abc9c' },
@@ -230,19 +258,21 @@ const Dashboard = () => {
       </div>
 
       {/* Stats Grid */}
-      <div style={styles.statsGrid}>
-        {visibleStats.map((stat, index) => (
-          <div key={stat.title} className={`fade-in delay-${index + 1}`} style={styles.statItem}>
-            <StatsCard
-              title={stat.title}
-              value={stat.value}
-              icon={stat.icon}
-              color={stat.color}
-              isCurrency={stat.title.includes('sales')}
-            />
-          </div>
-        ))}
-      </div>
+        {visibleStats.length > 0 && (
+          <div className="stats-grid" style={styles.statsGrid}>
+          {visibleStats.map((stat, index) => (
+            <div key={stat.title} className={`fade-in delay-${index + 1}`} style={styles.statItem}>
+              <StatsCard
+                title={stat.title}
+                value={stat.value}
+                icon={stat.icon}
+                color={stat.color}
+                isCurrency={stat.title.includes('sales')}
+              />
+            </div>
+          ))}
+        </div>
+      )}
 
       {isOwnerRole && (
         <div className="fade-in" style={styles.ordersPanel}>
@@ -276,88 +306,184 @@ const Dashboard = () => {
         </div>
       )}
 
-      {(isHardwareManagerRole || isSalesRole) && (
-        <div className="fade-in" style={styles.ordersPanel}>
+      {dashboardSummary && !isOwnerRole && (
+        <div style={styles.handoverPanel} className="fade-in">
           <div style={styles.panelHeader}>
-            <h3 style={styles.panelTitle}>{startDate || endDate ? 'Backend filtered totals' : 'Today’s backend filtered totals'}</h3>
-            <span style={styles.panelHint}>
-              {isSalesRole
-                ? 'This view uses backend filtered totals for the selected range, excluding reversed orders from sales metrics.'
-                : 'This view uses backend filtered totals for the selected range, excluding reversed orders from sales and profit metrics.'}
-            </span>
+            <h3 style={styles.panelTitle}>🧾 Handover Summary</h3>
           </div>
-          <div style={styles.snapshotGrid}>
-            <div style={{...styles.snapshotCard, borderColor: '#2ecc71'}}>
-              <div style={styles.snapshotLabel}>Revenue</div>
-              <div style={styles.snapshotValue}>{formatPriceMK(stats.todaySales)}</div>
-            </div>
-            <div style={{...styles.snapshotCard, borderColor: '#16a085'}}>
-              <div style={styles.snapshotLabel}>Net sales</div>
-              <div style={styles.snapshotValue}>{formatPriceMK(stats.todaySalesNet)}</div>
+
+            <div className="handover-grid" style={styles.handoverGrid}>
+            <div style={styles.handoverCard}>
+              <div style={styles.handoverLabel}>Total Sales</div>
+              <div style={styles.handoverValue}>{formatPriceMK(dashboardSummary.handover.totalSales)}</div>
             </div>
             {!isSalesRole && (
-              <div style={{...styles.snapshotCard, borderColor: '#3498db'}}>
-                <div style={styles.snapshotLabel}>Profit</div>
-                <div style={styles.snapshotValue}>{formatPriceMK(stats.todayProfit)}</div>
+              <div style={styles.handoverCard}>
+                <div style={styles.handoverLabel}>Total Profit</div>
+                <div style={styles.handoverValue}>{formatPriceMK(dashboardSummary.handover.totalProfit)}</div>
               </div>
             )}
-            <div style={{...styles.snapshotCard, borderColor: '#e94560'}}>
-              <div style={styles.snapshotLabel}>Avg order</div>
-              <div style={styles.snapshotValue}>{formatPriceMK(stats.averageOrderValue)}</div>
+            <div style={styles.handoverCard}>
+              <div style={styles.handoverLabel}>Orders Processed</div>
+              <div style={styles.handoverValue}>{dashboardSummary.handover.ordersProcessed}</div>
             </div>
-            <div style={{...styles.snapshotCard, borderColor: '#9b59b6'}}>
-              <div style={styles.snapshotLabel}>Reversed</div>
-              <div style={styles.snapshotValue}>{stats.reversedOrders || 0}</div>
+            <div style={styles.handoverCard}>
+              <div style={styles.handoverLabel}>Items Sold</div>
+              <div style={styles.handoverValue}>{dashboardSummary.handover.itemsSold}</div>
+            </div>
+            <div style={styles.handoverCard}>
+              <div style={styles.handoverLabel}>Products</div>
+              <div style={styles.handoverValue}>{stats.totalProducts}</div>
+            </div>
+            <div style={styles.handoverCard}>
+              <div style={styles.handoverLabel}>POS Non-Credit Sales</div>
+              <div style={styles.handoverValue}>{formatPriceMK(dashboardSummary.handover.nonCreditPosSales)}</div>
+            </div>
+            <div style={styles.handoverCard}>
+              <div style={styles.handoverLabel}>Credit Sales (Period)</div>
+              <div style={styles.handoverValue}>{formatPriceMK(dashboardSummary.handover.creditSalesPeriod)}</div>
+            </div>
+            <div style={styles.handoverCard}>
+              <div style={styles.handoverLabel}>Settled Credit Cash</div>
+              <div style={styles.handoverValue}>{formatPriceMK(dashboardSummary.handover.settledCreditCash)}</div>
+            </div>
+            <div style={styles.handoverCard}>
+              <div style={styles.handoverLabel}>Cumulative Credits (All)</div>
+              <div style={styles.handoverValue}>{formatPriceMK(dashboardSummary.handover.accumulatedCredits)}</div>
+            </div>
+            <div style={styles.handoverCard}>
+              <div style={styles.handoverLabel}>Expected Handover</div>
+              <div style={styles.handoverValue}>{formatPriceMK(dashboardSummary.handover.expectedHandover)}</div>
             </div>
           </div>
-          {paymentSummary.length > 0 && (
-            <div style={{ ...styles.summarySection, marginTop: '20px' }}>
-              <div style={styles.summaryHeaderRow}>
-                <div>
-                  <div style={styles.sectionEyebrow}>Payment mix</div>
-                  <h4 style={styles.sectionTitle}>Sales proceeds by payment method</h4>
-                </div>
-                <div style={styles.summaryBadge}>{paymentSummary.length} methods</div>
-              </div>
+        </div>
+      )}
 
-              <div style={styles.summaryList}>
-                {paymentSummary.map((method) => (
-                  <div key={method.method} style={styles.summaryItem}>
-                    <div style={styles.summaryItemMeta}>
-                      <span style={{
-                        ...styles.summaryDot,
-                        backgroundColor: method.method?.toLowerCase().includes('cash') ? '#16a085' :
-                          method.method?.toLowerCase().includes('card') ? '#3b82f6' :
-                          method.method?.toLowerCase().includes('airtel') ? '#f59e0b' :
-                          method.method?.toLowerCase().includes('mpamba') ? '#8b5cf6' : '#14b8a6'
-                      }} />
-                      <div>
-                        <div style={styles.summaryTitle}>{method.method}</div>
-                        <div style={styles.summaryMeta}>{method.count} transaction{method.count === 1 ? '' : 's'}</div>
-                      </div>
+      {!isOwnerRole && (
+        <>
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>🧾 Product Sales Summary</h4>
+            <div style={styles.tableContainer}>
+              <div style={styles.table}>
+                <div style={{ ...styles.tableRow, ...styles.tableHeaderRow }}>
+                  <div style={styles.tableCellMain}>Product</div>
+                  <div style={styles.tableCellSmall}>Start Qty</div>
+                  <div style={styles.tableCellSmall}>Sold Qty</div>
+                  <div style={styles.tableCellSmall}>Closing Qty</div>
+                  <div style={styles.tableCellAmount}>Total Amount (Sold)</div>
+                  <div style={styles.tableCellAmount}>Remaining Products (costprice)</div>
+                </div>
+                {dashboardSummary.productSummary.map((p) => (
+                  <div key={p.productId} style={styles.tableRow}>
+                    <div style={styles.tableCellMain}>
+                      <a href={`/products?highlight=${p.productId}`} style={{ color: '#111', textDecoration: 'underline' }}>{p.name || 'Unknown'}</a>
                     </div>
-                    <div style={styles.summaryAmount}>{formatPriceMK(method.amount || 0)}</div>
+                    <div style={styles.tableCellSmall}>{p.startQty}</div>
+                    <div style={styles.tableCellSmall}>{p.soldQty}</div>
+                    <div style={styles.tableCellSmall}>{p.closingQty}</div>
+                    <div style={styles.tableCellAmount}>{formatPriceMK(p.totalAmount)}</div>
+                    <div style={styles.tableCellAmount}>{formatPriceMK(Number(p.remainingValue ?? 0))}</div>
                   </div>
                 ))}
+                <div style={{ ...styles.tableRow, ...styles.tableRowTotal }}>
+                  <div style={styles.tableCellMain}>Totals</div>
+                  <div style={styles.tableCellSmall}>{productSummaryTotals.startQty}</div>
+                  <div style={styles.tableCellSmall}>{productSummaryTotals.soldQty}</div>
+                  <div style={styles.tableCellSmall}>{productSummaryTotals.closingQty}</div>
+                  <div style={styles.tableCellAmount}>{formatPriceMK(productSummaryTotals.totalAmount)}</div>
+                  <div style={styles.tableCellAmount}>{formatPriceMK(productSummaryTotals.remainingValue)}</div>
+                </div>
               </div>
             </div>
-          )}
+            {dashboardSummary?.productSummaryPagination && (
+              <div style={styles.paginationRow}>
+                <button
+                  style={styles.paginationButton}
+                  disabled={dashboardSummary.productSummaryPagination.page <= 1}
+                  onClick={() => setProductPage((prev) => Math.max(1, prev - 1))}
+                >
+                  Previous
+                </button>
+                <span style={styles.paginationInfo}>
+                  Page {dashboardSummary.productSummaryPagination.page} of {dashboardSummary.productSummaryPagination.totalPages}
+                </span>
+                <button
+                  style={styles.paginationButton}
+                  disabled={dashboardSummary.productSummaryPagination.page >= dashboardSummary.productSummaryPagination.totalPages}
+                  onClick={() => setProductPage((prev) => Math.min(dashboardSummary.productSummaryPagination.totalPages, prev + 1))}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </div>
 
-          {todayOrders.length === 0 ? (
-            <div style={styles.emptyState}>No orders recorded today yet.</div>
-          ) : (
-            <div style={styles.ordersList}>
-              {todayOrders.map((order) => (
-                <div key={order._id || order.id} style={styles.orderItem}>
-                  <div>
-                    <div style={styles.orderName}>Order #{order.orderNumber || order._id || order.id}</div>
-                    <div style={styles.orderMeta}>{order.customer?.name || order.customerName || 'Walk-in customer'}</div>
+          <div style={styles.section}>
+            <h4 style={styles.sectionTitle}>🧾 Customers with Unsettled Bills</h4>
+            <div style={styles.tableContainer}>
+              <div style={styles.table}>
+                <div style={{ ...styles.tableRow, ...styles.tableHeaderRow }}>
+                  <div style={styles.tableCellMain}>Customer</div>
+                  <div style={styles.tableCellSmall}>Phone</div>
+                  <div style={styles.tableCellAmount}>Outstanding (Total)</div>
+                  <div style={styles.tableCellAmount}>Outstanding (Period)</div>
+                  <div style={styles.tableCellSmall}>Open Credit Orders</div>
+                </div>
+                {dashboardSummary.unsettledCustomers.map((c) => (
+                  <div key={c.customerId} style={styles.tableRow}>
+                    <div style={styles.tableCellMain}>
+                      <a href={`/customers?highlight=${c.customerId}`} style={{ color: '#111', textDecoration: 'underline' }}>{c.name}</a>
+                    </div>
+                    <div style={styles.tableCellSmall}>{c.phone}</div>
+                    <div style={styles.tableCellAmount}>{formatPriceMK(c.outstandingBalanceTotal)}</div>
+                    <div style={styles.tableCellAmount}>{formatPriceMK(c.outstandingBalancePeriod)}</div>
+                    <div style={styles.tableCellSmall}>{c.openCreditOrders}</div>
                   </div>
-                  <div style={styles.orderAmount}>{formatPriceMK(order.totalAmount || 0)}</div>
+                ))}
+                <div style={{ ...styles.tableRow, ...styles.tableRowTotal }}>
+                  <div style={styles.tableCellMain}>Totals</div>
+                  <div style={styles.tableCellSmall} />
+                  <div style={styles.tableCellAmount}>{formatPriceMK(unsettledCustomerTotals.outstandingBalanceTotal)}</div>
+                  <div style={styles.tableCellAmount}>{formatPriceMK(unsettledCustomerTotals.outstandingBalancePeriod)}</div>
+                  <div style={styles.tableCellSmall}>{unsettledCustomerTotals.openCreditOrders}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+      {(isHardwareManagerRole || isSalesRole) && paymentSummary.length > 0 && (
+        <div className="fade-in" style={styles.ordersPanel}>
+          <div style={{ ...styles.summarySection, marginTop: '0' }}>
+            <div style={styles.summaryHeaderRow}>
+              <div>
+                <div style={styles.sectionEyebrow}>Payment mix</div>
+                <h4 style={styles.sectionTitle}>Sales proceeds by payment method</h4>
+              </div>
+              <div style={styles.summaryBadge}>{paymentSummary.length} methods</div>
+            </div>
+
+            <div style={styles.summaryList}>
+              {paymentSummary.map((method) => (
+                <div key={method.method} style={styles.summaryItem}>
+                  <div style={styles.summaryItemMeta}>
+                    <span style={{
+                      ...styles.summaryDot,
+                      backgroundColor: method.method?.toLowerCase().includes('cash') ? '#16a085' :
+                        method.method?.toLowerCase().includes('card') ? '#3b82f6' :
+                        method.method?.toLowerCase().includes('airtel') ? '#f59e0b' :
+                        method.method?.toLowerCase().includes('mpamba') ? '#8b5cf6' : '#14b8a6'
+                    }} />
+                    <div>
+                      <div style={styles.summaryTitle}>{method.method}</div>
+                      <div style={styles.summaryMeta}>{method.count} transaction{method.count === 1 ? '' : 's'}</div>
+                    </div>
+                  </div>
+                  <div style={styles.summaryAmount}>{formatPriceMK(method.amount || 0)}</div>
                 </div>
               ))}
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -367,20 +493,58 @@ const Dashboard = () => {
 
 const styles = {
   welcomeSection: {
-    marginBottom: '24px'
+    marginBottom: '20px'
   },
   heroPanel: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+    alignItems: 'flex-start',
+    backgroundColor: '#ffffff',
     border: '1px solid #e5e7eb',
-    borderRadius: '20px',
-    padding: '22px 24px',
-    boxShadow: '0 12px 35px rgba(15, 23, 42, 0.06)',
+    borderRadius: '16px',
+    padding: '18px 20px',
+    boxShadow: '0 10px 25px rgba(15, 23, 42, 0.05)',
     gap: '16px',
     flexWrap: 'wrap'
   },
+  handoverPanel: {
+    background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+    border: '1px solid #e2e8f0',
+    borderRadius: '18px',
+    padding: 22,
+    boxShadow: '0 10px 25px rgba(15, 23, 42, 0.08)'
+  },
+  handoverGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: 14,
+    marginTop: 14
+  },
+  handoverCard: {
+    padding: 18,
+    borderRadius: 14,
+    backgroundColor: '#ffffff',
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 6px 18px rgba(15, 23, 42, 0.06)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8
+  },
+  handoverLabel: { fontSize: 13, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 },
+  handoverValue: { fontSize: 18, fontWeight: 700, color: '#0f172a' },
+  section: { marginTop: 18 },
+  sectionTitle: { fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: 0 },
+  tableContainer: { width: '100%', maxHeight: '360px', overflowX: 'auto', overflowY: 'auto', border: '1px solid #f0f0f0', borderRadius: 8, backgroundColor: '#ffffff' },
+  table: { width: '100%', borderCollapse: 'collapse', minWidth: '520px', backgroundColor: '#ffffff' },
+  tableRow: { display: 'flex', padding: '8px 12px', alignItems: 'center', gap: 12, borderBottom: '1px solid #fafafa', transition: 'background 0.2s ease', cursor: 'pointer' },
+  tableHeaderRow: { cursor: 'default', backgroundColor: '#f8fafc', fontWeight: 700, position: 'sticky', top: 0, zIndex: 2 },
+  tableCellMain: { flex: 2, minWidth: 220 },
+  tableCellSmall: { width: 80, minWidth: 80, textAlign: 'right' },
+  tableCellAmount: { width: 140, minWidth: 140, textAlign: 'right' },
+  tableRowTotal: { backgroundColor: '#eef2ff', fontWeight: 700, position: 'sticky', bottom: 0, zIndex: 2 },
+  paginationRow: { display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', padding: '10px 0' },
+  paginationButton: { padding: '8px 14px', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: '#ffffff', cursor: 'pointer', color: '#111827', fontWeight: 600 },
+  paginationInfo: { fontSize: '14px', color: '#4b5563' },
   eyebrow: {
     fontSize: '12px',
     fontWeight: '700',
@@ -449,17 +613,16 @@ const styles = {
     transition: 'all 0.3s ease'
   },
   refreshBtn: {
-    padding: '10px 18px',
-    borderRadius: '999px',
-    border: '1px solid #e94560',
-    backgroundColor: '#fff',
+    padding: '10px 16px',
+    borderRadius: '10px',
+    border: '1px solid #fecaca',
+    backgroundColor: '#fff7f7',
     color: '#e94560',
     cursor: 'pointer',
     fontSize: '14px',
     fontWeight: '600',
     transition: 'all 0.3s ease',
-    width: '100%',
-    maxWidth: '140px'
+    minWidth: '110px'
   },
   statsGrid: {
     display: 'grid',
@@ -623,14 +786,6 @@ const styles = {
     fontWeight: '600',
     transition: 'all 0.3s ease'
   },
-  tableHeaderRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: '12px',
-    marginBottom: '10px',
-    flexWrap: 'wrap'
-  },
   tableWrap: {
     overflowX: 'auto',
     border: '1px solid #e5e7eb',
@@ -659,12 +814,6 @@ const styles = {
     textTransform: 'uppercase',
     color: '#94a3b8',
     marginBottom: '4px'
-  },
-  sectionTitle: {
-    fontSize: '16px',
-    fontWeight: '700',
-    color: '#0f172a',
-    margin: 0
   },
   summaryBadge: {
     display: 'inline-flex',
@@ -831,15 +980,6 @@ const styles = {
     overflowX: 'auto',
     width: '100%'
   },
-  table: {
-    width: '100%',
-    borderCollapse: 'collapse',
-    fontSize: '14px'
-  },
-  tableRow: {
-    transition: 'background 0.2s ease',
-    cursor: 'pointer'
-  },
   orderNumber: {
     fontWeight: 'bold',
     color: '#1a1a2e'
@@ -910,5 +1050,19 @@ styleSheet.textContent = `
   .delay-6 { animation-delay: 0.3s; }
 `;
 document.head.appendChild(styleSheet);
+
+// Responsive mobile-first rules
+const responsiveStyles = document.createElement('style');
+responsiveStyles.textContent = `
+  .handover-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  .stats-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  .summaryList { display: block; }
+  @media (min-width: 640px) {
+    .handover-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .stats-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+    .summaryList { display: grid; gap: 10px; }
+  }
+`;
+document.head.appendChild(responsiveStyles);
 
 export default Dashboard;

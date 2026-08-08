@@ -217,7 +217,8 @@ const POS = () => {
   const subtotal = cart.reduce((sum, item) => sum + (item.sellingPrice * item.quantity), 0);
   const taxRate = 0.175;
   const discountNumber = Math.max(0, Number(discountAmount) || 0);
-  const discountedTotal = Math.max(0, subtotal - discountNumber);
+  const cappedDiscount = Math.min(discountNumber, subtotal);
+  const discountedTotal = Math.max(0, subtotal - cappedDiscount);
   const taxAmount = businessSettings.taxCompliant ? discountedTotal - discountedTotal / (1 + taxRate) : 0;
   const netAmount = businessSettings.taxCompliant ? discountedTotal - taxAmount : discountedTotal;
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -242,7 +243,7 @@ const POS = () => {
         customer: selectedCustomer || null,
         paymentMethod: paymentMethod,
         paidAmount: Number(paidAmount) || 0,
-        discountAmount: Number(discountAmount) || 0,
+        discountAmount: cappedDiscount,
         taxCompliant: businessSettings.taxCompliant,
         taxAmount,
         netAmount
@@ -591,6 +592,7 @@ const POS = () => {
                     <input
                       type="number"
                       min="0"
+                      max={subtotal}
                       step="0.01"
                       value={discountAmount}
                       onChange={(e) => setDiscountAmount(e.target.value)}

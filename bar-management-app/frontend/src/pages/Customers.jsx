@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import api from '../api/api';
 import PageContainer from './PageContainer';
 import Button from '../components/common/Button';
@@ -15,6 +16,8 @@ const Customers = () => {
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [creditData, setCreditData] = useState({});
+  const [settleAmount, setSettleAmount] = useState({});
+  const [settlingCustomerId, setSettlingCustomerId] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -24,6 +27,56 @@ const Customers = () => {
   useEffect(() => {
     loadCustomers(1);
   }, []);
+
+  const loadCustomerCreditData = async (customerId) => {
+    const id = customerId || '';
+    if (!id) return;
+
+    setCreditData((prev) => ({ ...prev, [id]: { loading: true, expanded: true, products: [], totalDue: 0 } }));
+    try {
+      const res = await api.get(`/orders?customerId=${id}&paymentMethod=credit`);
+      const orders = Array.isArray(res.data) ? res.data : Array.isArray(res.data.orders) ? res.data.orders : [];
+      const productMap = new Map();
+      let totalDue = 0;
+      for (const order of orders) {
+        const orderDue = Number(order.dueAmount || 0) || 0;
+        totalDue += orderDue;
+        const orderTotal = Number(order.totalAmount) || 0;
+        if (!Array.isArray(order.items)) continue;
+        for (const item of order.items) {
+          const productId = item.product?._id || item.product || item.product?.id;
+          const name = item.productName || item.product?.name || item.name || 'Unknown';
+          const subtotal = Number(item.subtotal || (item.priceAtSale * (item.quantity || 0))) || 0;
+          const dueShare = orderTotal > 0 ? (subtotal / orderTotal) * orderDue : 0;
+          const existingProd = productMap.get(productId) || { name, quantity: 0, subtotal: 0, due: 0 };
+          existingProd.quantity += Number(item.quantity || 0);
+          existingProd.subtotal += subtotal;
+          existingProd.due += dueShare;
+          productMap.set(productId, existingProd);
+        }
+      }
+      const productsData = Array.from(productMap.entries()).map(([prodId, data]) => ({ productId: prodId, ...data }));
+      setCreditData((prev) => ({ ...prev, [id]: { loading: false, expanded: true, products: productsData, totalDue } }));
+    } catch (err) {
+      console.error('Error loading credit orders:', err);
+      setCreditData((prev) => ({ ...prev, [id]: { loading: false, expanded: true, products: [], totalDue: 0, error: true } }));
+    }
+  };
+
+  const location = useLocation();
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const highlight = params.get('highlight');
+    if (highlight) {
+      const match = customers.find(c => (c._id === highlight || c.id === highlight));
+      if (match) {
+        // trigger the same logic as the credit button click
+        (async () => {
+          await loadCustomerCreditData(match._id || match.id);
+        })();
+      }
+    }
+  }, [location.search, customers]);
 
   const loadCustomers = async (page = 1) => {
     setLoading(true);
@@ -38,6 +91,26 @@ const Customers = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getLatestSettlement = (customer) => {
+    if (!Array.isArray(customer?.creditSettlements)) return null;
+    const settlements = customer.creditSettlements
+      .filter((entry) => entry && entry.settledAt)
+      .sort((a, b) => new Date(b.settledAt) - new Date(a.settledAt));
+    return settlements[0] || null;
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString();
+  };
+
+  const updateCustomerInState = (updatedCustomer) => {
+    if (!updatedCustomer || !updatedCustomer._id) return;
+    setCustomers((prev) => prev.map((c) => (c._id === updatedCustomer._id ? updatedCustomer : c)));
   };
 
   const handleSubmit = async (e) => {
@@ -198,41 +271,7 @@ const Customers = () => {
                       return;
                     }
 
-                    // fetch credit orders for this customer
-                    setCreditData((prev) => ({ ...prev, [id]: { loading: true, expanded: true, products: [], totalDue: 0 } }));
-                    try {
-                      const res = await api.get(`/orders?customerId=${id}&paymentMethod=credit`);
-                      const orders = Array.isArray(res.data) ? res.data : Array.isArray(res.data.orders) ? res.data.orders : [];
-
-                      const productMap = new Map();
-                      let totalDue = 0;
-
-                      for (const order of orders) {
-                        const orderDue = Number(order.dueAmount || 0) || 0;
-                        totalDue += orderDue;
-                        const orderTotal = Number(order.totalAmount) || 0;
-                        if (!Array.isArray(order.items)) continue;
-                        for (const item of order.items) {
-                          const productId = item.product?._id || item.product || item.product?.id;
-                          const name = item.productName || item.product?.name || item.name || 'Unknown';
-                          const subtotal = Number(item.subtotal || (item.priceAtSale * (item.quantity || 0))) || 0;
-                          // allocate due proportionally to subtotal
-                          const dueShare = orderTotal > 0 ? (subtotal / orderTotal) * orderDue : 0;
-
-                          const existingProd = productMap.get(productId) || { name, quantity: 0, subtotal: 0, due: 0 };
-                          existingProd.quantity += Number(item.quantity || 0);
-                          existingProd.subtotal += subtotal;
-                          existingProd.due += dueShare;
-                          productMap.set(productId, existingProd);
-                        }
-                      }
-
-                      const products = Array.from(productMap.entries()).map(([id, data]) => ({ productId: id, ...data }));
-                      setCreditData((prev) => ({ ...prev, [id]: { loading: false, expanded: true, products, totalDue } }));
-                    } catch (err) {
-                      console.error('Error loading credit orders:', err);
-                      setCreditData((prev) => ({ ...prev, [id]: { loading: false, expanded: true, products: [], totalDue: 0, error: true } }));
-                    }
+                    await loadCustomerCreditData(id);
                   }}
                 >
                   💳 Credit Purchases
@@ -267,6 +306,49 @@ const Customers = () => {
                           <span style={{ width: 80 }} />
                           <strong style={{ width: 120, textAlign: 'right' }}>{formatPriceMK(creditData[customer._id].totalDue || 0)}</strong>
                         </div>
+                        {getLatestSettlement(customer) && (
+                          <div style={styles.settlementMeta}>
+                            Last settled: {formatDateTime(getLatestSettlement(customer).settledAt)}
+                          </div>
+                        )}
+                        <div style={styles.settleBox}>
+                          <label style={styles.settleLabel}>Settle credit</label>
+                          <div style={styles.settleControls}>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={settleAmount[customer._id] || ''}
+                              onChange={(e) => setSettleAmount((prev) => ({ ...prev, [customer._id]: e.target.value }))}
+                              style={styles.settleInput}
+                            />
+                            <button
+                              style={styles.settleButton}
+                              onClick={async () => {
+                                const amount = Number(settleAmount[customer._id] || 0);
+                                if (!amount || amount <= 0) return;
+                                setSettlingCustomerId(customer._id);
+                                try {
+                                  const res = await api.post(`/customers/${customer._id}/settle-credit`, { amount });
+                                  const updatedCustomer = res.data?.customer;
+                                  if (updatedCustomer) {
+                                    updateCustomerInState(updatedCustomer);
+                                  }
+                                  setSettleAmount((prev) => ({ ...prev, [customer._id]: '' }));
+                                  await loadCustomerCreditData(customer._id || customer.id);
+                                } catch (err) {
+                                  console.error('Error settling credit:', err);
+                                  alert(err.response?.data?.message || 'Failed to settle credit');
+                                } finally {
+                                  setSettlingCustomerId(null);
+                                }
+                              }}
+                            >
+                              {settlingCustomerId === customer._id ? 'Settling…' : 'Settle'}
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </>
@@ -274,7 +356,8 @@ const Customers = () => {
               </div>
             )}
             <div style={styles.customerStats}>
-              <span>💰 Total Spent: {formatPriceMK(customer.totalSpent || 0)}</span>
+              <span>� Credit Balance: {formatPriceMK(customer.creditBalance || 0)}</span>
+              <span>�💰 Total Spent: {formatPriceMK(customer.totalSpent || 0)}</span>
               <span>⭐ Loyalty Points: {customer.loyaltyPoints || 0}</span>
             </div>
           </div>
@@ -405,6 +488,43 @@ const styles = {
     gap: 8,
     padding: '6px 0',
     borderBottom: '1px solid rgba(0,0,0,0.02)'
+  },
+  settleBox: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTop: '1px dashed #eee'
+  },
+  settleLabel: {
+    display: 'block',
+    marginBottom: 6,
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#555'
+  },
+  settleControls: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center'
+  },
+  settleInput: {
+    flex: 1,
+    padding: '8px 10px',
+    borderRadius: 8,
+    border: '1px solid #ddd'
+  },
+  settleButton: {
+    padding: '8px 12px',
+    borderRadius: 8,
+    border: '1px solid #e94560',
+    backgroundColor: '#fff5f5',
+    color: '#e94560',
+    cursor: 'pointer',
+    fontWeight: 600
+  },
+  settlementMeta: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#555'
   },
   paginationControls: {
     display: 'flex',

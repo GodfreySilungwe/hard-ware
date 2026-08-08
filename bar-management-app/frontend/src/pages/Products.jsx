@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import api from '../api/api';
 import PageContainer from './PageContainer';
 import Button from '../components/common/Button';
@@ -26,6 +27,21 @@ const Products = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // auto-open edit when `highlight` query param provided
+  const location = useLocation();
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const highlight = params.get('highlight');
+    if (highlight && products.length > 0) {
+      const p = products.find((prod) => (prod._id === highlight || prod.id === highlight));
+      if (p) {
+        handleEdit(p);
+        const el = document.querySelector(`[data-product-id="${highlight}"]`);
+        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [location.search, products]);
 
   const loadData = async () => {
     try {
@@ -277,6 +293,7 @@ const Products = () => {
         {products.map((product, index) => (
           <div 
             key={product._id} 
+            data-product-id={product._id}
             className={`fade-in delay-${(index % 6) + 1}`}
             style={styles.productCard}
             onMouseEnter={(e) => {
