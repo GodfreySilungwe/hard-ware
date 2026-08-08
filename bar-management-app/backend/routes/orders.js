@@ -7,7 +7,7 @@ const Customer = require('../models/Customer');
 const { protect, isHardwareManagerOrOwner } = require('../middleware/auth');
 const { applyOrderReversal } = require('../lib/orderReversal');
 const { summarizeOrders, getPaymentMethodLabel, buildReportSummary, normalizeNumber } = require('../lib/orderMetrics');
-const { applyOrderToCustomerAccount } = require('../lib/customerAccountSync');
+const { applyOrderToCustomerAccount, calculateDiscountedOrderTotal } = require('../lib/customerAccountSync');
 
 const populateOrderItemProducts = async (order, req) => {
   if (!order || !Array.isArray(order.items)) return order;
@@ -195,6 +195,7 @@ router.get('/', protect, async (req, res) => {
     }
 
     const orders = await Order.find(query, req)
+      .populate('customer', 'name phone')
       .sort({ createdAt: -1 });
 
     let normalizedOrders = orders.map((order) => ({
@@ -381,9 +382,9 @@ router.post('/', protect, async (req, res) => {
 
     // Apply any order-level discount before tax and customer/account sync
     const discountAmount = Math.max(0, Number(req.body?.discountAmount || 0) || 0);
-    if (discountAmount > 0) {
-      totalAmount = Math.max(0, totalAmount - discountAmount);
-    }
+    const discountResult = calculateDiscountedOrderTotal(totalAmount, discountAmount);
+    totalAmount = discountResult.discountedTotal;
+    const finalDiscountAmount = discountResult.discountAmount;
 
     // Sync customer account metrics with POS activity
     // For credit payments, only add the outstanding (total - paid) to the customer's account.
@@ -434,7 +435,7 @@ router.post('/', protect, async (req, res) => {
       customer: customer || null,
       items: orderItems,
       totalAmount,
-      discountAmount: discountAmount,
+      discountAmount: finalDiscountAmount,
       profit: profitBase,
       paymentMethod: paymentMethod || 'cash',
       paymentMethodLabel: getPaymentMethodLabel(paymentMethod || 'cash'),

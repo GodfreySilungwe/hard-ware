@@ -81,6 +81,7 @@ const categoryRoutes = require('./routes/categories');
 const productRoutes = require('./routes/products');
 const customerRoutes = require('./routes/customers');
 const orderRoutes = require('./routes/orders');
+const dashboardRoutes = require('./routes/dashboard');
 const uploadRoutes = require('./routes/uploads');
 
 // Use routes
@@ -89,6 +90,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/uploads', uploadRoutes);
 
 // Root info route

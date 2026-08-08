@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Customer = require('../models/Customer');
 const { protect } = require('../middleware/auth');
+const { settleCustomerCreditBalance } = require('../lib/customerAccountSync');
 
 // Get all customers with optional pagination
 router.get('/', protect, async (req, res) => {
@@ -77,6 +78,41 @@ router.put('/:id', protect, async (req, res) => {
       return res.status(404).json({ message: 'Customer not found' });
     }
     res.json(customer);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// Settle customer credit balance
+router.post('/:id/settle-credit', protect, async (req, res) => {
+  try {
+    const customer = await Customer.findById(req.params.id, req);
+    if (!customer) {
+      return res.status(404).json({ message: 'Customer not found' });
+    }
+
+    const amount = Number(req.body?.amount || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'Settlement amount must be greater than zero' });
+    }
+
+    const previousBalance = Number(customer.creditBalance || 0);
+    const paymentAmount = Math.min(amount, previousBalance);
+
+    customer.creditSettlements = Array.isArray(customer.creditSettlements) ? customer.creditSettlements : [];
+    customer.creditSettlements.push({
+      amount: paymentAmount,
+      settledAt: new Date().toISOString()
+    });
+
+    settleCustomerCreditBalance(customer, amount);
+    await customer.save();
+
+    res.json({
+      message: 'Credit settled successfully',
+      customer,
+      settledAmount: paymentAmount
+    });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }

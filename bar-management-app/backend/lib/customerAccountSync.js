@@ -22,4 +22,31 @@ function applyOrderToCustomerAccount(customer, amount, options = {}) {
   return customer;
 }
 
-module.exports = { applyOrderToCustomerAccount };
+function calculateDiscountedOrderTotal(subtotal, discountAmount) {
+  const normalizedSubtotal = Number(subtotal || 0);
+  const normalizedDiscount = Math.max(0, Number(discountAmount || 0));
+  const cappedDiscount = Math.min(normalizedDiscount, normalizedSubtotal);
+  const discountedTotal = Math.max(0, normalizedSubtotal - cappedDiscount);
+
+  return {
+    discountAmount: cappedDiscount,
+    discountedTotal
+  };
+}
+
+function settleCustomerCreditBalance(customer, amount) {
+  const normalizedAmount = Math.max(0, Number(amount || 0));
+
+  if (!customer || !Number.isFinite(normalizedAmount)) {
+    return customer;
+  }
+
+  const currentBalance = Number(customer.creditBalance || 0);
+  const paymentAmount = Math.min(normalizedAmount, currentBalance);
+
+  customer.creditBalance = Math.max(0, currentBalance - paymentAmount);
+
+  return customer;
+}
+
+module.exports = { applyOrderToCustomerAccount, calculateDiscountedOrderTotal, settleCustomerCreditBalance };

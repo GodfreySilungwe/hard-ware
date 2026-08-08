@@ -70,8 +70,19 @@ function summarizeOrders(orders = [], options = {}) {
 
   const paymentMethodsMap = {};
   let runningTotalProfit = 0;
+  let creditRepaymentAmount = 0;
+  let creditRepaymentCount = 0;
   filteredOrders.forEach((order) => {
     const method = String(order?.paymentMethod || 'unknown');
+    const normalizedMethod = method.toLowerCase().trim();
+    if (normalizedMethod === 'credit') {
+      const paidAmount = normalizeNumber(order.paidAmount);
+      if (paidAmount > 0) {
+        creditRepaymentAmount += paidAmount;
+        creditRepaymentCount += 1;
+      }
+    }
+
     if (!paymentMethodsMap[method]) {
       paymentMethodsMap[method] = { count: 0, amount: 0 };
     }
@@ -85,8 +96,18 @@ function summarizeOrders(orders = [], options = {}) {
       label: getPaymentMethodLabel(method),
       count: meta.count,
       amount: meta.amount
-    }))
-    .sort((a, b) => b.amount - a.amount);
+    }));
+
+  if (creditRepaymentAmount > 0) {
+    paymentMethods.push({
+      method: 'credit_repayment',
+      label: 'Credit Repayment',
+      count: creditRepaymentCount,
+      amount: creditRepaymentAmount
+    });
+  }
+
+  paymentMethods.sort((a, b) => b.amount - a.amount);
 
   return {
     orders: filteredOrders,
