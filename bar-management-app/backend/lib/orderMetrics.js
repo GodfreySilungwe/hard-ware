@@ -44,6 +44,9 @@ function getPaymentMethodLabel(method) {
   if (normalized === 'card') {
     return 'Card';
   }
+  if (normalized === 'credit') {
+    return 'Credit';
+  }
   return String(method || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim() || 'Unknown';
 }
 
@@ -99,8 +102,17 @@ function summarizeOrders(orders = [], options = {}) {
   };
 }
 
+function normalizeReferenceId(reference) {
+  if (!reference) return null;
+  if (typeof reference === 'string') return reference;
+  return reference._id || reference.id || null;
+}
+
 function buildReportSummary(orders = [], options = {}) {
   const includeReversed = options.includeReversed !== false;
+  const customerMap = options.customerMap || new Map();
+  const productMap = options.productMap || new Map();
+  const categoryMap = options.categoryMap || new Map();
   const filteredOrders = (orders || []).filter((order) => includeReversed || order?.status !== 'reversed');
 
   const customersMap = new Map();
@@ -112,7 +124,9 @@ function buildReportSummary(orders = [], options = {}) {
   let runningTotalProfit = 0;
   filteredOrders.forEach((order) => {
     const orderTotal = getOrderTotalAmount(order);
-    const customerName = order?.customer?.name || order?.customerName || 'Walk-in';
+    const customerRef = normalizeReferenceId(order?.customer);
+    const customer = customerRef ? customerMap.get(customerRef) : null;
+    const customerName = customer?.name || order?.customer?.name || order?.customerName || 'Walk-in';
     customersMap.set(customerName, (customersMap.get(customerName) || 0) + orderTotal);
     const orderDate = new Date(order?.createdAt || order?.created_at || order?.date || Date.now());
     // Use local date (YYYY-MM-DD) so grouping matches local-day boundaries instead of UTC-derived ISO date
@@ -164,7 +178,9 @@ function buildReportSummary(orders = [], options = {}) {
 
     // process items for product/category/profit maps
     items.forEach((item) => {
-      const productName = item?.product?.name || item?.name || 'Unknown';
+      const productRef = normalizeReferenceId(item?.product);
+      const product = productRef ? productMap.get(productRef) : null;
+      const productName = product?.name || item?.product?.name || item?.name || 'Unknown';
       const quantity = normalizeNumber(item?.quantity);
       const subtotal = normalizeNumber(item?.subtotal);
       const rawPriceAtSale = normalizeNumber(item?.priceAtSale) || (quantity > 0 ? subtotal / quantity : 0);
@@ -174,7 +190,7 @@ function buildReportSummary(orders = [], options = {}) {
         ? (orderNetAmount / orderTotalAmount)
         : 1;
       const priceAtSale = rawPriceAtSale * taxMultiplier;
-      const costPrice = normalizeNumber(item?.costPrice ?? item?.product?.costPrice ?? 0);
+      const costPrice = normalizeNumber(item?.costPrice ?? product?.costPrice ?? item?.product?.costPrice ?? 0);
       const itemProfit = normalizeNumber(item?.profit);
       const computedProfit = Math.max((priceAtSale - costPrice) * quantity, 0);
       const profitAmount = itemProfit > 0 ? itemProfit : computedProfit;
@@ -190,7 +206,8 @@ function buildReportSummary(orders = [], options = {}) {
       profitEntry.profit += profitAmount;
       profitProductMap.set(productName, profitEntry);
 
-      const categoryName = item?.product?.category?.name || 'Uncategorized';
+      const categoryRef = normalizeReferenceId(product?.category || item?.product?.category);
+      const categoryName = categoryRef ? (categoryMap.get(categoryRef)?.name || 'Uncategorized') : item?.product?.category?.name || 'Uncategorized';
       const categoryEntry = categorySalesMap.get(categoryName) || 0;
       categorySalesMap.set(categoryName, categoryEntry + (subtotal > 0 ? subtotal : priceAtSale * quantity));
     });

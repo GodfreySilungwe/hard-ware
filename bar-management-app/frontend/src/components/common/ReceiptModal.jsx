@@ -69,6 +69,12 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
             <p><strong>Date:</strong> {new Date(order.createdAt).toLocaleString()}</p>
             <p><strong>Customer:</strong> {order.customer?.name || 'Walk-in Customer'}</p>
             <p><strong>Payment:</strong> {order.paymentMethodLabel || String(order.paymentMethod || '').replace('_', ' ')}</p>
+            { (Number(order.paidAmount || 0) > 0) && (
+              <p><strong>Paid:</strong> {formatPriceMK(Number(order.paidAmount || 0))}</p>
+            ) }
+            { (String(order.paymentMethod || '').toLowerCase() === 'credit' || Number(order.dueAmount || 0) > 0) && (
+              <p><strong>Due:</strong> {formatPriceMK(Number(order.dueAmount || 0))}</p>
+            ) }
           </div>
 
           <div style={styles.divider} />
@@ -105,6 +111,12 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
                   <span>Inclusive Total:</span>
                   <span>{formatPriceMK(order.totalAmount)}</span>
                 </div>
+                {Number(order.discountAmount || 0) > 0 && (
+                  <div style={styles.totalRow}>
+                    <span>Discount:</span>
+                    <span>-{formatPriceMK(Number(order.discountAmount || 0))}</span>
+                  </div>
+                )}
                 <div style={styles.totalRow}>
                   <span>Tax (17.5% incl.):</span>
                   <span>{formatPriceMK(order.taxAmount || 0)}</span>
@@ -122,8 +134,14 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
               <>
                 <div style={styles.totalRow}>
                   <span>Subtotal:</span>
-                  <span>{formatPriceMK(order.totalAmount)}</span>
+                  <span>{formatPriceMK(order.totalAmount + (Number(order.discountAmount || 0) || 0))}</span>
                 </div>
+                {Number(order.discountAmount || 0) > 0 && (
+                  <div style={styles.totalRow}>
+                    <span>Discount:</span>
+                    <span>-{formatPriceMK(Number(order.discountAmount || 0))}</span>
+                  </div>
+                )}
                 <div style={styles.totalRowBig}>
                   <span><strong>TOTAL:</strong></span>
                   <span style={styles.totalAmount}>{formatPriceMK(order.totalAmount)}</span>

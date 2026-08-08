@@ -14,6 +14,8 @@ const POS = () => {
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paidAmount, setPaidAmount] = useState('');
+  const [discountAmount, setDiscountAmount] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
@@ -214,8 +216,10 @@ const POS = () => {
 
   const subtotal = cart.reduce((sum, item) => sum + (item.sellingPrice * item.quantity), 0);
   const taxRate = 0.175;
-  const taxAmount = businessSettings.taxCompliant ? subtotal - subtotal / (1 + taxRate) : 0;
-  const netAmount = businessSettings.taxCompliant ? subtotal - taxAmount : subtotal;
+  const discountNumber = Math.max(0, Number(discountAmount) || 0);
+  const discountedTotal = Math.max(0, subtotal - discountNumber);
+  const taxAmount = businessSettings.taxCompliant ? discountedTotal - discountedTotal / (1 + taxRate) : 0;
+  const netAmount = businessSettings.taxCompliant ? discountedTotal - taxAmount : discountedTotal;
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   const checkout = async () => {
@@ -237,6 +241,8 @@ const POS = () => {
         })),
         customer: selectedCustomer || null,
         paymentMethod: paymentMethod,
+        paidAmount: Number(paidAmount) || 0,
+        discountAmount: Number(discountAmount) || 0,
         taxCompliant: businessSettings.taxCompliant,
         taxAmount,
         netAmount
@@ -524,6 +530,21 @@ const POS = () => {
                         {formatPriceMK(item.sellingPrice)} x {item.quantity}
                       </div>
                     </div>
+
+                      {paymentMethod === 'credit' && (
+                        <div style={{ marginTop: 10 }}>
+                          <label style={{ display: 'block', marginBottom: 6 }}>Amount paid (optional):</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={paidAmount}
+                            onChange={(e) => setPaidAmount(e.target.value)}
+                            placeholder="0.00"
+                            style={{ padding: '8px 10px', width: '100%', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                      )}
                     <div style={styles.cartItemActions} className="pos-mobile-cart-item-actions">
                       <button
                         style={styles.cartItemBtn}
@@ -563,9 +584,30 @@ const POS = () => {
                   <span>Subtotal:</span>
                   <span style={styles.totalAmount}>{formatPriceMK(subtotal)}</span>
                 </div>
+
+                <div style={styles.totalRow}>
+                  <span>Discount:</span>
+                  <span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={discountAmount}
+                      onChange={(e) => setDiscountAmount(e.target.value)}
+                      placeholder="0.00"
+                      style={{ padding: '6px 8px', width: 100, boxSizing: 'border-box' }}
+                    />
+                  </span>
+                </div>
+
                 <div style={styles.totalRow}>
                   <span>Items:</span>
                   <span>{totalItems}</span>
+                </div>
+
+                <div style={styles.totalRowBig}>
+                  <span><strong>TOTAL:</strong></span>
+                  <span style={styles.totalAmount}>{formatPriceMK(discountedTotal)}</span>
                 </div>
               </div>
             )}
@@ -579,7 +621,7 @@ const POS = () => {
                     ...styles.paymentBtn,
                     ...(paymentMethod === 'cash' ? styles.paymentBtnActive : {})
                   }}
-                  onClick={() => setPaymentMethod('cash')}
+                  onClick={() => { setPaymentMethod('cash'); setPaidAmount(''); }}
                   onMouseEnter={(e) => {
                     if (paymentMethod !== 'cash') {
                       e.currentTarget.style.backgroundColor = '#f0f0f0';
@@ -601,7 +643,7 @@ const POS = () => {
                     ...styles.paymentBtn,
                     ...(paymentMethod === 'card' ? styles.paymentBtnActive : {})
                   }}
-                  onClick={() => setPaymentMethod('card')}
+                  onClick={() => { setPaymentMethod('card'); setPaidAmount(''); }}
                   onMouseEnter={(e) => {
                     if (paymentMethod !== 'card') {
                       e.currentTarget.style.backgroundColor = '#f0f0f0';
@@ -623,7 +665,7 @@ const POS = () => {
                     ...styles.paymentBtn,
                     ...(paymentMethod === 'airtel_money' ? styles.paymentBtnActive : {})
                   }}
-                  onClick={() => setPaymentMethod('airtel_money')}
+                  onClick={() => { setPaymentMethod('airtel_money'); setPaidAmount(''); }}
                   onMouseEnter={(e) => {
                     if (paymentMethod !== 'airtel_money') {
                       e.currentTarget.style.backgroundColor = '#f0f0f0';
@@ -645,7 +687,7 @@ const POS = () => {
                     ...styles.paymentBtn,
                     ...(paymentMethod === 'mpamba' ? styles.paymentBtnActive : {})
                   }}
-                  onClick={() => setPaymentMethod('mpamba')}
+                  onClick={() => { setPaymentMethod('mpamba'); setPaidAmount(''); }}
                   onMouseEnter={(e) => {
                     if (paymentMethod !== 'mpamba') {
                       e.currentTarget.style.backgroundColor = '#f0f0f0';
@@ -661,6 +703,29 @@ const POS = () => {
                 >
                   📱 Mpamba
                 </button>
+              <button
+                className="payment-btn pos-mobile-payment-btn"
+                style={{
+                  ...styles.paymentBtn,
+                  ...(paymentMethod === 'credit' ? styles.paymentBtnActive : {})
+                }}
+                onClick={() => { setPaymentMethod('credit'); setPaidAmount(''); }}
+                disabled={!selectedCustomer}
+                onMouseEnter={(e) => {
+                  if (paymentMethod !== 'credit' && selectedCustomer) {
+                    e.currentTarget.style.backgroundColor = '#f0f0f0';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (paymentMethod !== 'credit') {
+                    e.currentTarget.style.backgroundColor = 'white';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }
+                }}
+              >
+                🧾 Credit
+              </button>
               </div>
             </div>
 

@@ -67,6 +67,48 @@ const populateOrdersItemProducts = async (orders = [], req) => {
   return Promise.all((orders || []).map((order) => populateOrderItemProducts(order, req)));
 };
 
+const getReferenceId = (reference) => {
+  if (!reference) return null;
+  if (typeof reference === 'string') return reference;
+  return reference._id || reference.id || null;
+};
+
+const buildBulkReferenceMaps = async (orders = [], req) => {
+  const customerIds = new Set();
+  const productIds = new Set();
+
+  for (const order of orders) {
+    const customerId = getReferenceId(order.customer);
+    if (customerId) customerIds.add(customerId);
+
+    if (Array.isArray(order.items)) {
+      for (const item of order.items) {
+        const productId = getReferenceId(item?.product);
+        if (productId) productIds.add(productId);
+      }
+    }
+  }
+
+  const [customers, products] = await Promise.all([
+    customerIds.size ? Customer.find({ _id: [...customerIds] }, req) : [],
+    productIds.size ? Product.find({ _id: [...productIds] }, req) : []
+  ]);
+
+  const customerMap = new Map((customers || []).map((customer) => [getReferenceId(customer), customer]));
+  const productMap = new Map((products || []).map((product) => [getReferenceId(product), product]));
+
+  const categoryIds = new Set();
+  for (const product of productMap.values()) {
+    const categoryId = getReferenceId(product.category);
+    if (categoryId) categoryIds.add(categoryId);
+  }
+
+  const categories = categoryIds.size ? await Category.find({ _id: [...categoryIds] }, req) : [];
+  const categoryMap = new Map((categories || []).map((category) => [getReferenceId(category), category]));
+
+  return { customerMap, productMap, categoryMap };
+};
+
 // expose helpers for unit testing without changing router export behavior
 router.populateOrderItemProducts = populateOrderItemProducts;
 router.populateOrdersItemProducts = populateOrdersItemProducts;
@@ -153,12 +195,9 @@ router.get('/', protect, async (req, res) => {
     }
 
     const orders = await Order.find(query, req)
-      .populate('customer', 'name phone')
-      .populate('items.product', 'name')
       .sort({ createdAt: -1 });
 
-    const populatedOrders = await populateOrdersItemProducts(orders, req);
-    let normalizedOrders = populatedOrders.map((order) => ({
+    let normalizedOrders = orders.map((order) => ({
       ...order,
       paymentMethodLabel: order.paymentMethodLabel || getPaymentMethodLabel(order.paymentMethod)
     }));
@@ -193,7 +232,13 @@ router.get('/', protect, async (req, res) => {
     };
 
     if (summaryOnly === 'true' || summaryOnly === '1') {
-      const reportSummary = buildReportSummary(normalizedOrders, { includeReversed: false });
+      const { customerMap, productMap, categoryMap } = await buildBulkReferenceMaps(normalizedOrders, req);
+      const reportSummary = buildReportSummary(normalizedOrders, {
+        includeReversed: false,
+        customerMap,
+        productMap,
+        categoryMap
+      });
       const { sales, ...summaryOnlyResponse } = reportSummary;
       return res.json({
         ...summaryOnlyResponse,
@@ -209,10 +254,15 @@ router.get('/', protect, async (req, res) => {
       const pageNumber = Math.max(Number(page), 1);
       const offset = (pageNumber - 1) * Number(limit);
       const pagedOrders = normalizedOrders.slice(offset, offset + Number(limit));
+      const populatedPagedOrders = await populateOrdersItemProducts(pagedOrders, req);
+      const normalizedPagedOrders = populatedPagedOrders.map((order) => ({
+        ...order,
+        paymentMethodLabel: order.paymentMethodLabel || getPaymentMethodLabel(order.paymentMethod)
+      }));
       const totalPages = Math.max(1, Math.ceil(commonResponse.totalCount / Number(limit)));
 
       return res.json({
-        orders: pagedOrders,
+        orders: normalizedPagedOrders,
         ...commonResponse,
         totalPages,
         page: pageNumber,
@@ -220,7 +270,13 @@ router.get('/', protect, async (req, res) => {
       });
     }
 
-    res.json({ orders: normalizedOrders, ...commonResponse });
+    const populatedOrders = await populateOrdersItemProducts(normalizedOrders, req);
+    const normalizedPopulatedOrders = populatedOrders.map((order) => ({
+      ...order,
+      paymentMethodLabel: order.paymentMethodLabel || getPaymentMethodLabel(order.paymentMethod)
+    }));
+
+    res.json({ orders: normalizedPopulatedOrders, ...commonResponse });
   } catch (error) {
     console.error('Error fetching orders:', error);
     res.status(500).json({ message: error.message });
@@ -323,11 +379,31 @@ router.post('/', protect, async (req, res) => {
       });
     }
 
+    // Apply any order-level discount before tax and customer/account sync
+    const discountAmount = Math.max(0, Number(req.body?.discountAmount || 0) || 0);
+    if (discountAmount > 0) {
+      totalAmount = Math.max(0, totalAmount - discountAmount);
+    }
+
     // Sync customer account metrics with POS activity
+    // For credit payments, only add the outstanding (total - paid) to the customer's account.
+    const paidAmount = Number(req.body?.paidAmount || 0) || 0;
+    let dueAmount = 0;
+    const normalizedPaymentMethod = String(paymentMethod || '').toLowerCase();
+
     if (customer) {
       const customerDoc = await Customer.findById(customer, req);
       if (customerDoc) {
-        applyOrderToCustomerAccount(customerDoc, totalAmount);
+        if (normalizedPaymentMethod === 'credit') {
+          dueAmount = Math.max(0, totalAmount - paidAmount);
+          if (dueAmount > 0) {
+            applyOrderToCustomerAccount(customerDoc, dueAmount);
+          }
+        } else {
+          // non-credit payments are treated as immediate and count towards the customer's spending
+          applyOrderToCustomerAccount(customerDoc, totalAmount);
+        }
+
         await customerDoc.save();
       }
     }
@@ -358,9 +434,12 @@ router.post('/', protect, async (req, res) => {
       customer: customer || null,
       items: orderItems,
       totalAmount,
+      discountAmount: discountAmount,
       profit: profitBase,
       paymentMethod: paymentMethod || 'cash',
       paymentMethodLabel: getPaymentMethodLabel(paymentMethod || 'cash'),
+      paidAmount: paidAmount,
+      dueAmount: dueAmount,
       status: 'completed',
       tenantId: req.user?.tenantId || null,
       taxCompliant,

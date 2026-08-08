@@ -4,11 +4,56 @@ const Product = require('../models/Product');
 const { protect } = require('../middleware/auth');
 const { canDeleteProduct } = require('../lib/deletionRules');
 
-// Get all products
+// Get all products with optional pagination and search
 router.get('/', protect, async (req, res) => {
   try {
-    const products = await Product.find({}, req).populate('category', 'name');
-    res.json(products.filter((product) => !req.user?.tenantId || product.tenantId === req.user.tenantId));
+    const { limit, offset, search, category } = req.query;
+    const limitNum = Math.max(0, Number(limit) || 0);
+    const offsetNum = Math.max(0, Number(offset) || 0);
+    const categoryId = category && category !== 'all' ? category : null;
+
+    const query = {};
+    if (categoryId) {
+      query.category = categoryId;
+    }
+
+    const products = await Product.find(query, req).populate('category', 'name');
+    const scopedProducts = products.filter((product) => !req.user?.tenantId || product.tenantId === req.user.tenantId);
+
+    if (search && search.trim().length > 0) {
+      const normalized = search.trim().toLowerCase();
+      const scoredProducts = scopedProducts
+        .map((product) => {
+          const name = product.name?.toLowerCase() || '';
+          const unit = product.unit?.toLowerCase() || '';
+          const categoryName = product.category?.name?.toLowerCase() || '';
+          let score = 0;
+
+          if (name === normalized) score += 100;
+          else if (name.startsWith(normalized)) score += 80;
+          else if (name.includes(normalized)) score += 50;
+
+          if (unit === normalized) score += 20;
+          else if (unit.includes(normalized)) score += 10;
+
+          if (categoryName === normalized) score += 15;
+          else if (categoryName.includes(normalized)) score += 8;
+
+          return { product, score };
+        })
+        .filter(({ score }) => score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limitNum > 0 ? limitNum : 3)
+        .map(({ product }) => product);
+
+      return res.json(scoredProducts);
+    }
+
+    const pagedProducts = limitNum > 0
+      ? scopedProducts.slice(offsetNum, offsetNum + limitNum)
+      : scopedProducts;
+
+    res.json(pagedProducts);
   } catch (error) {
     console.error('Error fetching products:', error);
     res.status(500).json({ message: error.message });

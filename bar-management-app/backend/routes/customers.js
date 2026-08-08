@@ -3,11 +3,31 @@ const router = express.Router();
 const Customer = require('../models/Customer');
 const { protect } = require('../middleware/auth');
 
-// Get all customers
+// Get all customers with optional pagination
 router.get('/', protect, async (req, res) => {
   try {
+    const { page, limit } = req.query;
     const customers = await Customer.find({}, req).sort({ name: 1 });
-    res.json(customers.filter((customer) => !req.user?.tenantId || customer.tenantId === req.user.tenantId));
+    const scopedCustomers = customers.filter((customer) => !req.user?.tenantId || customer.tenantId === req.user.tenantId);
+
+    if (page === undefined && limit === undefined) {
+      return res.json(scopedCustomers);
+    }
+
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.max(1, Number(limit) || 10);
+    const offset = (pageNum - 1) * limitNum;
+    const totalCount = scopedCustomers.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / limitNum));
+    const paginatedCustomers = scopedCustomers.slice(offset, offset + limitNum);
+
+    res.json({
+      customers: paginatedCustomers,
+      page: pageNum,
+      limit: limitNum,
+      totalPages,
+      totalCount
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

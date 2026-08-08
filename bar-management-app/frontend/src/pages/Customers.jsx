@@ -14,6 +14,7 @@ const Customers = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [creditData, setCreditData] = useState({});
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -186,8 +187,92 @@ const Customers = () => {
                 <button style={styles.deleteBtn} onClick={() => setDeleteTarget(customer)}>
                   🗑️
                 </button>
+                <button
+                  style={{ ...styles.editBtn, marginLeft: 6 }}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    const id = customer._id || customer.id;
+                    const existing = creditData[id];
+                    if (existing && existing.expanded) {
+                      setCreditData((prev) => ({ ...prev, [id]: { ...existing, expanded: false } }));
+                      return;
+                    }
+
+                    // fetch credit orders for this customer
+                    setCreditData((prev) => ({ ...prev, [id]: { loading: true, expanded: true, products: [], totalDue: 0 } }));
+                    try {
+                      const res = await api.get(`/orders?customerId=${id}&paymentMethod=credit`);
+                      const orders = Array.isArray(res.data) ? res.data : Array.isArray(res.data.orders) ? res.data.orders : [];
+
+                      const productMap = new Map();
+                      let totalDue = 0;
+
+                      for (const order of orders) {
+                        const orderDue = Number(order.dueAmount || 0) || 0;
+                        totalDue += orderDue;
+                        const orderTotal = Number(order.totalAmount) || 0;
+                        if (!Array.isArray(order.items)) continue;
+                        for (const item of order.items) {
+                          const productId = item.product?._id || item.product || item.product?.id;
+                          const name = item.productName || item.product?.name || item.name || 'Unknown';
+                          const subtotal = Number(item.subtotal || (item.priceAtSale * (item.quantity || 0))) || 0;
+                          // allocate due proportionally to subtotal
+                          const dueShare = orderTotal > 0 ? (subtotal / orderTotal) * orderDue : 0;
+
+                          const existingProd = productMap.get(productId) || { name, quantity: 0, subtotal: 0, due: 0 };
+                          existingProd.quantity += Number(item.quantity || 0);
+                          existingProd.subtotal += subtotal;
+                          existingProd.due += dueShare;
+                          productMap.set(productId, existingProd);
+                        }
+                      }
+
+                      const products = Array.from(productMap.entries()).map(([id, data]) => ({ productId: id, ...data }));
+                      setCreditData((prev) => ({ ...prev, [id]: { loading: false, expanded: true, products, totalDue } }));
+                    } catch (err) {
+                      console.error('Error loading credit orders:', err);
+                      setCreditData((prev) => ({ ...prev, [id]: { loading: false, expanded: true, products: [], totalDue: 0, error: true } }));
+                    }
+                  }}
+                >
+                  💳 Credit Purchases
+                </button>
               </div>
             </div>
+            {creditData[customer._id] && creditData[customer._id].expanded && (
+              <div style={styles.creditBox}>
+                {creditData[customer._id].loading ? (
+                  <div>Loading credit purchases…</div>
+                ) : (
+                  <>
+                    {creditData[customer._id].products.length === 0 ? (
+                      <div style={{ color: '#666' }}>No credit purchases found</div>
+                    ) : (
+                      <div>
+                        <div style={{ marginBottom: 8, fontWeight: 600 }}>Products on Credit</div>
+                        <div style={styles.creditListHeader}>
+                          <span style={{ flex: 1 }}>Product</span>
+                          <span style={{ width: 80, textAlign: 'center' }}>Qty</span>
+                          <span style={{ width: 120, textAlign: 'right' }}>Due</span>
+                        </div>
+                        {creditData[customer._id].products.map((p) => (
+                          <div key={p.productId} style={styles.creditRow}>
+                            <span style={{ flex: 1 }}>{p.name}</span>
+                            <span style={{ width: 80, textAlign: 'center' }}>{p.quantity}</span>
+                            <span style={{ width: 120, textAlign: 'right' }}>{formatPriceMK(p.due || 0)}</span>
+                          </div>
+                        ))}
+                        <div style={{ ...styles.creditRow, marginTop: 8, borderTop: '1px dashed #eee', paddingTop: 8 }}>
+                          <strong style={{ flex: 1 }}>Total Due</strong>
+                          <span style={{ width: 80 }} />
+                          <strong style={{ width: 120, textAlign: 'right' }}>{formatPriceMK(creditData[customer._id].totalDue || 0)}</strong>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
             <div style={styles.customerStats}>
               <span>💰 Total Spent: {formatPriceMK(customer.totalSpent || 0)}</span>
               <span>⭐ Loyalty Points: {customer.loyaltyPoints || 0}</span>
@@ -299,6 +384,27 @@ const styles = {
     justifyContent: 'space-between',
     fontSize: '13px',
     color: '#666'
+  },
+  creditBox: {
+    marginTop: 12,
+    padding: '10px',
+    borderRadius: 8,
+    backgroundColor: '#fafafa',
+    border: '1px solid #f0f0f0'
+  },
+  creditListHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    fontSize: 13,
+    color: '#444',
+    marginBottom: 6
+  },
+  creditRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '6px 0',
+    borderBottom: '1px solid rgba(0,0,0,0.02)'
   },
   paginationControls: {
     display: 'flex',

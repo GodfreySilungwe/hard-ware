@@ -13,6 +13,7 @@ const getPaymentMethodLabel = (method) => {
   if (normalized === 'mobile_money' || normalized === 'mobile-money' || normalized === 'mobile money') return 'Mobile Money';
   if (normalized === 'cash') return 'Cash';
   if (normalized === 'card') return 'Card';
+  if (normalized === 'credit') return 'Credit';
   return String(method || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim() || 'Unknown';
 };
 
