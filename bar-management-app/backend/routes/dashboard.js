@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const PurchaseOrder = require('../models/PurchaseOrder');
 const Customer = require('../models/Customer');
 const { protect } = require('../middleware/auth');
 const { normalizeNumber } = require('../lib/orderMetrics');
@@ -18,6 +19,81 @@ const parseRange = (req) => {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
   const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   return { $gte: start.toISOString(), $lte: end.toISOString() };
+};
+
+const buildProductSummary = ({
+  products = [],
+  productMap = new Map(),
+  purchaseOrderQtyMap = new Map(),
+  productPage = 1,
+  productLimit = 20,
+  defaultProductLimit = 20
+}) => {
+  const mergedProducts = [...(Array.isArray(products) ? products : [])];
+  for (const [pid, info] of (productMap || new Map()).entries()) {
+    const matchingProduct = mergedProducts.find((p) => String(p?._id || p?.id) === String(pid));
+    if (!matchingProduct) {
+      mergedProducts.push({
+        _id: pid,
+        id: pid,
+        name: info?.name || 'Unknown',
+        currentStock: 0,
+        costPrice: 0,
+        sellingPrice: 0
+      });
+    }
+  }
+
+  const normalizedLimit = Math.min(Math.max(1, Number(productLimit || defaultProductLimit)), 20);
+  const normalizedPage = Math.max(1, Number(productPage || 1));
+
+  const productSummary = mergedProducts.map((product) => {
+    const pid = String(product?._id || product?.id || product?.name || 'unknown');
+    const info = productMap.get(pid) || { name: product?.name || 'Unknown', sold: 0, amount: 0 };
+    const name = info.name || product?.name || 'Unknown';
+    const closing = normalizeNumber(product?.currentStock || 0);
+    const costPrice = normalizeNumber(product?.costPrice || 0);
+    const sellingPrice = normalizeNumber(product?.sellingPrice || 0);
+    const purchaseOrderQty = normalizeNumber(purchaseOrderQtyMap.get(pid) || 0);
+    const soldQty = normalizeNumber(info.sold || 0);
+    const totalAmount = normalizeNumber(info.amount || 0);
+    const startQty = closing + soldQty;
+    const remainingQty = closing;
+    const remainingValue = costPrice * remainingQty;
+    const remainingSellingValue = sellingPrice * remainingQty;
+
+    return {
+      productId: pid,
+      name,
+      startQty,
+      purchaseOrderQty,
+      soldQty,
+      closingQty: closing,
+      remainingQty,
+      remainingValue,
+      remainingSellingValue,
+      totalAmount
+    };
+  });
+
+  productSummary.sort((a, b) => {
+    if (b.totalAmount !== a.totalAmount) return b.totalAmount - a.totalAmount;
+    return String(a.name).localeCompare(String(b.name));
+  });
+
+  const totalProductPages = Math.max(1, Math.ceil(productSummary.length / normalizedLimit));
+  const productOffset = (normalizedPage - 1) * normalizedLimit;
+  const limitedProductSummary = productSummary.slice(productOffset, productOffset + normalizedLimit);
+
+  return {
+    productSummary: limitedProductSummary,
+    productSummaryPagination: {
+      page: Math.min(normalizedPage, totalProductPages),
+      totalPages: totalProductPages,
+      limit: normalizedLimit,
+      totalItems: productSummary.length
+    }
+  };
 };
 
 // GET /api/dashboard/summary
@@ -47,7 +123,23 @@ router.get('/summary', protect, async (req, res) => {
 
     const paymentMap = new Map();
     const productMap = new Map();
+    const purchaseOrderQtyMap = new Map();
     const recentOrders = [];
+
+    const purchaseOrders = await PurchaseOrder.find({ ...(createdAtQuery ? { createdAt: createdAtQuery } : {}) }, req)
+      .populate('items.product')
+      .sort({ createdAt: -1 });
+
+    for (const po of (purchaseOrders || [])) {
+      if (Array.isArray(po.items)) {
+        for (const it of po.items) {
+          const pid = it.product?._id || it.product || it.product?.id || (it.productName || Math.random().toString(36).slice(2, 8));
+          const qty = normalizeNumber(it.quantity || 0);
+          const existing = purchaseOrderQtyMap.get(pid) || 0;
+          purchaseOrderQtyMap.set(pid, existing + qty);
+        }
+      }
+    }
 
     for (const o of (orders || [])) {
       if (o.status === 'reversed') continue;
@@ -138,6 +230,18 @@ router.get('/summary', protect, async (req, res) => {
     const totalProducts = Array.isArray(products) ? products.length : 0;
     const lowStock = (products || []).filter(p => (normalizeNumber(p.currentStock || 0) <= (Number(p.reorderLevel || 5) || 5))).length;
 
+    const inventoryValueAtCost = (products || []).reduce((sum, product) => {
+      const quantity = normalizeNumber(product.currentStock || 0);
+      const costPrice = normalizeNumber(product.costPrice || 0);
+      return sum + quantity * costPrice;
+    }, 0);
+
+    const inventoryValueAtSellingPrice = (products || []).reduce((sum, product) => {
+      const quantity = normalizeNumber(product.currentStock || 0);
+      const sellingPrice = normalizeNumber(product.sellingPrice || 0);
+      return sum + quantity * sellingPrice;
+    }, 0);
+
     // format payment methods
     const paymentMethods = Array.from(paymentMap.entries()).map(([method, meta]) => ({
       method,
@@ -156,37 +260,55 @@ router.get('/summary', protect, async (req, res) => {
       });
     }
 
-    // build product summary list
-    const productSummary = Array.from(productMap.entries()).map(([pid, info]) => {
-      const prod = products.find((p) => String(p._id) === String(pid) || String(p.id) === String(pid));
-      const name = info.name || prod?.name || 'Unknown';
-      const closing = normalizeNumber(prod?.currentStock || 0);
-      const costPrice = normalizeNumber(prod?.costPrice || 0);
-      const sellingPrice = normalizeNumber(prod?.sellingPrice || 0);
-      const startQty = closing + info.sold;
-      const remainingQty = closing;
-      const remainingValue = costPrice * remainingQty;
-      const remainingSellingValue = sellingPrice * remainingQty;
+    const productPage = Math.max(1, Number(req.query.productPage || 1));
+    const productLimit = Math.min(Math.max(1, Number(req.query.productLimit || 20)), 20);
 
+    const { productSummary: limitedProductSummary, productSummaryPagination } = buildProductSummary({
+      products,
+      productMap,
+      purchaseOrderQtyMap,
+      productPage,
+      productLimit,
+      defaultProductLimit: 20
+    });
+
+    const productSummary = [...(products || []), ...Array.from((productMap || new Map()).entries()).map(([pid, info]) => ({
+      _id: pid,
+      id: pid,
+      name: info?.name || 'Unknown',
+      currentStock: 0,
+      costPrice: 0,
+      sellingPrice: 0
+    }))].filter((product, index, arr) => {
+      const key = String(product?._id || product?.id || product?.name || 'unknown');
+      return arr.findIndex((item) => String(item?._id || item?.id || item?.name || 'unknown') === key) === index;
+    }).map((product) => {
+      const pid = String(product?._id || product?.id || product?.name || 'unknown');
+      const info = productMap.get(pid) || { name: product?.name || 'Unknown', sold: 0, amount: 0 };
+      const name = info.name || product?.name || 'Unknown';
+      const closing = normalizeNumber(product?.currentStock || 0);
+      const costPrice = normalizeNumber(product?.costPrice || 0);
+      const sellingPrice = normalizeNumber(product?.sellingPrice || 0);
+      const purchaseOrderQty = normalizeNumber(purchaseOrderQtyMap.get(pid) || 0);
+      const soldQty = normalizeNumber(info.sold || 0);
+      const totalAmount = normalizeNumber(info.amount || 0);
       return {
         productId: pid,
         name,
-        startQty,
-        soldQty: info.sold,
+        startQty: closing + soldQty,
+        purchaseOrderQty,
+        soldQty,
         closingQty: closing,
-        remainingQty,
-        remainingValue,
-        remainingSellingValue,
-        totalAmount: info.amount
+        remainingQty: closing,
+        remainingValue: costPrice * closing,
+        remainingSellingValue: sellingPrice * closing,
+        totalAmount
       };
-    });
+    }).sort((a, b) => b.totalAmount - a.totalAmount);
 
-    // sort product summary by amount desc
-    productSummary.sort((a,b) => b.totalAmount - a.totalAmount);
-
-    // compute totals across all products
     const productSummaryTotals = productSummary.reduce((totals, item) => ({
       startQty: totals.startQty + Number(item.startQty || 0),
+      purchaseOrderQty: totals.purchaseOrderQty + Number(item.purchaseOrderQty || 0),
       soldQty: totals.soldQty + Number(item.soldQty || 0),
       closingQty: totals.closingQty + Number(item.closingQty || 0),
       remainingValue: totals.remainingValue + Number(item.remainingValue || 0),
@@ -194,6 +316,7 @@ router.get('/summary', protect, async (req, res) => {
       totalAmount: totals.totalAmount + Number(item.totalAmount || 0)
     }), {
       startQty: 0,
+      purchaseOrderQty: 0,
       soldQty: 0,
       closingQty: 0,
       remainingValue: 0,
@@ -201,12 +324,6 @@ router.get('/summary', protect, async (req, res) => {
       totalAmount: 0
     });
 
-    // apply pagination for product summary list
-    const productPage = Math.max(1, Number(req.query.productPage || 1));
-    const productLimit = Math.min(Math.max(1, Number(req.query.productLimit || 10)), 10);
-    const totalProductPages = Math.max(1, Math.ceil(productSummary.length / productLimit));
-    const productOffset = (productPage - 1) * productLimit;
-    const limitedProductSummary = productSummary.slice(productOffset, productOffset + productLimit);
     const recentLimit = Number(req.query.recentLimit || 10);
     const limitedRecentOrders = recentOrders.slice(0, recentLimit);
 
@@ -262,17 +379,16 @@ router.get('/summary', protect, async (req, res) => {
       },
       paymentProceeds: paymentMethods,
       productSummary: limitedProductSummary,
-      productSummaryPagination: {
-        page: productPage,
-        totalPages: totalProductPages,
-        limit: productLimit,
-        totalItems: productSummary.length
-      },
+      productSummaryPagination,
       unsettledCustomers: unsettled,
       recentOrders: limitedRecentOrders
     };
 
-    res.json(response);
+    res.json({
+      ...response,
+      inventoryValueAtCost,
+      inventoryValueAtSellingPrice
+    });
   } catch (err) {
     console.error('Error building dashboard summary:', err);
     res.status(500).json({ message: err.message });
@@ -280,3 +396,4 @@ router.get('/summary', protect, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.buildProductSummary = buildProductSummary;
