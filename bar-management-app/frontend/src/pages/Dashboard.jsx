@@ -113,6 +113,7 @@ const Dashboard = () => {
 
       const role = user?.role;
       const isOwnerRole = role === 'owner';
+      const isHardwareManagerRole = role === 'hardware-manager';
       const isSalesRole = role === 'sales';
 
       const query = {};
@@ -152,7 +153,7 @@ const Dashboard = () => {
       const results = await Promise.allSettled(requests);
 
       // fetch extended dashboard summary
-      const dashboardQuery = { ...query, productPage, productLimit: 10 };
+      const dashboardQuery = { ...query, productPage, productLimit: isHardwareManagerRole || isSalesRole ? 20 : 10 };
       const dashboardRes = await api.get('/dashboard/summary', { params: dashboardQuery }).catch(() => ({ data: null }));
       const dashboardData = dashboardRes.data || null;
       setDashboardSummary(dashboardData);
@@ -493,7 +494,8 @@ const Dashboard = () => {
               <div style={styles.table}>
                 <div style={{ ...styles.tableRow, ...styles.tableHeaderRow }}>
                   <div style={styles.tableCellMain}>Product</div>
-                  <div style={styles.tableCellSmall}>Start Qty</div>
+                  {!(isHardwareManagerRole || isSalesRole) && <div style={styles.tableCellSmall}>Start Qty</div>}
+                  <div style={styles.tableCellSmall}>PO Qty</div>
                   <div style={styles.tableCellSmall}>Sold Qty</div>
                   <div style={styles.tableCellSmall}>Closing Qty</div>
                   <div style={styles.tableCellAmount}>Total Amount (Sold)</div>
@@ -509,7 +511,8 @@ const Dashboard = () => {
                     <div style={styles.tableCellMain}>
                       <a href={`/products?highlight=${p.productId}`} style={{ color: '#111', textDecoration: 'underline' }}>{p.name || 'Unknown'}</a>
                     </div>
-                    <div style={styles.tableCellSmall}>{p.startQty}</div>
+                    {!(isHardwareManagerRole || isSalesRole) && <div style={styles.tableCellSmall}>{p.startQty}</div>}
+                    <div style={styles.tableCellSmall}>{p.purchaseOrderQty || 0}</div>
                     <div style={styles.tableCellSmall}>{p.soldQty}</div>
                     <div style={styles.tableCellSmall}>{p.closingQty}</div>
                     <div style={styles.tableCellAmount}>{formatPriceMK(p.totalAmount)}</div>
@@ -517,7 +520,8 @@ const Dashboard = () => {
                 ))}
                 <div style={{ ...styles.tableRow, ...styles.tableRowTotal }}>
                   <div style={styles.tableCellMain}>Totals</div>
-                  <div style={styles.tableCellSmall}>{productSummaryTotals.startQty}</div>
+                  {!(isHardwareManagerRole || isSalesRole) && <div style={styles.tableCellSmall}>{productSummaryTotals.startQty}</div>}
+                  <div style={styles.tableCellSmall}>{productSummaryTotals.purchaseOrderQty || 0}</div>
                   <div style={styles.tableCellSmall}>{productSummaryTotals.soldQty}</div>
                   <div style={styles.tableCellSmall}>{productSummaryTotals.closingQty}</div>
                   <div style={styles.tableCellAmount}>{formatPriceMK(productSummaryTotals.totalAmount)}</div>
