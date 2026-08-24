@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildProductSummary } = require('../routes/dashboard');
+const { buildProductSummary, getReferenceId } = require('../routes/dashboard');
 
 test('includes unsold products and paginates at 20 items per page for manager and sales roles', () => {
   const products = [
@@ -39,4 +39,15 @@ test('includes unsold products and paginates at 20 items per page for manager an
   assert.equal(summary.productSummaryPagination.page, 1);
   assert.equal(summary.productSummaryPagination.totalPages, 1);
   assert.equal(summary.productSummaryPagination.limit, 20);
+});
+
+test('matches sold quantities when order product references are objects', () => {
+  const productReference = { _id: 'p1', name: 'Cement' };
+  const summary = buildProductSummary({
+    products: [{ _id: 'p1', name: 'Cement', currentStock: 216 }],
+    productMap: new Map([[getReferenceId(productReference), { name: 'Cement', sold: 4, amount: 120 }]])
+  });
+
+  assert.equal(summary.productSummary[0].soldQty, 4);
+  assert.equal(summary.productSummary[0].totalAmount, 120);
 });

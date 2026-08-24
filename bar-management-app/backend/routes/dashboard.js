@@ -7,6 +7,8 @@ const Customer = require('../models/Customer');
 const { protect } = require('../middleware/auth');
 const { normalizeNumber } = require('../lib/orderMetrics');
 
+const getReferenceId = (reference) => String(reference?._id || reference?.id || reference || '');
+
 const parseRange = (req) => {
   if (req.query.startDateUtc || req.query.endDateUtc) {
     const q = {};
@@ -133,7 +135,7 @@ router.get('/summary', protect, async (req, res) => {
     for (const po of (purchaseOrders || [])) {
       if (Array.isArray(po.items)) {
         for (const it of po.items) {
-          const pid = it.product?._id || it.product || it.product?.id || (it.productName || Math.random().toString(36).slice(2, 8));
+          const pid = getReferenceId(it.product) || it.productName || Math.random().toString(36).slice(2, 8);
           const qty = normalizeNumber(it.quantity || 0);
           const existing = purchaseOrderQtyMap.get(pid) || 0;
           purchaseOrderQtyMap.set(pid, existing + qty);
@@ -181,7 +183,7 @@ router.get('/summary', protect, async (req, res) => {
       // product aggregation
       if (Array.isArray(o.items)) {
         for (const it of o.items) {
-          const pid = it.product?._id || it.product || it.product?.id || (it.productName || Math.random().toString(36).slice(2,8));
+          const pid = getReferenceId(it.product) || it.productName || Math.random().toString(36).slice(2,8);
           const itemName = it.productName || it.product?.name || it.name || 'Unknown';
           const qty = normalizeNumber(it.quantity || 0);
           const subtotal = normalizeNumber(it.subtotal || (it.priceAtSale || 0) * qty);
@@ -397,3 +399,4 @@ router.get('/summary', protect, async (req, res) => {
 
 module.exports = router;
 module.exports.buildProductSummary = buildProductSummary;
+module.exports.getReferenceId = getReferenceId;
