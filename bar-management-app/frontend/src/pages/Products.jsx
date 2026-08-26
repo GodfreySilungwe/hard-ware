@@ -6,6 +6,7 @@ import Button from '../components/common/Button';
 import UnifiedCard from '../components/common/UnifiedCard';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import { formatPriceMK } from '../utils/formatPrice';
+import { saveAs } from 'file-saver';
 
 const Products = () => {
   const [products, setProducts] = useState([]);
@@ -14,6 +15,7 @@ const Products = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [importing, setImporting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     category: '',
@@ -95,6 +97,38 @@ const Products = () => {
     }
   };
 
+  const downloadImportTemplate = async () => {
+    try {
+      const response = await api.get('/products/import-template', { responseType: 'blob' });
+      saveAs(response.data, 'product_import_template.xlsx');
+    } catch (err) {
+      console.error('Error downloading import template:', err);
+      alert('Failed to download import template');
+    }
+  };
+
+  const handleImport = async (event) => {
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await api.post('/products?import=true', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      alert(`${response.data.created} products imported. ${response.data.categoriesCreated} categories created.`);
+      await loadData();
+    } catch (err) {
+      const errors = err.response?.data?.errors;
+      alert(errors?.length ? errors.join('\n') : (err.response?.data?.message || 'Product import failed'));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
 
@@ -165,9 +199,16 @@ const Products = () => {
     <PageContainer title="📦 Smart Inventory App Products">
       <div style={styles.header}>
         <p style={styles.subtitle}>Manage your Smart Inventory App inventory</p>
-        <Button onClick={() => setShowForm(!showForm)}>
-          {showForm ? '✕ Close' : '+ Add Product'}
-        </Button>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <Button variant="secondary" onClick={downloadImportTemplate}>Download Import Template</Button>
+          <Button variant="success" disabled={importing} onClick={() => document.getElementById('product-import-input').click()}>
+            {importing ? 'Importing...' : 'Import Products'}
+          </Button>
+          <input id="product-import-input" type="file" accept=".xlsx" onChange={handleImport} style={{ display: 'none' }} />
+          <Button onClick={() => setShowForm(!showForm)}>
+            {showForm ? '✕ Close' : '+ Add Product'}
+          </Button>
+        </div>
       </div>
 
       {showForm && (
