@@ -359,6 +359,10 @@ const POS = () => {
       {feedbackMessage && <div style={styles.feedbackToast}>{feedbackMessage}</div>}
 
       <style>{`
+        .pos-mobile-sticky-total {
+          display: none;
+        }
+
         @media (max-width: 1024px) {
           .pos-mobile-category-filter {
             gap: 6px !important;
@@ -373,6 +377,12 @@ const POS = () => {
         }
 
         @media (max-width: 768px) {
+          .pos-mobile-sticky-total {
+            display: flex !important;
+          }
+          .pos-mobile-stack {
+            padding-bottom: 92px;
+          }
           .pos-mobile-stack {
             grid-template-columns: 1fr !important;
             gap: 16px !important;
@@ -418,6 +428,13 @@ const POS = () => {
       `}</style>
 
       <div style={styles.posLayout} className="pos-mobile-stack">
+        <div className="pos-mobile-sticky-total" style={styles.mobileStickyTotal}>
+          <div>
+            <div style={styles.mobileStickyLabel}>Cart total</div>
+            <strong style={styles.mobileStickyAmount}>{formatPriceMK(discountedTotal)}</strong>
+          </div>
+          <span style={styles.mobileStickyItems}>{totalItems} {totalItems === 1 ? 'item' : 'items'}</span>
+        </div>
         {/* Left: Product Grid */}
         <div style={styles.productSection} className="pos-mobile-product-section">
           <UnifiedCard title="Smart Inventory App">
@@ -818,6 +835,36 @@ const styles = {
   },
   cartSectionActive: {
     animation: 'cartPulse 0.6s ease'
+  },
+  mobileStickyTotal: {
+    position: 'fixed',
+    left: '12px',
+    right: '12px',
+    bottom: '12px',
+    zIndex: 20,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 16px',
+    borderRadius: '12px',
+    backgroundColor: '#1a1a2e',
+    color: 'white',
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)'
+  },
+  mobileStickyLabel: {
+    fontSize: '11px',
+    opacity: 0.75,
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em'
+  },
+  mobileStickyAmount: {
+    display: 'block',
+    marginTop: '2px',
+    fontSize: '18px',
+    color: '#ffd166'
+  },
+  mobileStickyItems: {
+    fontSize: '13px',
+    opacity: 0.85
   },
   categoryFilter: {
     display: 'flex',
