@@ -7,6 +7,7 @@ import UnifiedCard from '../components/common/UnifiedCard';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import { formatPriceMK } from '../utils/formatPrice';
 import { saveAs } from 'file-saver';
+import * as XLSX from 'xlsx';
 
 const Products = () => {
   const [products, setProducts] = useState([]);
@@ -114,11 +115,11 @@ const Products = () => {
 
     setImporting(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const response = await api.post('/products?import=true', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!worksheet) throw new Error('The workbook has no worksheet');
+      const products = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+      const response = await api.post('/products?import=true', { products });
       alert(`${response.data.created} products imported. ${response.data.categoriesCreated} categories created.`);
       await loadData();
     } catch (err) {
