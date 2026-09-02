@@ -128,6 +128,12 @@ const Reports = () => {
   });
 
   useEffect(() => {
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) {
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     loadReportData();
   }, [dateRange, customStartDate, customEndDate, paymentFilter, statusFilter, customerFilter, productFilter]);
 
@@ -172,6 +178,12 @@ const Reports = () => {
 
   const loadReportData = async () => {
     try {
+      if (dateRange === 'custom' && (!customStartDate || !customEndDate)) {
+        setLoading(false);
+        setError(null);
+        return;
+      }
+
       setLoading(true);
       setError(null);
 
@@ -464,6 +476,9 @@ const Reports = () => {
               <input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} style={styles.input} />
             </label>
           </div>
+        )}
+        {dateRange === 'custom' && (!customStartDate || !customEndDate) && (
+          <div style={styles.rangeHint}>Select both start and end dates to load the custom period report.</div>
         )}
         <div style={styles.filterGrid} className="reports-filterGrid">
           <label style={styles.filterLabel}>Payment

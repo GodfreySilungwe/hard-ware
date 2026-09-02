@@ -1,5 +1,5 @@
 const { DynamoDBClient, DescribeTableCommand, CreateTableCommand } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand, QueryCommand, BatchWriteCommand } = require('@aws-sdk/lib-dynamodb');
 const crypto = require('crypto');
 
 const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'sampla-hardware-table';
@@ -160,6 +160,29 @@ async function createEntity(entityType, data) {
   return fromDynamoItem(item);
 }
 
+async function batchCreateEntities(entityType, records) {
+  await ensureTableExists();
+  const items = records.map((record) => toDynamoItem(entityType, record));
+
+  for (let index = 0; index < items.length; index += 25) {
+    let unprocessedItems = items.slice(index, index + 25).map((Item) => ({ PutRequest: { Item } }));
+    let attempts = 0;
+
+    while (unprocessedItems.length > 0) {
+      const result = await docClient.send(new BatchWriteCommand({
+        RequestItems: { [TABLE_NAME]: unprocessedItems }
+      }));
+      unprocessedItems = result.UnprocessedItems?.[TABLE_NAME] || [];
+      attempts += 1;
+      if (unprocessedItems.length > 0 && attempts >= 5) {
+        throw new Error('DynamoDB could not process all imported products');
+      }
+    }
+  }
+
+  return items.map(fromDynamoItem);
+}
+
 async function updateEntity(entityType, id, updates) {
   await ensureTableExists();
   const existing = await getEntity(entityType, id);
@@ -210,6 +233,7 @@ module.exports = {
   listEntities,
   getEntity,
   createEntity,
+  batchCreateEntities,
   updateEntity,
   deleteEntity,
   findByField,

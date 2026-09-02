@@ -214,7 +214,11 @@ const styles = {
     fontFamily: 'monospace',
     fontSize: '14px',
     color: '#333',
-    padding: '10px 0'
+    padding: '10px 0',
+    width: '100%',
+    maxWidth: '72mm',
+    margin: '0 auto',
+    boxSizing: 'border-box'
   },
   header: {
     textAlign: 'center',
@@ -248,7 +252,10 @@ const styles = {
     width: '100%',
     borderCollapse: 'collapse',
     marginBottom: '10px',
-    fontSize: '13px'
+    fontSize: '13px',
+    tableLayout: 'fixed',
+    overflowWrap: 'break-word',
+    wordBreak: 'break-word'
   },
   // Header styles - FIXED
   thItem: {
@@ -258,7 +265,9 @@ const styles = {
     fontSize: '12px',
     textTransform: 'uppercase',
     color: '#666',
-    width: '40%'
+    width: '40%',
+    overflowWrap: 'break-word',
+    wordBreak: 'break-word'
   },
   thQty: {
     textAlign: 'center',
@@ -291,7 +300,11 @@ const styles = {
   tdItem: {
     padding: '4px 0',
     borderBottom: '1px solid #f0f0f0',
-    textAlign: 'left'
+    textAlign: 'left',
+    whiteSpace: 'normal',
+    overflowWrap: 'break-word',
+    wordBreak: 'break-word',
+    lineHeight: '1.35'
   },
   tdQty: {
     padding: '4px 0',

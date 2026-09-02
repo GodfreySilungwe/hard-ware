@@ -74,12 +74,16 @@ const PurchaseOrders = () => {
 
   const getFilteredProductsForItem = (index) => {
     const query = (productSearchTerms[index] || '').trim().toLowerCase();
-    if (!query) return products;
+    if (!query) return [...products].sort((a, b) => a.name.localeCompare(b.name));
 
-    return products.filter(product =>
-      product.name?.toLowerCase().includes(query) ||
-      product.category?.name?.toLowerCase().includes(query)
-    );
+    return [...products]
+      .filter(product => {
+        const productName = String(product.name || '').toLowerCase();
+        const categoryName = String(product.category?.name || product.category || '').toLowerCase();
+        const unitName = String(product.unit || '').toLowerCase();
+        return productName.includes(query) || categoryName.includes(query) || unitName.includes(query);
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
   };
 
   const handleSubmit = async (e) => {

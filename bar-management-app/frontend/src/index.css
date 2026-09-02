@@ -430,7 +430,20 @@ body {
   }
 }
 
+@page {
+  size: 80mm auto;
+  margin: 0;
+}
+
 @media print {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white;
+    width: 80mm;
+    overflow: visible;
+  }
+
   body * {
     visibility: hidden;
   }
@@ -440,13 +453,30 @@ body {
   }
   
   #receipt {
-    position: absolute;
-    left: 0;
-    top: 0;
+    position: static;
+    left: auto;
+    top: auto;
     width: 100%;
-    padding: 20px;
+    max-width: 72mm;
+    margin: 0 auto;
+    padding: 0;
     background: white;
     font-family: monospace;
+    box-sizing: border-box;
+    overflow: hidden;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  #receipt table,
+  #receipt th,
+  #receipt td,
+  #receipt p,
+  #receipt span,
+  #receipt h1 {
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-break: break-word;
   }
   
   .modal-overlay {

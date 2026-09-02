@@ -6,6 +6,7 @@ import Button from '../components/common/Button';
 import UnifiedCard from '../components/common/UnifiedCard';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import { formatPriceMK } from '../utils/formatPrice';
+import { filterAndSortProducts } from '../utils/productFilters';
 import { saveAs } from 'file-saver';
 import * as XLSX from 'xlsx';
 
@@ -13,6 +14,8 @@ const Products = () => {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('name-asc');
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -163,6 +166,8 @@ const Products = () => {
     setShowForm(true);
   };
 
+  const filteredProducts = filterAndSortProducts(products, searchTerm, sortBy);
+
   const getUnitIcon = (unit) => {
     const icons = {
       piece: '📦',
@@ -210,6 +215,24 @@ const Products = () => {
             {showForm ? '✕ Close' : '+ Add Product'}
           </Button>
         </div>
+      </div>
+
+      <div style={styles.toolbar}>
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="Search products..."
+          style={styles.searchInput}
+        />
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={styles.sortSelect}>
+          <option value="name-asc">Name A-Z</option>
+          <option value="name-desc">Name Z-A</option>
+          <option value="stock-desc">Stock: High to Low</option>
+          <option value="stock-asc">Stock: Low to High</option>
+          <option value="price-desc">Price: High to Low</option>
+          <option value="price-asc">Price: Low to High</option>
+        </select>
       </div>
 
       {showForm && (
@@ -332,7 +355,11 @@ const Products = () => {
       />
 
       <div className="productGrid" style={styles.productGrid}>
-        {products.map((product, index) => (
+        {filteredProducts.length === 0 ? (
+          <div style={styles.emptyState}>
+            <p style={styles.emptyText}>No products match your search.</p>
+          </div>
+        ) : filteredProducts.map((product, index) => (
           <div 
             key={product._id} 
             data-product-id={product._id}
@@ -399,6 +426,43 @@ const styles = {
     fontSize: '16px',
     color: '#888',
     margin: 0
+  },
+  toolbar: {
+    display: 'flex',
+    gap: '12px',
+    alignItems: 'center',
+    marginBottom: '20px',
+    flexWrap: 'wrap'
+  },
+  searchInput: {
+    flex: '1 1 220px',
+    minHeight: '42px',
+    border: '1px solid #ddd',
+    borderRadius: '10px',
+    padding: '0 12px',
+    fontSize: '14px',
+    outline: 'none'
+  },
+  sortSelect: {
+    minHeight: '42px',
+    border: '1px solid #ddd',
+    borderRadius: '10px',
+    padding: '0 12px',
+    fontSize: '14px',
+    background: 'white'
+  },
+  emptyState: {
+    gridColumn: '1 / -1',
+    padding: '30px 20px',
+    textAlign: 'center',
+    background: '#fff',
+    borderRadius: '16px',
+    border: '1px solid #f0f0f0'
+  },
+  emptyText: {
+    margin: 0,
+    color: '#666',
+    fontSize: '16px'
   },
   productGrid: {
     display: 'grid',
