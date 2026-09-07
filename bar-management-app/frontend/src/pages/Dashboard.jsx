@@ -245,7 +245,8 @@ const Dashboard = () => {
 
   const productSummaryTotals = {
     remainingValue: dashboardSummary?.inventoryValueAtCost ?? dashboardSummary?.productSummaryTotals?.remainingValue ?? dashboardSummary?.productSummary?.reduce((totals, p) => totals + Number(p.remainingValue || 0), 0) ?? 0,
-    remainingSellingValue: dashboardSummary?.inventoryValueAtSellingPrice ?? dashboardSummary?.productSummaryTotals?.remainingSellingValue ?? dashboardSummary?.productSummary?.reduce((totals, p) => totals + Number(p.remainingSellingValue || 0), 0) ?? 0
+    remainingSellingValue: dashboardSummary?.inventoryValueAtSellingPrice ?? dashboardSummary?.productSummaryTotals?.remainingSellingValue ?? dashboardSummary?.productSummary?.reduce((totals, p) => totals + Number(p.remainingSellingValue || 0), 0) ?? 0,
+    totalAmount: dashboardSummary?.productSummaryTotals?.totalAmount ?? dashboardSummary?.productSummary?.reduce((totals, p) => totals + Number(p.totalAmount || 0), 0) ?? 0
   };
 
   const unsettledCustomerTotals = dashboardSummary?.unsettledCustomers?.reduce((totals, c) => ({
@@ -259,6 +260,15 @@ const Dashboard = () => {
   const paymentSummaryTotal = paymentSummary.reduce((sum, method) => {
     return sum + Number(method.amount || 0);
   }, 0);
+
+  const lowStockProducts = Array.isArray(dashboardSummary?.lowStockProducts)
+    ? dashboardSummary.lowStockProducts
+    : [];
+  const lowStockCount = Number(
+    dashboardSummary?.lowStock
+      ?? dashboardSummary?.totals?.lowStock
+      ?? lowStockProducts.length
+  );
 
   const visibleStats = isOwnerRole
     ? [
@@ -332,32 +342,6 @@ const Dashboard = () => {
             <div style={styles.managerInventoryValue}>{formatPriceMK(productSummaryTotals.remainingSellingValue)}</div>
             <div style={styles.managerInventorySubtext}>At selling price</div>
           </div>
-        </div>
-      )}
-
-      {!isOwnerRole && dashboardSummary && (
-        <div style={styles.lowStockPanel} className="fade-in">
-          <div style={styles.panelHeader}>
-            <h3 style={styles.panelTitle}>Low Stock</h3>
-            <span style={styles.panelHint}>{dashboardSummary.lowStock || 0} product{dashboardSummary.lowStock === 1 ? '' : 's'} need attention</span>
-          </div>
-          {dashboardSummary.lowStockProducts?.length ? (
-            <div style={styles.lowStockGrid}>
-              {dashboardSummary.lowStockProducts.map((product) => {
-                const threshold = Number(product.lowStockThreshold ?? product.reorderLevel ?? 5);
-                const quantity = Number(product.currentStock || 0);
-                const fill = threshold > 0 ? Math.min(100, Math.max(0, (quantity / threshold) * 100)) : 0;
-                return (
-                  <div style={styles.lowStockItem} key={product._id || product.id}>
-                    {quantity <= 0 && <span style={styles.outOfStockBadge}>Out of stock</span>}
-                    <div style={styles.lowStockHeader}><span style={styles.lowStockName}>{product.name}</span><span style={styles.lowStockCategory}>{product.category?.name || 'Uncategorised'}</span></div>
-                    <div style={styles.lowStockDetails}><span style={styles.lowStockQty}>Available: {quantity}</span><span style={styles.lowStockThreshold}>Threshold: {threshold}</span></div>
-                    <div style={styles.lowStockBar}><div style={{ ...styles.lowStockBarFill, width: `${fill}%`, backgroundColor: quantity <= 0 ? '#e74c3c' : '#f39c12' }} /></div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : <p style={styles.emptyState}>All products are above their stock thresholds.</p>}
         </div>
       )}
 
@@ -664,6 +648,34 @@ const Dashboard = () => {
               <div style={styles.summaryAmount}>{formatPriceMK(paymentSummaryTotal)}</div>
             </div>
           </div>
+        </div>
+      )}
+
+      {!isOwnerRole && dashboardSummary && (
+        <div style={styles.lowStockPanel} className="fade-in">
+          <div style={styles.panelHeader}>
+            <h3 style={styles.panelTitle}>Low Stock</h3>
+            <span style={styles.panelHint}>{lowStockCount} product{lowStockCount === 1 ? '' : 's'} need attention</span>
+          </div>
+          {lowStockProducts.length ? (
+            <div style={styles.lowStockGrid}>
+              {lowStockProducts.map((product) => {
+                const rawThreshold = product.lowStockThreshold ?? product.reorderLevel;
+                const threshold = rawThreshold === '' || rawThreshold === null || rawThreshold === undefined ? 5 : Number(rawThreshold);
+                const safeThreshold = Number.isFinite(threshold) ? threshold : 5;
+                const quantity = Number(product.currentStock || 0);
+                const fill = safeThreshold > 0 ? Math.min(100, Math.max(0, (quantity / safeThreshold) * 100)) : 0;
+                return (
+                  <div style={styles.lowStockItem} key={product._id || product.id}>
+                    {quantity <= 0 && <span style={styles.outOfStockBadge}>Out of stock</span>}
+                    <div style={styles.lowStockHeader}><span style={styles.lowStockName}>{product.name}</span><span style={styles.lowStockCategory}>{product.category?.name || 'Uncategorised'}</span></div>
+                    <div style={styles.lowStockDetails}><span style={styles.lowStockQty}>Available: {quantity}</span><span style={styles.lowStockThreshold}>Threshold: {safeThreshold}</span></div>
+                    <div style={styles.lowStockBar}><div style={{ ...styles.lowStockBarFill, width: `${fill}%`, backgroundColor: quantity <= 0 ? '#e74c3c' : '#f39c12' }} /></div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : <p style={styles.emptyState}>All products are above their stock thresholds.</p>}
         </div>
       )}
 
