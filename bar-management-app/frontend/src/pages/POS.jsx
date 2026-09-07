@@ -27,7 +27,7 @@ const POS = () => {
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [highlightedProductId, setHighlightedProductId] = useState(null);
   const [productOffset, setProductOffset] = useState(0);
-  const [visibleProductCount, setVisibleProductCount] = useState(10);
+  const [visibleProductCount, setVisibleProductCount] = useState(20);
   const [hasMoreProducts, setHasMoreProducts] = useState(true);
   const [backendSearchResults, setBackendSearchResults] = useState([]);
   const [backendSearchLoading, setBackendSearchLoading] = useState(false);
@@ -73,7 +73,7 @@ const POS = () => {
       setProductOffset(offset + nextProducts.length);
       setHasMoreProducts(nextProducts.length === 20);
       if (offset === 0) {
-        setVisibleProductCount(10);
+        setVisibleProductCount(20);
       }
     } catch (err) {
       console.error('Error loading products:', err);
@@ -86,7 +86,7 @@ const POS = () => {
   const resetProducts = async (category = selectedCategory) => {
     setLoadedProducts([]);
     setProductOffset(0);
-    setVisibleProductCount(10);
+    setVisibleProductCount(20);
     setHasMoreProducts(true);
     setBackendSearchResults([]);
     setSearchTerm('');
@@ -389,7 +389,8 @@ const POS = () => {
           }
           .pos-mobile-product-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            max-height: none !important;
+            max-height: 500px !important;
+            overflow-y: auto !important;
             padding: 2px 0 !important;
           }
           .pos-mobile-cart-item {
@@ -412,6 +413,8 @@ const POS = () => {
         @media (max-width: 480px) {
           .pos-mobile-product-grid {
             grid-template-columns: 1fr !important;
+            max-height: 500px !important;
+            overflow-y: auto !important;
           }
           .pos-mobile-payment-btn {
             flex-basis: 100% !important;
@@ -686,7 +689,7 @@ const POS = () => {
                     }
                   }}
                 >
-                  💳 Card
+                  💳 Bank
                 </button>
                 <button
                   className="payment-btn pos-mobile-payment-btn"
