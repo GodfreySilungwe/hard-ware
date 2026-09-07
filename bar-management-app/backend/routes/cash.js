@@ -18,6 +18,17 @@ const getSessionEntries = async (sessionId, req) => tenantRecords(
   req
 );
 
+const getEntriesForSession = (entries, session) => {
+  if (!session) return [];
+  const sessionId = session._id || session.id;
+  const openedAt = session.openedAt || session.createdAt;
+  return entries.filter((entry) => {
+    if (entry.sessionId && String(entry.sessionId) === String(sessionId)) return true;
+    if (entry.sessionId || !openedAt) return false;
+    return new Date(entry.occurredAt || entry.createdAt || 0) >= new Date(openedAt);
+  });
+};
+
 const calculateBalance = (entries, openingFloat = 0) => normalizeAmount(
   normalizeAmount(openingFloat) + entries.reduce((balance, entry) => (
     balance + (entry.direction === 'out' ? -Number(entry.amount || 0) : Number(entry.amount || 0))
@@ -55,9 +66,7 @@ router.get('/summary', protect, async (req, res) => {
     const selectedSession = req.query.sessionId
       ? scopedSessions.find((session) => (session._id || session.id) === req.query.sessionId)
       : openSession;
-    const sessionEntries = selectedSession
-      ? scopedEntries.filter((entry) => entry.sessionId === (selectedSession._id || selectedSession.id))
-      : [];
+    const sessionEntries = getEntriesForSession(scopedEntries, selectedSession);
     const sessionMetrics = summarizeSessionEntries(sessionEntries);
     const accountBalances = {};
 
