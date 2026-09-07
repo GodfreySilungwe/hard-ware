@@ -8,6 +8,16 @@ const { protect, isHardwareManagerOrOwner } = require('../middleware/auth');
 const { applyOrderReversal } = require('../lib/orderReversal');
 const { summarizeOrders, getPaymentMethodLabel, buildReportSummary, normalizeNumber } = require('../lib/orderMetrics');
 const { applyOrderToCustomerAccount, calculateDiscountedOrderTotal } = require('../lib/customerAccountSync');
+const { recordCashEntry } = require('../lib/cashLedger');
+
+const getPaymentAccount = (paymentMethod) => {
+  const normalized = String(paymentMethod || 'cash').toLowerCase().replace(/[ -]/g, '_');
+  if (normalized === 'airtelmoney') return 'airtel_money';
+  if (normalized === 'mobile_money') return 'mobile_money';
+  return ['cash', 'card', 'airtel_money', 'mpamba', 'mobile_money', 'credit'].includes(normalized)
+    ? normalized
+    : 'cash';
+};
 
 const populateOrderItemProducts = async (order, req) => {
   if (!order || !Array.isArray(order.items)) return order;
@@ -449,6 +459,21 @@ router.post('/', protect, async (req, res) => {
     });
 
     await order.save();
+    const paymentAccount = getPaymentAccount(paymentMethod);
+    const collectedAmount = normalizedPaymentMethod === 'credit' ? paidAmount : totalAmount;
+    if (collectedAmount > 0) {
+      await recordCashEntry({
+        req,
+        amount: collectedAmount,
+        account: normalizedPaymentMethod === 'credit' ? 'cash' : paymentAccount,
+        type: normalizedPaymentMethod === 'credit' ? 'credit_sale_payment' : 'sale',
+        description: `Order ${order.orderNumber}`,
+        orderId: order._id,
+        sourceType: 'order',
+        sourceId: order._id,
+        sourceKey: `order:${order._id}:payment`
+      });
+    }
     const savedOrder = await Order.findById(order._id, req)
       .populate('customer', 'name phone')
       .populate('items.product', 'name');
@@ -505,6 +530,25 @@ router.patch('/:id/reverse', protect, isHardwareManagerOrOwner, async (req, res)
     );
 
     await order.save();
+    const reversalAmount = String(order.paymentMethod || '').toLowerCase() === 'credit'
+      ? Number(order.paidAmount || 0)
+      : Number(order.totalAmount || 0);
+    if (reversalAmount > 0) {
+      await recordCashEntry({
+        req,
+        amount: reversalAmount,
+        direction: 'out',
+        account: String(order.paymentMethod || '').toLowerCase() === 'credit'
+          ? 'cash'
+          : getPaymentAccount(order.paymentMethod),
+        type: 'sale_reversal',
+        description: `Reversal of order ${order.orderNumber}`,
+        orderId: order._id,
+        sourceType: 'order_reversal',
+        sourceId: order._id,
+        sourceKey: `order:${order._id}:reversal`
+      });
+    }
     res.json(reversalResult.order);
   } catch (error) {
     console.error('Error reversing order:', error);

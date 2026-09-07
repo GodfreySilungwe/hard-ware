@@ -8,6 +8,7 @@ const inventoryRoutes = require('./routes/inventory');
 const exportRoutes = require('./routes/export');
 const supplierRoutes = require('./routes/suppliers');
 const purchaseOrderRoutes = require('./routes/purchase-orders');
+const cashRoutes = require('./routes/cash');
 const { ensureTableExists } = require('./lib/dynamodb');
 
 dotenv.config();
@@ -72,6 +73,7 @@ app.use((req, res, next) => {
 
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
+app.use('/api/cash', cashRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/inventory', inventoryRoutes);
 

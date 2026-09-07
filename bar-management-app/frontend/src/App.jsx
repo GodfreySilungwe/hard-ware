@@ -18,6 +18,7 @@ const Suppliers = lazy(() => import('./pages/Suppliers'));
 const PurchaseOrders = lazy(() => import('./pages/PurchaseOrders'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Applications = lazy(() => import('./pages/Applications'));
+const CashChest = lazy(() => import('./pages/CashChest'));
 
 const RootRoute = () => {
   const { isAuthenticated, isOwner, isHardwareManager, isSales, loading } = useAuth();
@@ -82,6 +83,13 @@ function App() {
               <ProtectedRoute allowSalesAndManagement>
                 <Layout>
                   <Orders />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/cash" element={
+              <ProtectedRoute hardwareManagerOnly>
+                <Layout>
+                  <CashChest />
                 </Layout>
               </ProtectedRoute>
             } />

@@ -3,6 +3,7 @@ const router = express.Router();
 const Customer = require('../models/Customer');
 const { protect } = require('../middleware/auth');
 const { settleCustomerCreditBalance } = require('../lib/customerAccountSync');
+const { recordCashEntry } = require('../lib/cashLedger');
 
 // Get all customers with optional pagination
 router.get('/', protect, async (req, res) => {
@@ -98,6 +99,9 @@ router.post('/:id/settle-credit', protect, async (req, res) => {
 
     const previousBalance = Number(customer.creditBalance || 0);
     const paymentAmount = Math.min(amount, previousBalance);
+    if (paymentAmount <= 0) {
+      return res.status(400).json({ message: 'Customer has no outstanding balance' });
+    }
 
     customer.creditSettlements = Array.isArray(customer.creditSettlements) ? customer.creditSettlements : [];
     customer.creditSettlements.push({
@@ -107,6 +111,17 @@ router.post('/:id/settle-credit', protect, async (req, res) => {
 
     settleCustomerCreditBalance(customer, amount);
     await customer.save();
+    await recordCashEntry({
+      req,
+      amount: paymentAmount,
+      account: req.body?.account || 'cash',
+      type: 'receivable_payment',
+      description: `Payment from ${customer.name || 'customer'}`,
+      customerId: customer._id || customer.id,
+      sourceType: 'customer',
+      sourceId: customer._id || customer.id,
+      sourceKey: req.body?.idempotencyKey || `receivable:${customer._id || customer.id}:${Date.now()}`
+    });
 
     res.json({
       message: 'Credit settled successfully',

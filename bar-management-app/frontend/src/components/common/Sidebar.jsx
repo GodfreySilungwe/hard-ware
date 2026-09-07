@@ -15,7 +15,8 @@ import {
   faCog,
   faTools,
   faSignOutAlt,
-  faWarehouse
+  faWarehouse,
+  faMoneyBillWave
 } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/api';
@@ -78,6 +79,7 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
       { path: '/categories', label: 'Categories', icon: faTags },
       { path: '/customers', label: 'Customers', icon: faUsers },
       { path: '/orders', label: 'Orders', icon: faClipboardList },
+      { path: '/cash', label: 'Cash Chest', icon: faMoneyBillWave },
       { path: '/inventory', label: 'Inventory', icon: faWarehouse },
       { path: '/suppliers', label: 'Suppliers', icon: faTruck },
       { path: '/purchase-orders', label: 'Purchase Orders', icon: faShoppingCart },

@@ -122,19 +122,38 @@ async function ensureTableExists() {
 
 async function listEntities(entityType) {
   await ensureTableExists();
-  // Query by partition key (pk) to avoid scanning the entire table.
-  // This keeps behavior the same while improving performance for each entity type.
-  const result = await docClient.send(new QueryCommand({
+  const queryParams = {
     TableName: TABLE_NAME,
     KeyConditionExpression: 'pk = :pk',
     ExpressionAttributeValues: {
       ':pk': String(entityType).toUpperCase()
     },
     ConsistentRead: true
-  }));
+  };
 
-  return (result.Items || [])
+  const items = await queryAllPages(
+    (params) => docClient.send(new QueryCommand(params)),
+    queryParams
+  );
+
+  return items
     .map(fromDynamoItem);
+}
+
+async function queryAllPages(sendQuery, queryParams) {
+  const items = [];
+  let exclusiveStartKey;
+
+  do {
+    const result = await sendQuery({
+      ...queryParams,
+      ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {})
+    });
+    items.push(...(result.Items || []));
+    exclusiveStartKey = result.LastEvaluatedKey;
+  } while (exclusiveStartKey);
+
+  return items;
 }
 
 async function getEntity(entityType, id) {
@@ -237,6 +256,7 @@ module.exports = {
   updateEntity,
   deleteEntity,
   findByField,
+  queryAllPages,
   fromDynamoItem,
   toDynamoItem
 };
