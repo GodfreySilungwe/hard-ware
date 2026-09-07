@@ -47,6 +47,8 @@ const Dashboard = () => {
   const [dashboardSummary, setDashboardSummary] = useState(null);
   const [startDate, setStartDate] = useState(getTodayString());
   const [endDate, setEndDate] = useState(getTodayString());
+  const [appliedStartDate, setAppliedStartDate] = useState(getTodayString());
+  const [appliedEndDate, setAppliedEndDate] = useState(getTodayString());
   const [periodFilter, setPeriodFilter] = useState('today');
   const [productPage, setProductPage] = useState(1);
   const { user, loading: authLoading } = useAuth();
@@ -54,6 +56,8 @@ const Dashboard = () => {
   const setDateRange = (from, to, filter) => {
     setStartDate(from);
     setEndDate(to);
+    setAppliedStartDate(from);
+    setAppliedEndDate(to);
     setPeriodFilter(filter);
   };
 
@@ -77,14 +81,23 @@ const Dashboard = () => {
       return;
     }
 
-    setDateRange('', '', 'custom');
+    setStartDate('');
+    setEndDate('');
+    setPeriodFilter('custom');
+  };
+
+  const applyCustomRange = () => {
+    if (!startDate || !endDate) return;
+    if (startDate > endDate) return;
+    setAppliedStartDate(startDate);
+    setAppliedEndDate(endDate);
   };
 
   useEffect(() => {
     if (!authLoading) {
       fetchDashboardData();
     }
-  }, [user?.role, authLoading, productPage, startDate, endDate]);
+  }, [user?.role, authLoading, productPage, appliedStartDate, appliedEndDate]);
 
   useEffect(() => {
     if (periodFilter !== 'today') return;
@@ -117,13 +130,13 @@ const Dashboard = () => {
       const isSalesRole = role === 'sales';
 
       const query = {};
-      if (startDate) {
-        const [ys, ms, ds] = startDate.split('-').map((p) => Number(p));
+      if (appliedStartDate) {
+        const [ys, ms, ds] = appliedStartDate.split('-').map((p) => Number(p));
         const sLocal = new Date(ys, ms - 1, ds, 0, 0, 0, 0);
         query.startDateUtc = sLocal.toISOString();
       }
-      if (endDate) {
-        const [ye, me, de] = endDate.split('-').map((p) => Number(p));
+      if (appliedEndDate) {
+        const [ye, me, de] = appliedEndDate.split('-').map((p) => Number(p));
         const eLocal = new Date(ye, me - 1, de, 23, 59, 59, 999);
         query.endDateUtc = eLocal.toISOString();
       }
@@ -136,7 +149,7 @@ const Dashboard = () => {
         requests.push(api.get('/auth/tenants').catch(() => ({ data: [] })));
       } else {
         requests.push(api.get('/products').catch(() => ({ data: [] })));
-        if (startDate || endDate) {
+        if (appliedStartDate || appliedEndDate) {
           requests.push(api.get('/orders/today', { params: query }).catch(() => ({ data: {} })));
         } else {
           const now = new Date();
@@ -322,6 +335,32 @@ const Dashboard = () => {
         </div>
       )}
 
+      {!isOwnerRole && dashboardSummary && (
+        <div style={styles.lowStockPanel} className="fade-in">
+          <div style={styles.panelHeader}>
+            <h3 style={styles.panelTitle}>Low Stock</h3>
+            <span style={styles.panelHint}>{dashboardSummary.lowStock || 0} product{dashboardSummary.lowStock === 1 ? '' : 's'} need attention</span>
+          </div>
+          {dashboardSummary.lowStockProducts?.length ? (
+            <div style={styles.lowStockGrid}>
+              {dashboardSummary.lowStockProducts.map((product) => {
+                const threshold = Number(product.lowStockThreshold ?? product.reorderLevel ?? 5);
+                const quantity = Number(product.currentStock || 0);
+                const fill = threshold > 0 ? Math.min(100, Math.max(0, (quantity / threshold) * 100)) : 0;
+                return (
+                  <div style={styles.lowStockItem} key={product._id || product.id}>
+                    {quantity <= 0 && <span style={styles.outOfStockBadge}>Out of stock</span>}
+                    <div style={styles.lowStockHeader}><span style={styles.lowStockName}>{product.name}</span><span style={styles.lowStockCategory}>{product.category?.name || 'Uncategorised'}</span></div>
+                    <div style={styles.lowStockDetails}><span style={styles.lowStockQty}>Available: {quantity}</span><span style={styles.lowStockThreshold}>Threshold: {threshold}</span></div>
+                    <div style={styles.lowStockBar}><div style={{ ...styles.lowStockBarFill, width: `${fill}%`, backgroundColor: quantity <= 0 ? '#e74c3c' : '#f39c12' }} /></div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : <p style={styles.emptyState}>All products are above their stock thresholds.</p>}
+        </div>
+      )}
+
       {!isOwnerRole && (
         <div style={styles.periodFilterBar}>
           <span style={styles.periodLabel}>Period:</span>
@@ -376,7 +415,7 @@ const Dashboard = () => {
                 onChange={(e) => setEndDate(e.target.value)}
                 style={styles.periodDateInput}
               />
-              <button style={styles.applyDateButton} onClick={fetchDashboardData}>
+              <button style={styles.applyDateButton} onClick={applyCustomRange} disabled={!startDate || !endDate || startDate > endDate}>
                 Apply
               </button>
             </div>
@@ -909,6 +948,13 @@ const styles = {
     marginBottom: '12px',
     flexWrap: 'wrap',
     gap: '8px'
+  },
+  lowStockPanel: {
+    backgroundColor: '#ffffff',
+    border: '1px solid #f3d08a',
+    borderRadius: '12px',
+    padding: '18px',
+    marginBottom: '20px'
   },
   panelTitle: {
     fontSize: '16px',
