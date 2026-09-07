@@ -24,6 +24,25 @@ const calculateBalance = (entries, openingFloat = 0) => normalizeAmount(
   ), 0)
 );
 
+const summarizeSessionEntries = (entries = []) => entries.reduce((summary, entry) => {
+  const amount = Number(entry.amount || 0);
+  const isOutflow = entry.direction === 'out';
+  const type = entry.type || 'adjustment';
+
+  if (type === 'sale' || type === 'credit_sale_payment') summary.salesReceipts += amount;
+  if (type === 'receivable_payment') summary.receivableCollections += amount;
+  if (type === 'expense') summary.expenses += amount;
+  if (type === 'sale_reversal') summary.reversals += amount;
+  if (type === 'adjustment') summary.adjustments += isOutflow ? -amount : amount;
+  return summary;
+}, {
+  salesReceipts: 0,
+  receivableCollections: 0,
+  expenses: 0,
+  reversals: 0,
+  adjustments: 0
+});
+
 router.get('/summary', protect, async (req, res) => {
   try {
     const [sessions, entries] = await Promise.all([
@@ -39,7 +58,12 @@ router.get('/summary', protect, async (req, res) => {
     const sessionEntries = selectedSession
       ? scopedEntries.filter((entry) => entry.sessionId === (selectedSession._id || selectedSession.id))
       : [];
+    const sessionMetrics = summarizeSessionEntries(sessionEntries);
     const accountBalances = {};
+
+    for (const cashSession of scopedSessions) {
+      accountBalances.cash = normalizeAmount((accountBalances.cash || 0) + Number(cashSession.openingFloat || 0));
+    }
 
     for (const entry of scopedEntries) {
       const account = entry.account || 'cash';
@@ -52,6 +76,18 @@ router.get('/summary', protect, async (req, res) => {
       openSession,
       session: selectedSession,
       balance: calculateBalance(sessionEntries, selectedSession?.openingFloat || 0),
+      cashMetrics: {
+        openingFloat: normalizeAmount(selectedSession?.openingFloat || 0),
+        salesReceipts: normalizeAmount(sessionMetrics.salesReceipts),
+        receivableCollections: normalizeAmount(sessionMetrics.receivableCollections),
+        expenses: normalizeAmount(sessionMetrics.expenses),
+        reversals: normalizeAmount(sessionMetrics.reversals),
+        adjustments: normalizeAmount(sessionMetrics.adjustments),
+        expectedCash: calculateBalance(sessionEntries, selectedSession?.openingFloat || 0),
+        countedCash: selectedSession?.countedCash === undefined ? null : normalizeAmount(selectedSession.countedCash),
+        variance: selectedSession?.variance === undefined ? null : normalizeAmount(selectedSession.variance),
+        varianceExplanation: selectedSession?.varianceExplanation || null
+      },
       accountBalances,
       entries: sessionEntries.sort((left, right) => new Date(right.occurredAt || right.createdAt || 0) - new Date(left.occurredAt || left.createdAt || 0))
     });
@@ -93,9 +129,15 @@ router.post('/sessions/:id/close', protect, isHardwareManagerOrOwner, async (req
     const expectedClosing = calculateBalance(entries, session.openingFloat);
     const countedCash = normalizeAmount(req.body?.countedCash);
     if (countedCash < 0) return res.status(400).json({ message: 'Counted cash cannot be negative' });
+    const variance = normalizeAmount(countedCash - expectedClosing);
+    const varianceExplanation = String(req.body?.varianceExplanation || '').trim();
+    if (variance !== 0 && !varianceExplanation) {
+      return res.status(400).json({ message: 'A variance explanation is required when counted cash differs from expected cash' });
+    }
     session.expectedClosing = expectedClosing;
     session.countedCash = countedCash;
-    session.variance = normalizeAmount(countedCash - expectedClosing);
+    session.variance = variance;
+    session.varianceExplanation = varianceExplanation || null;
     session.status = 'closed';
     session.closedAt = new Date().toISOString();
     session.closedBy = req.user?.id || req.user?._id || null;
