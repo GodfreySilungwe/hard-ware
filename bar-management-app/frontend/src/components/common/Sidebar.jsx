@@ -26,6 +26,7 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
+  const [cashSessionOpen, setCashSessionOpen] = useState(false);
 
   const getRoleLabel = () => {
     if (user?.role === 'owner') return 'Global Owner';
@@ -61,6 +62,19 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
     };
   }, [user?.role]);
 
+  useEffect(() => {
+    if (user?.role !== 'sales') {
+      setCashSessionOpen(false);
+      return;
+    }
+
+    const checkCashSession = () => api.get('/cash/summary')
+      .then((response) => setCashSessionOpen(Boolean(response.data?.openSession)))
+      .catch(() => setCashSessionOpen(false));
+
+    checkCashSession();
+  }, [user?.role]);
+
   const handleLogout = () => {
     logout();
     onClose();
@@ -91,7 +105,8 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
       { path: '/dashboard', label: 'Dashboard', icon: faChartBar },
       { path: '/pos', label: 'POS', icon: faCashRegister },
       { path: '/customers', label: 'Customers', icon: faUsers },
-      { path: '/orders', label: 'Orders', icon: faClipboardList }
+      { path: '/orders', label: 'Orders', icon: faClipboardList },
+      ...(cashSessionOpen ? [{ path: '/cash', label: 'Cash Chest', icon: faMoneyBillWave }] : [])
     ]
   };
 

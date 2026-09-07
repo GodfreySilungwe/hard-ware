@@ -4,6 +4,7 @@ import PageContainer from './PageContainer';
 import Button from '../components/common/Button';
 import UnifiedCard from '../components/common/UnifiedCard';
 import { formatPriceMK } from '../utils/formatPrice';
+import { useAuth } from '../context/AuthContext';
 
 const emptyExpense = { amount: '', category: 'general', description: '' };
 const emptyPayment = { customerId: '', amount: '', description: '' };
@@ -19,6 +20,9 @@ const CashChest = () => {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [varianceExplanation, setVarianceExplanation] = useState('');
+  const { user } = useAuth();
+  const isManager = user?.role === 'hardware-manager' || user?.role === 'owner';
 
   const load = async () => {
     setLoading(true);
@@ -61,8 +65,17 @@ const CashChest = () => {
 
   const closeSession = () => {
     if (!summary?.session?._id) return;
+    const expectedCash = Number(summary.balance || 0);
+    const variance = Math.round((Number(countedCash) - expectedCash) * 100) / 100;
+    if (variance !== 0 && !varianceExplanation.trim()) {
+      setError('Please explain the cash variance before closing the session');
+      return;
+    }
     return runAction(
-      () => api.post(`/cash/sessions/${summary.session._id}/close`, { countedCash: Number(countedCash) || 0 }),
+      () => api.post(`/cash/sessions/${summary.session._id}/close`, {
+        countedCash: Number(countedCash) || 0,
+        varianceExplanation: varianceExplanation.trim()
+      }),
       'Cash session closed and reconciled'
     );
   };
@@ -91,7 +104,10 @@ const CashChest = () => {
 
   const session = summary?.session;
   const entries = summary?.entries || [];
-  const accounts = Object.entries(summary?.accountBalances || {});
+  const cashMetrics = summary?.cashMetrics || {};
+  const displayedOpeningFloat = Number(cashMetrics.openingFloat ?? session?.openingFloat ?? 0);
+  const expectedCash = Number(cashMetrics.expectedCash ?? summary?.balance ?? displayedOpeningFloat);
+  const accounts = Object.entries(summary?.accountBalances || {}).filter(([account]) => account !== 'cash');
 
   return (
     <PageContainer title="Cash Chest">
@@ -107,37 +123,55 @@ const CashChest = () => {
       {error && <div style={styles.error}>{error}</div>}
 
       <div style={styles.metrics}>
-        <div style={styles.metric}><span>Current cash</span><strong>{formatPriceMK(summary?.balance || 0)}</strong></div>
+        <div style={styles.metric}><span>Expected cash</span><strong>{formatPriceMK(expectedCash)}</strong></div>
+        <div style={styles.metric}><span>Opening float</span><strong>{formatPriceMK(displayedOpeningFloat)}</strong></div>
+        <div style={styles.metric}><span>Sales receipts</span><strong>{formatPriceMK(cashMetrics.salesReceipts || 0)}</strong></div>
+        <div style={styles.metric}><span>Receivables collected</span><strong>{formatPriceMK(cashMetrics.receivableCollections || 0)}</strong></div>
+        <div style={styles.metric}><span>Expenses</span><strong>{formatPriceMK(cashMetrics.expenses || 0)}</strong></div>
+        <div style={styles.metric}><span>Variance</span><strong style={{ color: cashMetrics.variance ? '#b42318' : '#147d4b' }}>{cashMetrics.variance === null || cashMetrics.variance === undefined ? 'Not reconciled' : formatPriceMK(cashMetrics.variance)}</strong></div>
         <div style={styles.metric}><span>Session</span><strong>{session ? 'Open' : 'Closed'}</strong></div>
         {accounts.map(([account, balance]) => <div style={styles.metric} key={account}><span>{account.replace('_', ' ')}</span><strong>{formatPriceMK(balance)}</strong></div>)}
       </div>
 
-      {!session ? (
+      {!session && isManager ? (
         <UnifiedCard title="Open cash session">
           <div style={styles.formRow}>
             <label style={styles.label}>Opening float<input type="number" min="0" value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)} style={styles.input} /></label>
             <Button disabled={saving} onClick={openSession}>Open Session</Button>
           </div>
         </UnifiedCard>
-      ) : (
+      ) : session && isManager ? (
         <UnifiedCard title="Close and reconcile session">
           <div style={styles.formRow}>
-            <label style={styles.label}>Expected cash<input value={formatPriceMK(summary.balance || 0)} readOnly style={styles.input} /></label>
+            <label style={styles.label}>Expected cash<input value={formatPriceMK(expectedCash)} readOnly style={styles.input} /></label>
             <label style={styles.label}>Counted cash<input type="number" min="0" value={countedCash} onChange={(e) => setCountedCash(e.target.value)} style={styles.input} /></label>
+            {countedCash !== '' && Number(countedCash) !== expectedCash && (
+              <label style={styles.label}>Variance explanation<textarea required value={varianceExplanation} onChange={(e) => setVarianceExplanation(e.target.value)} placeholder="Explain the difference" style={styles.input} /></label>
+            )}
             <Button disabled={saving || countedCash === ''} onClick={closeSession}>Close Session</Button>
           </div>
+        </UnifiedCard>
+      ) : !session ? (
+        <UnifiedCard title="Cash Chest unavailable">
+          <p>The cash chest is only available after a manager opens a cash session.</p>
+        </UnifiedCard>
+      ) : null}
+
+      {session && !isManager && (
+        <UnifiedCard title="Active cash session">
+          <p>This session was opened by a manager. You can view movements and record customer payments, but only a manager can open, close, or record expenses.</p>
         </UnifiedCard>
       )}
 
       <div style={styles.grid}>
-        <UnifiedCard title="Record expense">
+        {isManager && <UnifiedCard title="Record expense">
           <div style={styles.form}>
             <input type="number" min="0" placeholder="Amount" value={expense.amount} onChange={(e) => setExpense({ ...expense, amount: e.target.value })} style={styles.input} />
             <input placeholder="Category" value={expense.category} onChange={(e) => setExpense({ ...expense, category: e.target.value })} style={styles.input} />
             <input placeholder="Description" value={expense.description} onChange={(e) => setExpense({ ...expense, description: e.target.value })} style={styles.input} />
             <Button disabled={saving || !expense.amount} onClick={addExpense}>Record Expense</Button>
           </div>
-        </UnifiedCard>
+        </UnifiedCard>}
         <UnifiedCard title="Receive customer payment">
           <div style={styles.form}>
             <select value={payment.customerId} onChange={(e) => setPayment({ ...payment, customerId: e.target.value })} style={styles.input}>
@@ -160,6 +194,11 @@ const CashChest = () => {
           </div>)}
         </div>
       </UnifiedCard>
+      {session?.status === 'closed' && cashMetrics.varianceExplanation && (
+        <div style={styles.varianceNote}>
+          <strong>Variance explanation:</strong> {cashMetrics.varianceExplanation}
+        </div>
+      )}
     </PageContainer>
   );
 };
@@ -176,6 +215,7 @@ const styles = {
   label: { display: 'grid', gap: '6px', color: '#344054', fontWeight: '600', minWidth: '180px' },
   input: { padding: '10px 12px', border: '1px solid #d0d5dd', borderRadius: '6px', fontSize: '14px', background: '#fff' },
   table: { display: 'grid', gap: '2px' }, entry: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #eaecf0' },
+  varianceNote: { background: '#fffaeb', color: '#93370d', border: '1px solid #fedf89', borderRadius: '8px', padding: '12px 16px', marginTop: '20px' },
 };
 
 export default CashChest;

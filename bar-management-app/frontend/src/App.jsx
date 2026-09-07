@@ -87,7 +87,7 @@ function App() {
               </ProtectedRoute>
             } />
             <Route path="/cash" element={
-              <ProtectedRoute hardwareManagerOnly>
+              <ProtectedRoute allowSalesAndManagement>
                 <Layout>
                   <CashChest />
                 </Layout>
