@@ -26,13 +26,14 @@ function toDynamoItem(entityType, data) {
   const now = new Date().toISOString();
   const entityName = String(entityType).toUpperCase();
   const id = data?.id || data?._id || generateId();
+  const createdAt = data?.createdAt || now;
   const record = {
     pk: entityName,
     sk: `${entityName}#${id}`,
     entityType: String(entityType).toLowerCase(),
     id,
     _id: id,
-    createdAt: data?.createdAt || now,
+    createdAt,
     updatedAt: data?.updatedAt || now,
     ...data
   };
@@ -44,7 +45,7 @@ function toDynamoItem(entityType, data) {
   delete record.sk;
   delete record.entityType;
 
-  return {
+  const item = {
     pk: entityName,
     sk: `${entityName}#${id}`,
     entityType: String(entityType).toLowerCase(),
@@ -54,6 +55,14 @@ function toDynamoItem(entityType, data) {
     updatedAt: record.updatedAt,
     ...record
   };
+
+  // Populate GSI1 keys for orders to enable efficient tenant + date-range queries
+  if (String(entityType).toLowerCase() === 'order' && data?.tenantId) {
+    item.GSI1PK = data.tenantId;
+    item.GSI1SK = createdAt;
+  }
+
+  return item;
 }
 
 function fromDynamoItem(item) {

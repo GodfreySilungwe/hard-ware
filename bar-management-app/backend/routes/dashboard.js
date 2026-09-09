@@ -230,7 +230,14 @@ router.get('/summary', protect, async (req, res) => {
     // products counts and low stock
     const products = await Product.find({}, req);
     const totalProducts = Array.isArray(products) ? products.length : 0;
-    const lowStock = (products || []).filter(p => (normalizeNumber(p.currentStock || 0) <= (Number(p.reorderLevel || 5) || 5))).length;
+    const lowStockProducts = (products || []).filter((product) => {
+      const rawThreshold = product.lowStockThreshold ?? product.reorderLevel;
+      const threshold = rawThreshold === '' || rawThreshold === null || rawThreshold === undefined
+        ? 5
+        : Number(rawThreshold);
+      return normalizeNumber(product.currentStock || 0) <= (Number.isFinite(threshold) ? threshold : 5);
+    });
+    const lowStock = lowStockProducts.length;
 
     const inventoryValueAtCost = (products || []).reduce((sum, product) => {
       const quantity = normalizeNumber(product.currentStock || 0);
@@ -381,6 +388,7 @@ router.get('/summary', protect, async (req, res) => {
       },
       paymentProceeds: paymentMethods,
       productSummary: limitedProductSummary,
+      lowStockProducts,
       productSummaryPagination,
       unsettledCustomers: unsettled,
       recentOrders: limitedRecentOrders
