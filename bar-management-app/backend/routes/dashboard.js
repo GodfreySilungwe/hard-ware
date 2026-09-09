@@ -6,6 +6,7 @@ const PurchaseOrder = require('../models/PurchaseOrder');
 const Customer = require('../models/Customer');
 const { protect } = require('../middleware/auth');
 const { normalizeNumber } = require('../lib/orderMetrics');
+const dynamodb = require('../lib/dynamodb');
 
 const getReferenceId = (reference) => String(reference?._id || reference?.id || reference || '');
 
@@ -103,10 +104,42 @@ router.get('/summary', protect, async (req, res) => {
   try {
     const createdAtQuery = parseRange(req);
 
-    // fetch orders in period and populate product details for item names
-    const orders = await Order.find({ ...(createdAtQuery ? { createdAt: createdAtQuery } : {}) }, req)
-      .populate('items.product')
-      .sort({ createdAt: -1 });
+    // Extract start/end dates for GSI query attempt
+    let startDate = null;
+    let endDate = null;
+    if (req.query.startDateUtc) startDate = req.query.startDateUtc;
+    if (req.query.endDateUtc) endDate = req.query.endDateUtc;
+
+    let orders = [];
+    const tenantId = req.user?.tenantId;
+
+    // Attempt GSI query for date-range queries (more efficient)
+    if ((startDate || endDate) && tenantId) {
+      try {
+        console.log(`📊 Dashboard: Attempting GSI query for tenant ${tenantId} (${startDate} to ${endDate})`);
+        orders = await dynamodb.queryByGSI(tenantId, startDate, endDate);
+        console.log(`✅ Dashboard: GSI query returned ${orders.length} orders`);
+      } catch (gsiError) {
+        console.warn(`⚠️  Dashboard: GSI query failed, falling back to scan: ${gsiError.message}`);
+        orders = await Order.find({ ...(createdAtQuery ? { createdAt: createdAtQuery } : {}) }, req);
+      }
+    } else {
+      // No date range, use legacy scan
+      orders = await Order.find({ ...(createdAtQuery ? { createdAt: createdAtQuery } : {}) }, req);
+    }
+
+    // Populate product details for item names
+    orders = await Promise.all(orders.map(async (order) => {
+      if (!Array.isArray(order.items)) return order;
+      const populatedItems = await Promise.all(order.items.map(async (item) => {
+        if (item.product && typeof item.product === 'string') {
+          const product = await Product.findById(item.product, req);
+          return { ...item, product };
+        }
+        return item;
+      }));
+      return { ...order, items: populatedItems };
+    }));
 
     const filtered = (orders || []).filter(o => o?.status !== 'reversed');
     const reversedCount = (orders || []).filter(o => o?.status === 'reversed').length;

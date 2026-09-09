@@ -9,6 +9,7 @@ const { applyOrderReversal } = require('../lib/orderReversal');
 const { summarizeOrders, getPaymentMethodLabel, buildReportSummary, normalizeNumber } = require('../lib/orderMetrics');
 const { applyOrderToCustomerAccount, calculateDiscountedOrderTotal } = require('../lib/customerAccountSync');
 const { recordCashEntry } = require('../lib/cashLedger');
+const dynamodb = require('../lib/dynamodb');
 
 const getPaymentAccount = (paymentMethod) => {
   const normalized = String(paymentMethod || 'cash').toLowerCase().replace(/[ -]/g, '_');
@@ -148,6 +149,38 @@ const buildOrderDateQuery = (startDate, endDate) => {
   return Object.keys(dateQuery).length ? dateQuery : null;
 };
 
+/**
+ * Query orders using GSI1 (tenantId + dateRange) with fallback to scan
+ * Optimizes for tenant-scoped queries with date range filtering
+ * 
+ * @param {Object} params - Query parameters
+ * @param {string} params.tenantId - Tenant ID (from request context)
+ * @param {string} params.startDate - ISO date string (optional)
+ * @param {string} params.endDate - ISO date string (optional)
+ * @param {Object} params.req - Express request object
+ * @returns {Promise<Array>} Array of order records
+ */
+const queryOrdersOptimized = async ({ tenantId, startDate, endDate, req }) => {
+  try {
+    // Attempt GSI query if we have date range (more efficient than scan)
+    if (startDate || endDate) {
+      console.log(`🔍 GSI query: tenant=${tenantId}, startDate=${startDate}, endDate=${endDate}`);
+      const gsiOrders = await dynamodb.queryByGSI(tenantId, startDate, endDate);
+      console.log(`✅ GSI query returned ${gsiOrders.length} orders`);
+      return gsiOrders;
+    }
+  } catch (gsiError) {
+    console.warn(`⚠️  GSI query failed, falling back to scan: ${gsiError.message}`);
+  }
+
+  // Fallback: Use legacy scan method
+  console.log('🔄 Falling back to legacy scan query...');
+  return Order.find({ tenantId }, req);
+};
+
+// expose helper for testing
+router.queryOrdersOptimized = queryOrdersOptimized;
+
 // Get all orders
 router.get('/', protect, async (req, res) => {
   try {
@@ -204,9 +237,33 @@ router.get('/', protect, async (req, res) => {
       query.customer = customerIds;
     }
 
-    const orders = await Order.find(query, req)
-      .populate('customer', 'name phone')
-      .sort({ createdAt: -1 });
+    // Attempt GSI optimization: if ONLY date range provided (no other filters), try GSI query
+    let orders;
+    const tenantId = req.user?.tenantId;
+    const hasOnlyDateFilter = (req.query.startDateUtc || req.query.endDateUtc) && 
+                              !status && !paymentMethod && !customerId && !customerName && !productName;
+
+    if (hasOnlyDateFilter && tenantId) {
+      try {
+        console.log(`📊 Orders endpoint: Attempting GSI query for tenant ${tenantId}`);
+        orders = await dynamodb.queryByGSI(
+          tenantId,
+          req.query.startDateUtc,
+          req.query.endDateUtc
+        );
+        console.log(`✅ Orders endpoint: GSI query returned ${orders.length} orders`);
+      } catch (gsiError) {
+        console.warn(`⚠️  Orders endpoint: GSI query failed, falling back to scan: ${gsiError.message}`);
+        orders = await Order.find(query, req)
+          .populate('customer', 'name phone')
+          .sort({ createdAt: -1 });
+      }
+    } else {
+      // Use legacy scan for complex filters
+      orders = await Order.find(query, req)
+        .populate('customer', 'name phone')
+        .sort({ createdAt: -1 });
+    }
 
     let normalizedOrders = orders.map((order) => ({
       ...order,

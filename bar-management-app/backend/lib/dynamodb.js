@@ -254,11 +254,66 @@ async function findByField(entityType, field, value) {
   return records.find((record) => record[field] === value) || null;
 }
 
+/**
+ * Query orders by GSI1 (tenantId + dateRange)
+ * Enables efficient queries instead of full partition scans
+ * 
+ * @param {string} tenantId - Partition key value (required)
+ * @param {string} startDate - ISO date string (optional, inclusive)
+ * @param {string} endDate - ISO date string (optional, inclusive)
+ * @returns {Promise<Array>} Array of order records
+ */
+async function queryByGSI(tenantId, startDate, endDate) {
+  if (!tenantId) {
+    throw new Error('tenantId is required for GSI query');
+  }
+
+  await ensureTableExists();
+
+  // Build key condition expression
+  let keyConditionExpression = 'GSI1PK = :gsi1pk';
+  const expressionAttributeValues = {
+    ':gsi1pk': tenantId
+  };
+
+  // Add date range filter if provided
+  if (startDate || endDate) {
+    const conditions = [];
+    if (startDate) {
+      conditions.push('GSI1SK >= :startDate');
+      expressionAttributeValues[':startDate'] = startDate;
+    }
+    if (endDate) {
+      conditions.push('GSI1SK <= :endDate');
+      expressionAttributeValues[':endDate'] = endDate;
+    }
+    if (conditions.length > 0) {
+      keyConditionExpression += ' AND (' + conditions.join(' AND ') + ')';
+    }
+  }
+
+  const queryParams = {
+    TableName: TABLE_NAME,
+    IndexName: 'GSI1',
+    KeyConditionExpression: keyConditionExpression,
+    ExpressionAttributeValues: expressionAttributeValues,
+    ConsistentRead: false // GSI doesn't support ConsistentRead
+  };
+
+  const items = await queryAllPages(
+    (params) => docClient.send(new QueryCommand(params)),
+    queryParams
+  );
+
+  return items.map(fromDynamoItem);
+}
+
 module.exports = {
   TABLE_NAME,
   ensureTableExists,
   generateId,
   listEntities,
+  queryByGSI,
   getEntity,
   createEntity,
   batchCreateEntities,
