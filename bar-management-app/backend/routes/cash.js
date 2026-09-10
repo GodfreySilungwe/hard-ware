@@ -70,11 +70,11 @@ router.get('/summary', protect, async (req, res) => {
     const sessionMetrics = summarizeSessionEntries(sessionEntries);
     const accountBalances = {};
 
-    for (const cashSession of scopedSessions) {
-      accountBalances.cash = normalizeAmount((accountBalances.cash || 0) + Number(cashSession.openingFloat || 0));
+    if (selectedSession) {
+      accountBalances.cash = normalizeAmount(selectedSession.openingFloat || 0);
     }
 
-    for (const entry of scopedEntries) {
+    for (const entry of sessionEntries) {
       const account = entry.account || 'cash';
       accountBalances[account] = normalizeAmount((accountBalances[account] || 0) + (
         entry.direction === 'out' ? -Number(entry.amount || 0) : Number(entry.amount || 0)
