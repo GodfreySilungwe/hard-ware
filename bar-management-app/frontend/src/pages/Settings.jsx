@@ -373,6 +373,49 @@ const Settings = ({ initialMenu = 'settings' }) => {
     }
   };
 
+  const handleSubscriptionRenewal = async (tenantId) => {
+    const termMonths = window.prompt('Subscription term in months (1-12)', '1');
+    if (termMonths === null) return;
+
+    const parsedTerm = Number(termMonths);
+    if (!Number.isInteger(parsedTerm) || parsedTerm < 1 || parsedTerm > 12) {
+      setError('Subscription term must be a whole number from 1 to 12 months');
+      return;
+    }
+
+    const gracePeriodDays = window.prompt('Grace period in days (0-90)', '10');
+    if (gracePeriodDays === null) return;
+
+    const parsedGracePeriod = Number(gracePeriodDays);
+    if (!Number.isInteger(parsedGracePeriod) || parsedGracePeriod < 0 || parsedGracePeriod > 90) {
+      setError('Grace period must be a whole number from 0 to 90 days');
+      return;
+    }
+
+    const paymentReference = window.prompt('Payment reference (optional)', '') || '';
+    setLoading(true);
+    setMessage('');
+    setError('');
+
+    try {
+      await api.patch(`/auth/tenants/${tenantId}/subscription`, {
+        termMonths: parsedTerm,
+        gracePeriodDays: parsedGracePeriod,
+        paymentReference,
+        paymentMethod: 'manual'
+      });
+      setMessage('Subscription activated or extended successfully');
+      await refreshOwnerData();
+      notifyOwnerDataChanged();
+      setTimeout(() => setMessage(''), 4000);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update subscription');
+      setTimeout(() => setError(''), 4000);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const openDeleteModal = (target, action) => {
     setDeleteTarget(target);
     setDeleteAction(action);
@@ -782,6 +825,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
                         <th style={styles.hardwareTableHead}>Users</th>
                         <th style={styles.hardwareTableHead}>Sales accounts</th>
                         <th style={styles.hardwareTableHead}>Status</th>
+                        <th style={styles.hardwareTableHead}>Subscription</th>
                         <th style={styles.hardwareTableHead}>Created</th>
                         <th style={styles.hardwareTableHead}>Actions</th>
                       </tr>
@@ -803,9 +847,16 @@ const Settings = ({ initialMenu = 'settings' }) => {
                             <td style={styles.hardwareTableCell}>{userSummary}</td>
                             <td style={styles.hardwareTableCell}>{tenant.activeSalesAccountCount || 0}</td>
                             <td style={styles.hardwareTableCell}>{tenant.status || 'active'}</td>
+                            <td style={styles.hardwareTableCell}>
+                              <div>{tenant.subscriptionAccess?.status || 'legacy'}</div>
+                              {tenant.subscriptionAccess?.expiresAt && <small>Expires {formatDate(tenant.subscriptionAccess.expiresAt)}</small>}
+                            </td>
                             <td style={styles.hardwareTableCell}>{formatDate(tenant.createdAt || tenant.created_at)}</td>
                             <td style={styles.hardwareTableCell}>
                               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                <button type="button" style={styles.secondaryButton} onClick={() => handleSubscriptionRenewal(tenant._id || tenant.id)}>
+                                  Activate / renew
+                                </button>
                                 {tenantUsers.map((manager) => (
                                   <button
                                     key={manager.id || manager._id}

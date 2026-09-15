@@ -3,6 +3,17 @@ import api from '../api/api';
 
 const AuthContext = createContext();
 
+const getSubscriptionNotice = (subscription) => {
+  if (!subscription || subscription.status === 'legacy' || subscription.status === 'active') return null;
+  if (subscription.status === 'grace') {
+    const graceEndsAt = subscription.graceEndsAt ? new Date(subscription.graceEndsAt).toLocaleDateString() : 'the grace-period end date';
+    return `Subscription expired. Grace access is active until ${graceEndsAt}. Please renew your subscription.`;
+  }
+  if (subscription.status === 'pending') return 'Subscription activation is pending. Please contact support.';
+  if (subscription.status === 'cancelled') return 'Subscription cancelled. Please contact support.';
+  return 'Subscription expired. Please renew to continue using the app.';
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token'));
@@ -36,7 +47,7 @@ export const AuthProvider = ({ children }) => {
             tenantId: authUser?.tenantId || null
           };
           setUser(normalizedUser);
-          setSuspensionNotice(authUser?.suspensionMessage || null);
+          setSuspensionNotice(authUser?.suspensionMessage || getSubscriptionNotice(authUser?.subscription));
         } catch (err) {
           console.error('Error loading user:', err);
           setToken(null);
@@ -67,11 +78,11 @@ export const AuthProvider = ({ children }) => {
       };
       setToken(authToken);
       setUser(normalizedUser);
-      setSuspensionNotice(authUser?.suspensionMessage || null);
+      setSuspensionNotice(authUser?.suspensionMessage || getSubscriptionNotice(authUser?.subscription));
       return { success: true, token: authToken, user: normalizedUser };
     } catch (err) {
       const errorMessage = err.response?.data?.message || 'Login failed';
-      const isSuspended = /suspended|deleted/i.test(errorMessage);
+      const isSuspended = /suspended|deleted|subscription|renew/i.test(errorMessage);
       setError(errorMessage);
       setSuspensionNotice(isSuspended ? errorMessage : null);
       return { success: false, error: errorMessage };
