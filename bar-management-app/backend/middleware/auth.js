@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Tenant = require('../models/Tenant');
+const { getSubscriptionAccess } = require('../lib/subscriptions');
 
 const jwtSecret = process.env.JWT_SECRET || 'secret_key';
 
@@ -38,6 +39,26 @@ const getTenantAccessMessage = (status) => {
     default:
       return null;
   }
+};
+
+const getSubscriptionAccessMessage = (subscription) => {
+  if (subscription.status === 'grace') {
+    return null;
+  }
+
+  if (subscription.status === 'suspended') {
+    return 'This hardware subscription has expired. Please renew to continue using the app.';
+  }
+
+  if (subscription.status === 'pending') {
+    return 'This hardware subscription is awaiting activation. Please contact support.';
+  }
+
+  if (subscription.status === 'cancelled') {
+    return 'This hardware subscription has been cancelled. Please contact support.';
+  }
+
+  return null;
 };
 
 // Verify JWT token
@@ -81,6 +102,14 @@ const protect = async (req, res, next) => {
       if (accessMessage) {
         return res.status(403).json({ message: accessMessage });
       }
+
+      const subscription = getSubscriptionAccess(tenant);
+      const subscriptionMessage = getSubscriptionAccessMessage(subscription);
+      if (subscriptionMessage) {
+        return res.status(403).json({ message: subscriptionMessage, subscription });
+      }
+
+      tenant.subscriptionAccess = subscription;
     }
 
     const safeUser = { ...user };

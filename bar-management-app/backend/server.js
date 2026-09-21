@@ -85,6 +85,7 @@ const customerRoutes = require('./routes/customers');
 const orderRoutes = require('./routes/orders');
 const dashboardRoutes = require('./routes/dashboard');
 const uploadRoutes = require('./routes/uploads');
+const quotationRoutes = require('./routes/quotations');
 
 // Use routes
 app.use('/api/auth', authRoutes);
@@ -94,6 +95,7 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/quotations', quotationRoutes);
 
 // Root info route
 app.get('/', (req, res) => {
@@ -143,7 +145,8 @@ if (require.main === module) {
 }
 
 const lambdaServer = awsServerlessExpress.createServer(app, null, [
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/pdf'
 ]);
 function normalizeLambdaEvent(event) {
   if (!event.path) {

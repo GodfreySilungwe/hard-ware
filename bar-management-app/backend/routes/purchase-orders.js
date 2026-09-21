@@ -4,6 +4,7 @@ const PurchaseOrder = require('../models/PurchaseOrder');
 const Supplier = require('../models/Supplier');
 const Product = require('../models/Product');
 const { protect } = require('../middleware/auth');
+const { normalizePurchaseOrderItems, canUpdatePurchaseOrderStatus } = require('../lib/purchaseOrderRules');
 
 // Get all purchase orders
 router.get('/', protect, async (req, res) => {
@@ -40,6 +41,17 @@ router.post('/', protect, async (req, res) => {
   try {
     const { supplier, items, expectedDelivery, notes } = req.body;
 
+    if (!supplier) {
+      return res.status(400).json({ message: 'Supplier is required' });
+    }
+
+    let normalizedItems;
+    try {
+      normalizedItems = normalizePurchaseOrderItems(items);
+    } catch (validationError) {
+      return res.status(400).json({ message: validationError.message });
+    }
+
     // Check supplier exists
     const supplierExists = await Supplier.findById(supplier, req);
     if (!supplierExists) {
@@ -50,16 +62,18 @@ router.post('/', protect, async (req, res) => {
 
     let totalAmount = 0;
     const orderItems = [];
+    const products = [];
 
     // Process each item
-    for (const item of items) {
-      const product = await Product.findById(item.product);
+    for (const item of normalizedItems) {
+      const product = await Product.findById(item.product, req);
       if (!product) {
         return res.status(404).json({ message: `Product not found: ${item.product}` });
       }
 
       const subtotal = item.costPrice * item.quantity;
       totalAmount += subtotal;
+      products.push(product);
 
       orderItems.push({
         product: item.product,
@@ -79,7 +93,25 @@ router.post('/', protect, async (req, res) => {
       tenantId: req.user?.tenantId || null
     });
 
-    await order.save();
+    const originalCosts = new Map(products.map((product) => [product._id, product.costPrice]));
+
+    try {
+      for (const [index, product] of products.entries()) {
+        product.costPrice = normalizedItems[index].costPrice;
+        await product.save();
+      }
+
+      await order.save();
+    } catch (saveError) {
+      await Promise.all(products.map(async (product) => {
+        product.costPrice = originalCosts.get(product._id);
+        await product.save();
+      })).catch((rollbackError) => {
+        console.error('Error rolling back product cost prices:', rollbackError);
+      });
+      throw saveError;
+    }
+
     res.status(201).json(order);
   } catch (error) {
     console.error('Error creating purchase order:', error);
@@ -97,20 +129,48 @@ router.put('/:id/status', protect, async (req, res) => {
       return res.status(404).json({ message: 'Purchase order not found' });
     }
 
+    if (!canUpdatePurchaseOrderStatus(order.status, status)) {
+      return res.status(400).json({ message: `Cannot change order status from ${order.status} to ${status}` });
+    }
+
+    if (order.status === status) {
+      return res.json(order);
+    }
+
     order.status = status;
     
     // If status is 'received', update product stock
     if (status === 'received') {
       order.receivedDate = new Date().toISOString();
-      
-      // Update product stock
+
+      const products = [];
       for (const item of order.items) {
         const product = await Product.findById(item.product, req);
-        if (product) {
-          product.currentStock += item.quantity;
+        if (!product) {
+          return res.status(404).json({ message: `Product not found: ${item.product}` });
+        }
+        products.push(product);
+      }
+
+      const originalStocks = new Map(products.map((product) => [product._id, product.currentStock]));
+      try {
+        for (const [index, product] of products.entries()) {
+          product.currentStock = Number(product.currentStock) + Number(order.items[index].quantity);
           await product.save();
         }
+
+        await order.save();
+      } catch (saveError) {
+        await Promise.all(products.map(async (product) => {
+          product.currentStock = originalStocks.get(product._id);
+          await product.save();
+        })).catch((rollbackError) => {
+          console.error('Error rolling back product stock:', rollbackError);
+        });
+        throw saveError;
       }
+
+      return res.json(order);
     }
 
     await order.save();

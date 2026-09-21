@@ -589,7 +589,7 @@ const Quotations = () => {
                 {businessSettings.email && <div>{businessSettings.email}</div>}
               </div>
               <div className="quotation-header-card" style={styles.quoteHeaderCard}>
-                <div style={{ fontWeight: 700, fontSize: '22px', marginBottom: '8px' }}>QUOTATION</div>
+                <div style={{ fontWeight: 700, fontSize: '22px', marginBottom: '8px' }}>QUOTE/INV</div>
                 <div><strong>Quote #:</strong> {quote.quoteNumber}</div>
                 <div><strong>Issue Date:</strong> {quote.issueDate}</div>
                 <div><strong>Valid Until:</strong> {quote.validUntil}</div>

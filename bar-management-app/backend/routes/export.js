@@ -26,7 +26,7 @@ router.get('/test', protect, (req, res) => {
 // Export Sales Report as Excel
 router.get('/sales/excel', protect, async (req, res) => {
   try {
-    const orders = await Order.find()
+    const orders = await Order.find({}, req)
       .populate('customer', 'name phone')
       .populate('items.product', 'name')
       .sort({ createdAt: -1 });
@@ -110,7 +110,7 @@ router.get('/sales/excel', protect, async (req, res) => {
 });
 
 // Export Inventory Report as Excel
-router.get('/inventory/excel', async (req, res) => {
+router.get('/inventory/excel', protect, async (req, res) => {
   try {
     const products = await Product.find({}, req).populate('category', 'name');
 
@@ -162,7 +162,7 @@ router.get('/inventory/excel', async (req, res) => {
 });
 
 // Export Customers Report as Excel
-router.get('/customers/excel', async (req, res) => {
+router.get('/customers/excel', protect, async (req, res) => {
   try {
     const customers = await Customer.find({}, req).sort({ totalSpent: -1 });
 
@@ -211,9 +211,9 @@ router.get('/customers/excel', async (req, res) => {
 });
 
 // Export Sales Report as PDF
-router.get('/sales/pdf', async (req, res) => {
+router.get('/sales/pdf', protect, async (req, res) => {
   try {
-    const orders = await Order.find()
+    const orders = await Order.find({}, req)
       .populate('customer', 'name phone')
       .populate('items.product', 'name')
       .sort({ createdAt: -1 });

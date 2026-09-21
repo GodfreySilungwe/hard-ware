@@ -90,13 +90,23 @@ async function ensureTableExists() {
         TableName: TABLE_NAME,
         AttributeDefinitions: [
           { AttributeName: 'pk', AttributeType: 'S' },
-          { AttributeName: 'sk', AttributeType: 'S' }
+          { AttributeName: 'sk', AttributeType: 'S' },
+          { AttributeName: 'GSI1PK', AttributeType: 'S' },
+          { AttributeName: 'GSI1SK', AttributeType: 'S' }
         ],
         KeySchema: [
           { AttributeName: 'pk', KeyType: 'HASH' },
           { AttributeName: 'sk', KeyType: 'RANGE' }
         ],
-        BillingMode: 'PAY_PER_REQUEST'
+        BillingMode: 'PAY_PER_REQUEST',
+        GlobalSecondaryIndexes: [{
+          IndexName: 'GSI1',
+          KeySchema: [
+            { AttributeName: 'GSI1PK', KeyType: 'HASH' },
+            { AttributeName: 'GSI1SK', KeyType: 'RANGE' }
+          ],
+          Projection: { ProjectionType: 'ALL' }
+        }]
       }));
     } catch (createError) {
       if (createError?.name !== 'ResourceInUseException') {
@@ -129,7 +139,7 @@ async function ensureTableExists() {
   return false;
 }
 
-async function listEntities(entityType) {
+async function listEntities(entityType, options = {}) {
   await ensureTableExists();
   const queryParams = {
     TableName: TABLE_NAME,
@@ -139,6 +149,17 @@ async function listEntities(entityType) {
     },
     ConsistentRead: true
   };
+
+  if (Array.isArray(options.projection) && options.projection.length > 0) {
+    const projectionNames = {};
+    const projectionTokens = options.projection.map((field, index) => {
+      const token = `#field${index}`;
+      projectionNames[token] = field;
+      return token;
+    });
+    queryParams.ProjectionExpression = projectionTokens.join(', ');
+    queryParams.ExpressionAttributeNames = projectionNames;
+  }
 
   const items = await queryAllPages(
     (params) => docClient.send(new QueryCommand(params)),

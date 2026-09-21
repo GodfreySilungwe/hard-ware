@@ -1,14 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
-const Product = require('../models/Product');
-const PurchaseOrder = require('../models/PurchaseOrder');
-const Customer = require('../models/Customer');
 const { protect } = require('../middleware/auth');
 const { normalizeNumber } = require('../lib/orderMetrics');
 const dynamodb = require('../lib/dynamodb');
+const legacyGSIStatusByTenant = new Map();
 
 const getReferenceId = (reference) => String(reference?._id || reference?.id || reference || '');
+
+const matchesCreatedAtRange = (record, range) => {
+  const createdAt = String(record?.createdAt || '');
+  return (!range?.$gte || createdAt >= range.$gte) && (!range?.$lte || createdAt <= range.$lte);
+};
 
 const parseRange = (req) => {
   if (req.query.startDateUtc || req.query.endDateUtc) {
@@ -32,10 +35,15 @@ const buildProductSummary = ({
   productLimit = 20,
   defaultProductLimit = 20
 }) => {
+  const productSummary = buildProductSummaryRows({ products, productMap, purchaseOrderQtyMap });
+  return paginateProductSummary(productSummary, productPage, productLimit, defaultProductLimit);
+};
+
+const buildProductSummaryRows = ({ products = [], productMap = new Map(), purchaseOrderQtyMap = new Map() }) => {
   const mergedProducts = [...(Array.isArray(products) ? products : [])];
+  const productIds = new Set(mergedProducts.map((product) => String(product?._id || product?.id)));
   for (const [pid, info] of (productMap || new Map()).entries()) {
-    const matchingProduct = mergedProducts.find((p) => String(p?._id || p?.id) === String(pid));
-    if (!matchingProduct) {
+    if (!productIds.has(String(pid))) {
       mergedProducts.push({
         _id: pid,
         id: pid,
@@ -44,11 +52,9 @@ const buildProductSummary = ({
         costPrice: 0,
         sellingPrice: 0
       });
+      productIds.add(String(pid));
     }
   }
-
-  const normalizedLimit = Math.min(Math.max(1, Number(productLimit || defaultProductLimit)), 20);
-  const normalizedPage = Math.max(1, Number(productPage || 1));
 
   const productSummary = mergedProducts.map((product) => {
     const pid = String(product?._id || product?.id || product?.name || 'unknown');
@@ -84,14 +90,20 @@ const buildProductSummary = ({
     return String(a.name).localeCompare(String(b.name));
   });
 
+  return productSummary;
+};
+
+const paginateProductSummary = (productSummary, productPage, productLimit, defaultProductLimit) => {
+  const normalizedLimit = Math.min(Math.max(1, Number(productLimit || defaultProductLimit)), 20);
+  const normalizedPage = Math.max(1, Number(productPage || 1));
   const totalProductPages = Math.max(1, Math.ceil(productSummary.length / normalizedLimit));
-  const productOffset = (normalizedPage - 1) * normalizedLimit;
-  const limitedProductSummary = productSummary.slice(productOffset, productOffset + normalizedLimit);
+  const page = Math.min(normalizedPage, totalProductPages);
+  const productOffset = (page - 1) * normalizedLimit;
 
   return {
-    productSummary: limitedProductSummary,
+    productSummary: productSummary.slice(productOffset, productOffset + normalizedLimit),
     productSummaryPagination: {
-      page: Math.min(normalizedPage, totalProductPages),
+      page,
       totalPages: totalProductPages,
       limit: normalizedLimit,
       totalItems: productSummary.length
@@ -104,11 +116,9 @@ router.get('/summary', protect, async (req, res) => {
   try {
     const createdAtQuery = parseRange(req);
 
-    // Extract start/end dates for GSI query attempt
-    let startDate = null;
-    let endDate = null;
-    if (req.query.startDateUtc) startDate = req.query.startDateUtc;
-    if (req.query.endDateUtc) endDate = req.query.endDateUtc;
+    // Use the implicit today range for tenant GSI queries as well.
+    const startDate = req.query.startDateUtc || createdAtQuery.$gte;
+    const endDate = req.query.endDateUtc || createdAtQuery.$lte;
 
     let orders = [];
     const tenantId = req.user?.tenantId;
@@ -116,9 +126,24 @@ router.get('/summary', protect, async (req, res) => {
     // Attempt GSI query for date-range queries (more efficient)
     if ((startDate || endDate) && tenantId) {
       try {
-        console.log(`📊 Dashboard: Attempting GSI query for tenant ${tenantId} (${startDate} to ${endDate})`);
-        orders = await dynamodb.queryByGSI(tenantId, startDate, endDate);
-        console.log(`✅ Dashboard: GSI query returned ${orders.length} orders`);
+        if (legacyGSIStatusByTenant.get(tenantId) === true) {
+          orders = await Order.find({ tenantId, createdAt: createdAtQuery }, req);
+        } else {
+          console.log(`📊 Dashboard: Attempting GSI query for tenant ${tenantId} (${startDate} to ${endDate})`);
+          const gsiOrders = await dynamodb.queryByGSI(tenantId, startDate, endDate);
+          console.log(`✅ Dashboard: GSI query returned ${gsiOrders.length} orders`);
+
+          if (!legacyGSIStatusByTenant.has(tenantId)) {
+            const tenantOrders = await Order.find({ tenantId }, req);
+            const hasLegacyOrders = tenantOrders.some((order) => !order.GSI1PK || !order.GSI1SK);
+            legacyGSIStatusByTenant.set(tenantId, hasLegacyOrders);
+            orders = hasLegacyOrders
+              ? tenantOrders.filter((order) => matchesCreatedAtRange(order, createdAtQuery))
+              : gsiOrders;
+          } else {
+            orders = gsiOrders;
+          }
+        }
       } catch (gsiError) {
         console.warn(`⚠️  Dashboard: GSI query failed, falling back to scan: ${gsiError.message}`);
         orders = await Order.find({ ...(createdAtQuery ? { createdAt: createdAtQuery } : {}) }, req);
@@ -128,16 +153,35 @@ router.get('/summary', protect, async (req, res) => {
       orders = await Order.find({ ...(createdAtQuery ? { createdAt: createdAtQuery } : {}) }, req);
     }
 
-    // Populate product details for item names
+    // Load products once and reuse them for order item names and inventory metrics.
+    const tenantFilter = (records) => (records || []).filter((record) => (
+      !req.user?.tenantId || record.tenantId === req.user.tenantId
+    ));
+    const [products, purchaseOrders, customers] = await Promise.all([
+      dynamodb.listEntities('product', {
+        projection: ['_id', 'id', 'tenantId', 'name', 'currentStock', 'costPrice', 'sellingPrice', 'lowStockThreshold', 'reorderLevel']
+      }).then(tenantFilter),
+      dynamodb.listEntities('purchaseorder', {
+        projection: ['_id', 'id', 'tenantId', 'createdAt', 'items']
+      }).then((records) => tenantFilter(records).filter((record) => {
+        const createdAt = String(record.createdAt || '');
+        return (!createdAtQuery.$gte || createdAt >= createdAtQuery.$gte) && (!createdAtQuery.$lte || createdAt <= createdAtQuery.$lte);
+      }).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))),
+      dynamodb.listEntities('customer', {
+        projection: ['_id', 'id', 'tenantId', 'creditBalance', 'creditSettlements', 'name', 'phone']
+      }).then(tenantFilter)
+    ]);
+    const productsById = new Map((products || []).map((product) => [String(product?._id || product?.id), product]));
+
     orders = await Promise.all(orders.map(async (order) => {
       if (!Array.isArray(order.items)) return order;
-      const populatedItems = await Promise.all(order.items.map(async (item) => {
+      const populatedItems = order.items.map((item) => {
         if (item.product && typeof item.product === 'string') {
-          const product = await Product.findById(item.product, req);
+          const product = productsById.get(String(item.product)) || null;
           return { ...item, product };
         }
         return item;
-      }));
+      });
       return { ...order, items: populatedItems };
     }));
 
@@ -145,6 +189,8 @@ router.get('/summary', protect, async (req, res) => {
     const reversedCount = (orders || []).filter(o => o?.status === 'reversed').length;
 
     let totalSales = 0;
+    let totalSalesNet = 0;
+    let totalTax = 0;
     let totalProfit = 0;
     let itemsSold = 0;
     let ordersCount = 0;
@@ -159,11 +205,8 @@ router.get('/summary', protect, async (req, res) => {
     const paymentMap = new Map();
     const productMap = new Map();
     const purchaseOrderQtyMap = new Map();
+    const recentLimit = Math.max(0, Math.min(100, Number(req.query.recentLimit || 10)));
     const recentOrders = [];
-
-    const purchaseOrders = await PurchaseOrder.find({ ...(createdAtQuery ? { createdAt: createdAtQuery } : {}) }, req)
-      .populate('items.product')
-      .sort({ createdAt: -1 });
 
     for (const po of (purchaseOrders || [])) {
       if (Array.isArray(po.items)) {
@@ -183,6 +226,8 @@ router.get('/summary', protect, async (req, res) => {
       const orderTotal = normalizeNumber(o.totalAmount || 0);
       const orderProfit = normalizeNumber(o.profit || 0);
       totalSales += orderTotal;
+      totalSalesNet += Number.isFinite(Number(o.netAmount)) ? normalizeNumber(o.netAmount) : orderTotal;
+      totalTax += normalizeNumber(o.taxAmount || 0);
       totalProfit += orderProfit;
 
       const paid = normalizeNumber(o.paidAmount || 0);
@@ -234,11 +279,12 @@ router.get('/summary', protect, async (req, res) => {
       }
 
       // collect recent orders
-      recentOrders.push({ _id: o._id, orderNumber: o.orderNumber, customer: o.customer, items: o.items, totalAmount: orderTotal, paymentMethod: o.paymentMethod, createdAt: o.createdAt });
+      if (recentOrders.length < recentLimit) {
+        recentOrders.push({ _id: o._id, orderNumber: o.orderNumber, customer: o.customer, items: o.items, totalAmount: orderTotal, paymentMethod: o.paymentMethod, createdAt: o.createdAt });
+      }
     }
 
     // customers and accumulated credits
-    const customers = await Customer.find({}, req);
     const customersCount = Array.isArray(customers) ? customers.length : 0;
     const accumulatedCredits = (customers || []).reduce((sum, c) => sum + (normalizeNumber(c.creditBalance || 0)), 0);
     const outstandingCustomers = (customers || []).filter(c => normalizeNumber(c.creditBalance || 0) > 0).length;
@@ -249,7 +295,9 @@ router.get('/summary', protect, async (req, res) => {
       return sum + entries.reduce((innerSum, entry) => {
         if (!entry || !entry.settledAt) return innerSum;
         const settledAt = new Date(entry.settledAt);
-        if (settledAt >= new Date(createdAtQuery.$gte) && settledAt <= new Date(createdAtQuery.$lte)) {
+        const startsInRange = !createdAtQuery.$gte || settledAt >= new Date(createdAtQuery.$gte);
+        const endsInRange = !createdAtQuery.$lte || settledAt <= new Date(createdAtQuery.$lte);
+        if (startsInRange && endsInRange) {
           settlementCountPeriod += 1;
           return innerSum + normalizeNumber(entry.amount || 0);
         }
@@ -261,7 +309,6 @@ router.get('/summary', protect, async (req, res) => {
     const expectedHandover = posDirect + totalCreditRecovered;
 
     // products counts and low stock
-    const products = await Product.find({}, req);
     const totalProducts = Array.isArray(products) ? products.length : 0;
     const lowStockProducts = (products || []).filter((product) => {
       const rawThreshold = product.lowStockThreshold ?? product.reorderLevel;
@@ -305,48 +352,13 @@ router.get('/summary', protect, async (req, res) => {
     const productPage = Math.max(1, Number(req.query.productPage || 1));
     const productLimit = Math.min(Math.max(1, Number(req.query.productLimit || 20)), 20);
 
-    const { productSummary: limitedProductSummary, productSummaryPagination } = buildProductSummary({
-      products,
-      productMap,
-      purchaseOrderQtyMap,
+    const productSummary = buildProductSummaryRows({ products, productMap, purchaseOrderQtyMap });
+    const { productSummary: limitedProductSummary, productSummaryPagination } = paginateProductSummary(
+      productSummary,
       productPage,
       productLimit,
-      defaultProductLimit: 20
-    });
-
-    const productSummary = [...(products || []), ...Array.from((productMap || new Map()).entries()).map(([pid, info]) => ({
-      _id: pid,
-      id: pid,
-      name: info?.name || 'Unknown',
-      currentStock: 0,
-      costPrice: 0,
-      sellingPrice: 0
-    }))].filter((product, index, arr) => {
-      const key = String(product?._id || product?.id || product?.name || 'unknown');
-      return arr.findIndex((item) => String(item?._id || item?.id || item?.name || 'unknown') === key) === index;
-    }).map((product) => {
-      const pid = String(product?._id || product?.id || product?.name || 'unknown');
-      const info = productMap.get(pid) || { name: product?.name || 'Unknown', sold: 0, amount: 0 };
-      const name = info.name || product?.name || 'Unknown';
-      const closing = normalizeNumber(product?.currentStock || 0);
-      const costPrice = normalizeNumber(product?.costPrice || 0);
-      const sellingPrice = normalizeNumber(product?.sellingPrice || 0);
-      const purchaseOrderQty = normalizeNumber(purchaseOrderQtyMap.get(pid) || 0);
-      const soldQty = normalizeNumber(info.sold || 0);
-      const totalAmount = normalizeNumber(info.amount || 0);
-      return {
-        productId: pid,
-        name,
-        startQty: closing + soldQty,
-        purchaseOrderQty,
-        soldQty,
-        closingQty: closing,
-        remainingQty: closing,
-        remainingValue: costPrice * closing,
-        remainingSellingValue: sellingPrice * closing,
-        totalAmount
-      };
-    }).sort((a, b) => b.totalAmount - a.totalAmount);
+      20
+    );
 
     const productSummaryTotals = productSummary.reduce((totals, item) => ({
       startQty: totals.startQty + Number(item.startQty || 0),
@@ -366,22 +378,33 @@ router.get('/summary', protect, async (req, res) => {
       totalAmount: 0
     });
 
-    const recentLimit = Number(req.query.recentLimit || 10);
-    const limitedRecentOrders = recentOrders.slice(0, recentLimit);
+    const limitedRecentOrders = recentOrders;
 
     // customers with unsettled bills
+    const creditOrdersByCustomer = new Map();
+    for (const order of orders || []) {
+      if (String(order.paymentMethod || '').toLowerCase() !== 'credit') continue;
+      const customerId = getReferenceId(order.customer);
+      if (!customerId) continue;
+
+      const creditSummary = creditOrdersByCustomer.get(customerId) || { outstandingPeriod: 0, openCreditOrders: 0 };
+      const dueAmount = normalizeNumber(order.dueAmount || 0);
+      creditSummary.outstandingPeriod += dueAmount;
+      if (dueAmount > 0) creditSummary.openCreditOrders += 1;
+      creditOrdersByCustomer.set(customerId, creditSummary);
+    }
+
     const unsettled = (customers || []).filter(c => normalizeNumber(c.creditBalance || 0) > 0).map((c) => {
       // compute outstanding in period and open credit orders count
-      const custOrders = (orders || []).filter(o => String(o.customer || '') === String(c._id || c.id) && String(o.paymentMethod || '').toLowerCase() === 'credit');
-      const outstandingPeriod = custOrders.reduce((s,o) => s + normalizeNumber(o.dueAmount || 0), 0);
-      const openCreditOrders = custOrders.filter(o => normalizeNumber(o.dueAmount || 0) > 0).length;
+      const customerId = String(c._id || c.id);
+      const customerCredit = creditOrdersByCustomer.get(customerId) || { outstandingPeriod: 0, openCreditOrders: 0 };
       return {
         customerId: c._id || c.id,
         name: c.name,
         phone: c.phone,
         outstandingBalanceTotal: normalizeNumber(c.creditBalance || 0),
-        outstandingBalancePeriod: outstandingPeriod,
-        openCreditOrders
+        outstandingBalancePeriod: customerCredit.outstandingPeriod,
+        openCreditOrders: customerCredit.openCreditOrders
       };
     });
 
@@ -389,6 +412,9 @@ router.get('/summary', protect, async (req, res) => {
     const response = {
       totals: {
         totalSales,
+        totalSalesNet,
+        totalTax,
+        averageOrderValue: ordersCount > 0 ? totalSales / ordersCount : 0,
         orders: ordersCount,
         reversed: reversedCount,
         lowStock,

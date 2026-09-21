@@ -7,6 +7,12 @@ const Tenant = require('../models/Tenant');
 const TenantInvite = require('../models/TenantInvite');
 const dynamodb = require('../lib/dynamodb');
 const { protect, isOwner, isOwnerOrHardwareManager, isHardwareManagerOrOwner } = require('../middleware/auth');
+const {
+  DEFAULT_GRACE_PERIOD_DAYS,
+  buildSubscriptionDates,
+  getSubscriptionAccess,
+  normalizeTermMonths
+} = require('../lib/subscriptions');
 
 const jwtSecret = process.env.JWT_SECRET || 'secret_key';
 
@@ -19,6 +25,16 @@ function getTenantAccessMessage(status) {
     default:
       return null;
   }
+}
+
+function getSubscriptionLoginMessage(subscription) {
+  if (subscription?.status === 'pending') {
+    return 'This hardware subscription is awaiting activation. Please contact support.';
+  }
+  if (subscription?.status === 'cancelled') {
+    return 'This hardware subscription has been cancelled. Please contact support.';
+  }
+  return 'This hardware subscription has expired. Please renew to continue using the app.';
 }
 
 function getOwnerConfig() {
@@ -432,6 +448,9 @@ router.post('/approve-registration/:id', protect, isOwner, async (req, res) => {
     let tenant = null;
     if (user.tenantId) {
       tenant = await Tenant.findById(user.tenantId);
+      if (!tenant) {
+        return res.status(401).json({ message: 'Tenant not found' });
+      }
     }
 
     if (!tenant) {
@@ -706,6 +725,7 @@ router.get('/tenants', protect, isOwner, async (req, res) => {
 
       return {
         ...tenant,
+        subscriptionAccess: getSubscriptionAccess(tenant),
         ownerInfo,
         registeredManagerInfo,
         activeSalesAccountCount
@@ -715,6 +735,53 @@ router.get('/tenants', protect, isOwner, async (req, res) => {
     res.json(enrichedTenants);
   } catch (error) {
     console.error('Tenant list error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch('/tenants/:id/subscription', protect, isOwner, async (req, res) => {
+  try {
+    const tenant = await Tenant.findById(req.params.id);
+    if (!tenant) {
+      return res.status(404).json({ message: 'Hardware not found' });
+    }
+
+    const termMonths = normalizeTermMonths(req.body?.termMonths);
+    if (!termMonths) {
+      return res.status(400).json({ message: 'Subscription term must be between 1 and 12 whole months' });
+    }
+
+    const gracePeriodDays = req.body?.gracePeriodDays === undefined
+      ? DEFAULT_GRACE_PERIOD_DAYS
+      : Number(req.body.gracePeriodDays);
+    if (!Number.isInteger(gracePeriodDays) || gracePeriodDays < 0 || gracePeriodDays > 90) {
+      return res.status(400).json({ message: 'Grace period must be a whole number between 0 and 90 days' });
+    }
+
+    const existingExpiry = tenant.subscriptionEnforced && tenant.subscriptionExpiresAt
+      ? new Date(tenant.subscriptionExpiresAt)
+      : null;
+    const hasFutureExpiry = existingExpiry && !Number.isNaN(existingExpiry.getTime()) && existingExpiry > new Date();
+    const dates = buildSubscriptionDates({
+      startAt: hasFutureExpiry ? existingExpiry : new Date(),
+      termMonths
+    });
+
+    tenant.subscriptionEnforced = true;
+    tenant.subscriptionStatus = 'active';
+    tenant.subscriptionStartAt = dates.startAt;
+    tenant.subscriptionExpiresAt = dates.expiresAt;
+    tenant.subscriptionTermMonths = dates.termMonths;
+    tenant.gracePeriodDays = gracePeriodDays;
+    tenant.subscriptionPaymentReference = String(req.body?.paymentReference || '').trim() || null;
+    tenant.subscriptionPaymentMethod = String(req.body?.paymentMethod || '').trim() || null;
+    tenant.subscriptionUpdatedAt = new Date().toISOString();
+    tenant.subscriptionUpdatedBy = req.user?._id || req.user?.id || null;
+    await tenant.save();
+
+    res.json({ tenant, subscriptionAccess: getSubscriptionAccess(tenant) });
+  } catch (error) {
+    console.error('Tenant subscription update error:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -957,6 +1024,9 @@ router.post('/login', async (req, res) => {
     let tenant = null;
     if (user.tenantId) {
       tenant = await Tenant.findById(user.tenantId);
+      if (!tenant) {
+        return res.status(401).json({ message: 'Tenant not found' });
+      }
     }
 
     if (!user.isActive) {
@@ -985,6 +1055,14 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    const subscriptionAccess = getSubscriptionAccess(tenant);
+    if (!subscriptionAccess.canAccess) {
+      return res.status(403).json({
+        message: getSubscriptionLoginMessage(subscriptionAccess),
+        subscription: subscriptionAccess
+      });
+    }
+
     const token = jwt.sign(
       { id: user._id, role: user.role, tenantId: user.tenantId || null },
       jwtSecret,
@@ -1003,7 +1081,8 @@ router.post('/login', async (req, res) => {
         fullName: user.fullName,
         role: user.role,
         tenantStatus,
-        suspensionMessage
+        suspensionMessage,
+        subscription: subscriptionAccess
       }
     });
   } catch (error) {
@@ -1018,7 +1097,8 @@ router.get('/me', protect, async (req, res) => {
     const userPayload = {
       ...req.user,
       tenantStatus: req.tenant?.status || 'active',
-      suspensionMessage: getTenantAccessMessage(req.tenant?.status)
+      suspensionMessage: getTenantAccessMessage(req.tenant?.status),
+      subscription: req.tenant?.subscriptionAccess || getSubscriptionAccess(req.tenant)
     };
 
     res.json(userPayload);
