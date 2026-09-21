@@ -34,7 +34,12 @@ const PurchaseOrders = () => {
       ]);
       setOrders(ordersRes.data);
       setSuppliers(suppliersRes.data);
-      setProducts(productsRes.data);
+      const productList = Array.isArray(productsRes.data)
+        ? productsRes.data
+        : Array.isArray(productsRes.data?.products)
+          ? productsRes.data.products
+          : [];
+      setProducts(productList);
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -64,26 +69,64 @@ const PurchaseOrders = () => {
     });
   };
 
+  const handleProductSelect = (index, product) => {
+    const productId = product._id || product.id;
+    setFormData(prev => {
+      const newItems = [...prev.items];
+      newItems[index] = {
+        ...newItems[index],
+        product: productId,
+        costPrice: product.costPrice ?? ''
+      };
+      return { ...prev, items: newItems };
+    });
+    setProductSearchTerms(prev => {
+      const updated = [...prev];
+      updated[index] = product.name || '';
+      return updated;
+    });
+  };
+
   const handleProductSearchChange = (index, value) => {
+    const selectedProduct = products.find(product => (
+      String(product._id || product.id) === String(formData.items[index]?.product)
+    ));
     setProductSearchTerms(prev => {
       const updated = [...prev];
       updated[index] = value;
       return updated;
     });
+
+    if (selectedProduct && value !== selectedProduct.name) {
+      handleItemChange(index, 'product', '');
+      handleItemChange(index, 'costPrice', '');
+    }
   };
 
   const getFilteredProductsForItem = (index) => {
     const query = (productSearchTerms[index] || '').trim().toLowerCase();
-    if (!query) return [...products].sort((a, b) => a.name.localeCompare(b.name));
+    if (!query) return [];
 
     return [...products]
       .filter(product => {
         const productName = String(product.name || '').toLowerCase();
         const categoryName = String(product.category?.name || product.category || '').toLowerCase();
         const unitName = String(product.unit || '').toLowerCase();
-        return productName.includes(query) || categoryName.includes(query) || unitName.includes(query);
+        const sku = String(product.sku || product.code || '').toLowerCase();
+        return productName.includes(query) || categoryName.includes(query) || unitName.includes(query) || sku.includes(query);
       })
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+      .slice(0, 12);
+  };
+
+  const clearProductSelection = (index) => {
+    handleItemChange(index, 'product', '');
+    handleItemChange(index, 'costPrice', '');
+    setProductSearchTerms(prev => {
+      const updated = [...prev];
+      updated[index] = '';
+      return updated;
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -92,19 +135,27 @@ const PurchaseOrders = () => {
     setSuccess('');
 
     try {
-      const items = formData.items.filter(item => item.product && item.quantity && item.costPrice);
-      if (items.length === 0) {
-        setError('Please add at least one item');
+      const hasInvalidItem = formData.items.some(item => (
+        !item.product ||
+        item.quantity === '' ||
+        item.costPrice === '' ||
+        !Number.isInteger(Number(item.quantity)) ||
+        Number(item.quantity) <= 0 ||
+        !Number.isFinite(Number(item.costPrice)) ||
+        Number(item.costPrice) < 0
+      ));
+      if (hasInvalidItem) {
+        setError('Please complete each item with a valid integer quantity and cost price');
         setTimeout(() => setError(''), 5000);
         return;
       }
 
       const orderData = {
         supplier: formData.supplier,
-        items: items.map(item => ({
+        items: formData.items.map(item => ({
           product: item.product,
-          quantity: parseInt(item.quantity),
-          costPrice: parseFloat(item.costPrice)
+          quantity: Number(item.quantity),
+          costPrice: Number(item.costPrice)
         })),
         expectedDelivery: formData.expectedDelivery || null,
         notes: formData.notes
@@ -208,30 +259,63 @@ const PurchaseOrders = () => {
                 <label style={styles.label}>Items *</label>
                 {formData.items.map((item, index) => (
                   <div key={index} className="mobile-stack-row" style={styles.itemRow}>
-                    <div style={{ ...styles.input, flex: 2, padding: 0, overflow: 'hidden', minWidth: 0, width: '100%' }}>
+                    <div style={{ ...styles.productPicker, flex: 2 }}>
+                      <div style={styles.itemHeading}>
+                        <span style={styles.itemNumber}>Item {index + 1}</span>
+                        {item.product && <span style={styles.selectedBadge}>Product selected</span>}
+                      </div>
                       <input
                         type="text"
-                        placeholder="Search product"
+                        placeholder="Type to search products..."
                         value={productSearchTerms[index] || ''}
                         onChange={(e) => handleProductSearchChange(index, e.target.value)}
-                        style={{ ...styles.input, border: 'none', outline: 'none', width: '100%', height: '100%' }}
+                        aria-label={`Search product for item ${index + 1}`}
+                        style={styles.input}
                       />
-                      <select
-                        required
-                        style={{ ...styles.input, borderTop: '1px solid #ddd', borderRadius: 0, width: '100%', marginBottom: 0 }}
-                        value={item.product}
-                        onChange={(e) => handleItemChange(index, 'product', e.target.value)}
-                      >
-                        <option value="">Select Product</option>
-                        {getFilteredProductsForItem(index).map(p => (
-                          <option key={p._id} value={p._id}>{p.name}</option>
-                        ))}
-                      </select>
+                      {item.product && (
+                        <div style={styles.selectedProduct}>
+                          <span>Selected: <strong>{products.find(p => String(p._id || p.id) === String(item.product))?.name || 'Product'}</strong></span>
+                          <button type="button" style={styles.changeProductBtn} onClick={() => clearProductSelection(index)}>Change</button>
+                        </div>
+                      )}
+                      {!item.product && productSearchTerms[index]?.trim() && (
+                        <div className="product-results" role="listbox" aria-label="Filtered products">
+                          <div className="resultsHeader">
+                            <span>Matching products</span>
+                            <small>{getFilteredProductsForItem(index).length} shown</small>
+                          </div>
+                          {getFilteredProductsForItem(index).length === 0 ? (
+                            <p style={styles.noProducts}>No matching products</p>
+                          ) : getFilteredProductsForItem(index).map(p => (
+                            <button
+                              key={p._id || p.id}
+                              type="button"
+                              role="option"
+                              aria-selected={false}
+                              className="product-result"
+                              onClick={() => handleProductSelect(index, p)}
+                            >
+                              <span className="product-result-info">
+                                <strong>{p.name || 'Unnamed product'}</strong>
+                                <small>
+                                  {p.category?.name || (typeof p.category === 'string' ? p.category : '') || 'Uncategorized'}
+                                  {p.unit ? ` · ${p.unit}` : ''}
+                                  {p.sku || p.code ? ` · ${p.sku || p.code}` : ''}
+                                </small>
+                              </span>
+                              <span className="product-result-price">{formatPriceMK(p.costPrice || 0)}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <input
                       type="number"
                       required
                       placeholder="Qty"
+                      min="1"
+                      step="1"
+                      aria-label={`Quantity for item ${index + 1}`}
                       style={{...styles.input, flex: 1}}
                       value={item.quantity}
                       onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
@@ -240,6 +324,9 @@ const PurchaseOrders = () => {
                       type="number"
                       required
                       placeholder="Cost Price"
+                      min="0"
+                      step="0.01"
+                      aria-label={`Cost price for item ${index + 1}`}
                       style={{...styles.input, flex: 1}}
                       value={item.costPrice}
                       onChange={(e) => handleItemChange(index, 'costPrice', e.target.value)}
@@ -305,7 +392,7 @@ const PurchaseOrders = () => {
           orders.map((order, index) => (
             <div 
               key={order._id}
-              className={`fade-in delay-${(index % 6) + 1}`}
+              className={`orderCard fade-in delay-${(index % 6) + 1}`}
               style={styles.orderCard}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'translateY(-4px)';
@@ -318,7 +405,7 @@ const PurchaseOrders = () => {
                 e.currentTarget.style.borderColor = '#f0f0f0';
               }}
             >
-              <div style={styles.orderHeader}>
+              <div className="orderHeader" style={styles.orderHeader}>
                 <div>
                   <h3 style={styles.orderNumber}>{order.orderNumber}</h3>
                   <p style={styles.supplierName}>🏷️ {order.supplier?.name}</p>
@@ -337,14 +424,14 @@ const PurchaseOrders = () => {
               <div style={styles.orderDetails}>
                 <div style={styles.orderItems}>
                   {order.items.map((item, idx) => (
-                    <div key={idx} style={styles.orderItem}>
+                    <div key={idx} className="orderItem" style={styles.orderItem}>
                       <span>{item.product?.name}</span>
                       <span>{item.quantity} × {formatPriceMK(item.costPrice)}</span>
                       <span>= {formatPriceMK(item.subtotal)}</span>
                     </div>
                   ))}
                 </div>
-                <div style={styles.orderTotal}>
+                <div className="orderTotal" style={styles.orderTotal}>
                   <span><strong>Total:</strong> {formatPriceMK(order.totalAmount)}</span>
                   {order.expectedDelivery && (
                     <span>📅 Expected: {new Date(order.expectedDelivery).toLocaleDateString()}</span>
@@ -625,13 +712,70 @@ const styles = {
     marginBottom: '15px',
     border: '1px solid #f5c6cb'
   },
+  productPicker: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    minWidth: 0,
+    width: '100%'
+  },
+  itemHeading: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '8px',
+    minHeight: '24px'
+  },
+  itemNumber: {
+    color: '#1a1a2e',
+    fontSize: '13px',
+    fontWeight: '700'
+  },
+  selectedBadge: {
+    color: '#166534',
+    background: '#dcfce7',
+    borderRadius: '999px',
+    padding: '3px 8px',
+    fontSize: '11px',
+    fontWeight: '600'
+  },
+  selectedProduct: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '8px',
+    padding: '9px 10px',
+    border: '1px solid #bbf7d0',
+    borderRadius: '8px',
+    background: '#f0fdf4',
+    color: '#166534',
+    fontSize: '13px'
+  },
+  changeProductBtn: {
+    border: '0',
+    background: 'transparent',
+    color: '#b42318',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '700',
+    padding: '4px'
+  },
+  noProducts: {
+    margin: 0,
+    padding: '12px',
+    color: '#888',
+    fontSize: '13px',
+    textAlign: 'center'
+  },
   success: {
     backgroundColor: '#d4edda',
     color: '#155724',
     padding: '12px 16px',
     borderRadius: '8px',
     marginBottom: '15px',
-    border: '1px solid #c3e6cb'
+    borderBottom: '1px solid #f8f9fa',
+    gap: '8px',
+    flexWrap: 'wrap'
   }
 };
 

@@ -16,6 +16,8 @@ const Reports = lazy(() => import('./pages/Reports'));
 const Inventory = lazy(() => import('./pages/Inventory'));
 const Suppliers = lazy(() => import('./pages/Suppliers'));
 const PurchaseOrders = lazy(() => import('./pages/PurchaseOrders'));
+const Quotations = lazy(() => import('./pages/Quotations'));
+const QuotationHistory = lazy(() => import('./pages/QuotationHistory'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Applications = lazy(() => import('./pages/Applications'));
 const CashChest = lazy(() => import('./pages/CashChest'));
@@ -141,6 +143,20 @@ function App() {
               <ProtectedRoute hardwareManagerOnly>
                 <Layout>
                   <PurchaseOrders />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/quotations" element={
+              <ProtectedRoute allowSalesAndManagement>
+                <Layout>
+                  <Quotations />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/quotation-history" element={
+              <ProtectedRoute allowSalesAndManagement>
+                <Layout>
+                  <QuotationHistory />
                 </Layout>
               </ProtectedRoute>
             } />

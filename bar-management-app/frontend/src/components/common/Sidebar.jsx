@@ -12,6 +12,7 @@ import {
   faClipboardCheck,
   faTruck,
   faShoppingCart,
+  faFileInvoiceDollar,
   faCog,
   faTools,
   faSignOutAlt,
@@ -92,11 +93,13 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
       { path: '/products', label: 'Products', icon: faBox },
       { path: '/categories', label: 'Categories', icon: faTags },
       { path: '/customers', label: 'Customers', icon: faUsers },
-      { path: '/orders', label: 'Orders', icon: faClipboardList },
+      { path: '/orders', label: 'Sales', icon: faClipboardList },
       { path: '/cash', label: 'Cash Chest', icon: faMoneyBillWave },
       { path: '/inventory', label: 'Inventory', icon: faWarehouse },
       { path: '/suppliers', label: 'Suppliers', icon: faTruck },
       { path: '/purchase-orders', label: 'Purchase Orders', icon: faShoppingCart },
+      { path: '/quotations', label: 'Quotations', icon: faFileInvoiceDollar },
+      { path: '/quotation-history', label: 'Quotation History', icon: faClipboardCheck },
       { path: '/reports', label: 'Reports', icon: faChartPie },
       { path: '/settings', label: 'Settings', icon: faCog },
       { path: '/sales-team', label: 'Sales Team', icon: faUsers }
@@ -105,7 +108,9 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
       { path: '/dashboard', label: 'Dashboard', icon: faChartBar },
       { path: '/pos', label: 'POS', icon: faCashRegister },
       { path: '/customers', label: 'Customers', icon: faUsers },
-      { path: '/orders', label: 'Orders', icon: faClipboardList },
+      { path: '/orders', label: 'Sales', icon: faClipboardList },
+      { path: '/quotations', label: 'Quotations', icon: faFileInvoiceDollar },
+      { path: '/quotation-history', label: 'Quotation History', icon: faClipboardCheck },
       ...(cashSessionOpen ? [{ path: '/cash', label: 'Cash Chest', icon: faMoneyBillWave }] : [])
     ]
   };

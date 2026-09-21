@@ -147,49 +147,61 @@ const Dashboard = () => {
 
       if (isOwnerRole) {
         requests.push(api.get('/auth/tenants').catch(() => ({ data: [] })));
-      } else {
-        requests.push(api.get('/products').catch(() => ({ data: [] })));
-        if (appliedStartDate || appliedEndDate) {
-          requests.push(api.get('/orders/today', { params: query }).catch(() => ({ data: {} })));
-        } else {
-          const now = new Date();
-          const startLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-          const endLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-          requests.push(api.get('/orders/today', { params: { startDateUtc: startLocal.toISOString(), endDateUtc: endLocal.toISOString() } }).catch(() => ({ data: {} })));
-        }
       }
 
-      if (isSalesRole) {
-        requests.push(api.get('/customers').catch(() => ({ data: [] })));
-      }
+      const dashboardQuery = { ...query, productPage, productLimit: isHardwareManagerRole || isSalesRole ? 20 : 10 };
+      const dashboardRequestIndex = requests.length;
+      requests.push(api.get('/dashboard/summary', { params: dashboardQuery }).catch(() => ({ data: null })));
 
       const results = await Promise.allSettled(requests);
 
       // fetch extended dashboard summary
-      const dashboardQuery = { ...query, productPage, productLimit: isHardwareManagerRole || isSalesRole ? 20 : 10 };
-      const dashboardRes = await api.get('/dashboard/summary', { params: dashboardQuery }).catch(() => ({ data: null }));
-      const dashboardData = dashboardRes.data || null;
+      let dashboardData = results[dashboardRequestIndex]?.status === 'fulfilled'
+        ? results[dashboardRequestIndex].value.data || null
+        : null;
+
+      let fallbackProducts = [];
+      let fallbackCustomers = [];
+      let fallbackTodayPayload = {};
+      if (!dashboardData && !isOwnerRole) {
+        const fallbackRequests = [
+          api.get('/products').catch(() => ({ data: [] })),
+          api.get('/orders/today', { params: query }).catch(() => ({ data: {} }))
+        ];
+        if (isSalesRole) {
+          fallbackRequests.push(api.get('/customers').catch(() => ({ data: [] })));
+        }
+
+        const fallbackResults = await Promise.all(fallbackRequests);
+        fallbackProducts = fallbackResults[0].data || [];
+        fallbackTodayPayload = fallbackResults[1].data || {};
+        fallbackCustomers = isSalesRole ? fallbackResults[2]?.data || [] : [];
+      }
+
       setDashboardSummary(dashboardData);
 
       const summary = results[0]?.status === 'fulfilled' ? results[0].value.data || {} : {};
       const ownerTenants = isOwnerRole && results[1]?.status === 'fulfilled' ? results[1].value.data || [] : [];
-      const products = !isOwnerRole && results[1]?.status === 'fulfilled' ? results[1].value.data || [] : [];
-      const todayPayload = !isOwnerRole && results[2]?.status === 'fulfilled' ? results[2].value.data : {};
-      const customers = isSalesRole && results[isOwnerRole ? 2 : 3]?.status === 'fulfilled' ? results[isOwnerRole ? 2 : 3].value.data || [] : [];
-
-      const todaysOrders = Array.isArray(todayPayload.orders) ? todayPayload.orders : [];
+      const todayPayload = dashboardData || fallbackTodayPayload;
+      const todaysOrders = dashboardData
+        ? (Array.isArray(todayPayload.recentOrders) ? todayPayload.recentOrders : [])
+        : (Array.isArray(todayPayload.orders) ? todayPayload.orders : []);
       const paymentSummaryData = Array.isArray(dashboardData?.paymentProceeds)
         ? dashboardData.paymentProceeds
         : Array.isArray(todayPayload.paymentMethods)
           ? todayPayload.paymentMethods
           : [];
-      const todayOrderCount = typeof todayPayload.count === 'number' ? todayPayload.count : todaysOrders.length;
-      const todaySales = todayPayload.totalSales ?? 0;
-      const todayProfit = todayPayload.totalProfit ?? 0;
-      const todaySalesNet = todayPayload.totalSalesNet ?? 0;
-      const todayTax = todayPayload.totalTax ?? 0;
-      const reversedOrders = todayPayload.reversedOrders ?? 0;
-      const averageOrderValue = todayPayload.averageOrderValue ?? 0;
+      const todayOrderCount = dashboardData ? todayPayload.totals?.orders ?? 0 : todayPayload.count ?? 0;
+      const todaySales = dashboardData
+        ? todayPayload.totals?.totalSales ?? todayPayload.handover?.totalSales ?? 0
+        : todayPayload.totalSales ?? 0;
+      const todayProfit = dashboardData ? todayPayload.handover?.totalProfit ?? 0 : todayPayload.totalProfit ?? 0;
+      const todaySalesNet = dashboardData ? todayPayload.totals?.totalSalesNet ?? 0 : todayPayload.totalSalesNet ?? 0;
+      const todayTax = dashboardData ? todayPayload.totals?.totalTax ?? 0 : todayPayload.totalTax ?? 0;
+      const reversedOrders = dashboardData ? todayPayload.totals?.reversed ?? 0 : todayPayload.reversedOrders ?? 0;
+      const averageOrderValue = dashboardData
+        ? todayPayload.totals?.averageOrderValue ?? 0
+        : todayOrderCount > 0 ? todaySales / todayOrderCount : 0;
 
       setStats({
         pendingApprovals: summary.pendingTenants || 0,
@@ -199,8 +211,8 @@ const Dashboard = () => {
         totalHardwareAccounts: summary.totalTenants || 0,
         activeHardwareAccounts: summary.activeTenants || 0,
         pendingApplications: summary.pendingTenants || 0,
-        totalProducts: products.length || 0,
-        totalCustomers: customers.length || 0,
+        totalProducts: todayPayload.totals?.products ?? fallbackProducts.length,
+        totalCustomers: todayPayload.totals?.customers ?? fallbackCustomers.length,
         todayOrders: todayOrderCount,
         todaySales,
         todaySalesNet,
