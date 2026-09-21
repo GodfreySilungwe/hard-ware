@@ -117,14 +117,14 @@ const QuoteHistory = () => {
         ) : (
           <div style={styles.list}>
             {quotes.map((quote) => (
-              <div key={quote._id || quote.id} style={styles.row}>
+              <div key={quote._id || quote.id} className="quotation-history-row" style={styles.row}>
                 <div style={styles.meta}>
                   <strong>{quote.quoteNumber || 'Quotation'}</strong>
                   <span>{quote.customerName || 'Walk-in Customer'}</span>
                   <small>{quote.issueDate || quote.createdAt?.slice(0, 10)}</small>
                 </div>
                 <div style={styles.amount}>{formatPriceMK(Number(quote.total || quote.subtotal || 0))}</div>
-                <div style={styles.actions}>
+                <div className="quotation-history-actions" style={styles.actions}>
                   <button type="button" style={styles.primary} onClick={() => openPdf(quote._id || quote.id)}>View PDF</button>
                   <button type="button" style={styles.secondary} onClick={() => sendQuote(quote._id || quote.id, 'email')}>Email</button>
                   <button type="button" style={styles.secondary} onClick={() => sendQuote(quote._id || quote.id, 'whatsapp')}>WhatsApp</button>

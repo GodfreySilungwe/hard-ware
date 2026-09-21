@@ -251,7 +251,47 @@ const Quotations = () => {
     }
   };
 
-  const shareToWhatsApp = () => {
+  const getQuotePdfFile = async () => {
+    let quoteId = quote._id || quote.id;
+    let currentQuote = quote;
+
+    if (!quoteId) {
+      const payload = {
+        ...quote,
+        businessName: businessSettings.name || 'Smart Inventory App',
+        businessAddress: businessSettings.address || '',
+        businessPhone: businessSettings.phone || '',
+        businessEmail: businessSettings.email || '',
+        status: quote.status || 'draft',
+        customerId: quote.customerId || '',
+        taxRate: Number(quote.taxRate || 0),
+        items: quote.items.filter((item) => item.name || item.productId)
+      };
+      const response = await api.post('/quotations', payload);
+      currentQuote = response.data || payload;
+      quoteId = currentQuote._id || currentQuote.id;
+      setQuote({ ...currentQuote, items: currentQuote.items?.length ? currentQuote.items : payload.items });
+    }
+
+    if (!quoteId) throw new Error('Quotation was not assigned an ID');
+
+    const response = await api.get(`/quotations/${quoteId}/pdf`, { responseType: 'blob' });
+    const blob = response.data instanceof Blob
+      ? response.data
+      : new Blob([response.data], { type: 'application/pdf' });
+    const header = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
+    const signature = String.fromCharCode(...header);
+    if (blob.size === 0 || signature !== '%PDF-') {
+      throw new Error('The server did not return a valid PDF');
+    }
+
+    return {
+      quote: currentQuote,
+      file: new File([blob], `quotation-${currentQuote.quoteNumber || quote.quoteNumber || 'draft'}.pdf`, { type: 'application/pdf' })
+    };
+  };
+
+  const shareToWhatsApp = async () => {
     const lineItems = quote.items
       .filter((item) => item.name || item.productId)
       .map((item) => `- ${item.name || 'Item'} x${item.qty}: ${formatCurrency(item.qty * item.unitPrice)}`)
@@ -271,10 +311,37 @@ const Quotations = () => {
       `Thanks from ${businessSettings.name || 'Smart Inventory App'}`
     ].filter(Boolean).join('\n');
 
-    const encoded = encodeURIComponent(text);
-    const phoneDigits = (quote.customerPhone || '').replace(/\D/g, '');
-    const whatsappUrl = phoneDigits ? `https://wa.me/${phoneDigits}?text=${encoded}` : `https://wa.me/?text=${encoded}`;
-    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    try {
+      const { quote: savedQuote, file } = await getQuotePdfFile();
+      const encoded = encodeURIComponent(text);
+      const phoneDigits = (savedQuote.customerPhone || quote.customerPhone || '').replace(/\D/g, '');
+      const whatsappUrl = phoneDigits ? `https://wa.me/${phoneDigits}?text=${encoded}` : `https://wa.me/?text=${encoded}`;
+
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+        await navigator.share({
+          title: `Quotation ${savedQuote.quoteNumber || quote.quoteNumber || ''}`,
+          text,
+          files: [file]
+        });
+        return;
+      }
+
+      const downloadUrl = window.URL.createObjectURL(file);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = file.name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+      setMessage(`PDF downloaded. Attach ${file.name} in WhatsApp.`);
+      setTimeout(() => setMessage(''), 3500);
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      console.error('Failed to share quotation PDF on WhatsApp', error);
+      setMessage('Unable to prepare quotation PDF for WhatsApp.');
+    }
   };
 
   const updateCustomerSelection = (customerId) => {
@@ -328,7 +395,7 @@ const Quotations = () => {
       `}</style>
 
       <PageContainer title="Quotations">
-        <div className="no-print" style={styles.toolbar}>
+        <div className="no-print quotation-toolbar" style={styles.toolbar}>
           <button type="button" className="quote-action" style={styles.primaryButton} onClick={saveDraftQuote}>Save Quote</button>
           <button type="button" className="quote-action" style={styles.secondaryButton} onClick={exportQuoteToPdf}>Export to PDF</button>
           <button type="button" className="quote-action" style={styles.secondaryButton} onClick={shareToWhatsApp}>Send on WhatsApp</button>
@@ -337,7 +404,7 @@ const Quotations = () => {
 
         {message && <div style={styles.message}>{message}</div>}
 
-        <div style={styles.grid}>
+        <div className="quotation-grid" style={styles.grid}>
           <UnifiedCard title="Quote Details">
             <div style={styles.formGrid}>
               <label style={styles.field}>
@@ -402,7 +469,7 @@ const Quotations = () => {
           </UnifiedCard>
         </div>
 
-        <UnifiedCard title="Quote Items">
+          <UnifiedCard title="Quote Items">
           <div style={{ marginBottom: '16px' }}>
             <input
               value={productSearch}
@@ -422,7 +489,7 @@ const Quotations = () => {
             )}
           </div>
 
-          <div style={styles.tableWrap}>
+          <div className="quotation-table-wrap" style={styles.tableWrap}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -470,7 +537,7 @@ const Quotations = () => {
 
         {previewQuote && (
           <UnifiedCard title="Quote Detail Preview">
-            <div style={styles.previewHeader}>
+            <div className="quotation-preview-header" style={styles.previewHeader}>
               <div>
                 <strong>{previewQuote.quoteNumber || 'Quote'}</strong>
                 <div style={{ color: '#6b7280', fontSize: '12px' }}>{previewQuote.customerName || 'Walk-in Customer'}</div>
@@ -480,14 +547,14 @@ const Quotations = () => {
               </div>
             </div>
 
-            <div style={styles.previewGrid}>
+            <div className="quotation-preview-grid" style={styles.previewGrid}>
               <div><strong>Issue date:</strong> {previewQuote.issueDate}</div>
               <div><strong>Valid until:</strong> {previewQuote.validUntil}</div>
               <div><strong>Phone:</strong> {previewQuote.customerPhone || '—'}</div>
               <div><strong>Email:</strong> {previewQuote.customerEmail || '—'}</div>
             </div>
 
-            <div style={styles.summaryBox}>
+            <div className="quotation-summary" style={styles.summaryBox}>
               <div style={styles.summaryRow}><span>Subtotal</span><strong>{formatCurrency(previewQuote.subtotal || subtotal)}</strong></div>
               {Number(previewQuote.taxRate || quote.taxRate || 0) > 0 && (
                 <div style={styles.summaryRow}><span>Tax ({previewQuote.taxRate || quote.taxRate}%)</span><strong>{formatCurrency(previewQuote.taxAmount || taxAmount)}</strong></div>
@@ -513,15 +580,15 @@ const Quotations = () => {
             style={{ ...styles.input, minHeight: '120px', resize: 'vertical', width: '100%' }}
           />
 
-          <div id="quotation-print-area" style={styles.printArea}>
-            <div style={styles.companyHeader}>
+          <div id="quotation-print-area" className="quotation-print-area" style={styles.printArea}>
+            <div className="quotation-company-header" style={styles.companyHeader}>
               <div>
-                <h2 style={styles.companyName}>{businessSettings.name || 'Smart Inventory App'}</h2>
+                <h2 className="companyName" style={styles.companyName}>{businessSettings.name || 'Smart Inventory App'}</h2>
                 {businessSettings.address && <div>{businessSettings.address}</div>}
                 {businessSettings.phone && <div>{businessSettings.phone}</div>}
                 {businessSettings.email && <div>{businessSettings.email}</div>}
               </div>
-              <div style={styles.quoteHeaderCard}>
+              <div className="quotation-header-card" style={styles.quoteHeaderCard}>
                 <div style={{ fontWeight: 700, fontSize: '22px', marginBottom: '8px' }}>QUOTATION</div>
                 <div><strong>Quote #:</strong> {quote.quoteNumber}</div>
                 <div><strong>Issue Date:</strong> {quote.issueDate}</div>
@@ -557,7 +624,7 @@ const Quotations = () => {
               </tbody>
             </table>
 
-            <div style={styles.summaryBox}>
+            <div className="quotation-summary" style={styles.summaryBox}>
               <div style={styles.summaryRow}><span>Subtotal</span><strong>{formatCurrency(subtotal)}</strong></div>
               {Number(quote.taxRate || 0) > 0 && (
                 <div style={styles.summaryRow}><span>Tax ({quote.taxRate}%)</span><strong>{formatCurrency(taxAmount)}</strong></div>

@@ -238,6 +238,110 @@ textarea {
   outline-offset: 2px;
 }
 
+.quotation-history-row,
+.quotation-history-actions,
+.quotation-company-header,
+.quotation-preview-header,
+.quotation-preview-grid,
+.quotation-toolbar,
+.quotation-grid {
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .quotation-toolbar {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px !important;
+  }
+
+  .quotation-toolbar .quote-action {
+    width: 100%;
+    min-height: 46px;
+    padding: 10px 8px !important;
+    font-size: 12px;
+  }
+
+  .quotation-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .quotation-company-header,
+  .quotation-preview-header {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+  }
+
+  .quotation-header-card {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .quotation-print-area {
+    padding: 16px !important;
+    border-radius: 10px !important;
+  }
+
+  .quotation-print-area .companyName {
+    font-size: 24px !important;
+    overflow-wrap: anywhere;
+  }
+
+  .quotation-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .quotation-table-wrap table {
+    min-width: 560px;
+  }
+
+  .quotation-preview-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .quotation-summary {
+    width: 100% !important;
+    max-width: 100%;
+  }
+
+  .quotation-history-row {
+    align-items: stretch !important;
+    flex-direction: column;
+    gap: 12px !important;
+    padding: 14px !important;
+  }
+
+  .quotation-history-row .meta,
+  .quotation-history-row .amount {
+    min-width: 0 !important;
+    width: 100%;
+    text-align: left;
+  }
+
+  .quotation-history-row .amount {
+    padding-top: 8px;
+    border-top: 1px solid #f1f5f9;
+    font-size: 18px;
+  }
+
+  .quotation-history-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    gap: 8px !important;
+  }
+
+  .quotation-history-actions button {
+    width: 100%;
+    min-height: 44px;
+    padding: 9px 6px !important;
+    font-size: 12px;
+  }
+}
+
 .product-result-info {
   display: flex;
   flex-direction: column;
