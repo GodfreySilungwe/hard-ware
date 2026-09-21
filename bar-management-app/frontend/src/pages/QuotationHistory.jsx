@@ -47,18 +47,52 @@ const QuoteHistory = () => {
     }
   };
 
+  const getPdfFile = async (quoteId, quoteNumber) => {
+    const response = await api.get(`/quotations/${quoteId}/pdf`, { responseType: 'blob' });
+    const blob = response.data instanceof Blob
+      ? response.data
+      : new Blob([response.data], { type: 'application/pdf' });
+    const header = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
+    const signature = String.fromCharCode(...header);
+    if (blob.size === 0 || signature !== '%PDF-') {
+      throw new Error('The server did not return a valid PDF');
+    }
+
+    return new File([blob], `quotation-${quoteNumber || 'draft'}.pdf`, { type: 'application/pdf' });
+  };
+
   const sendQuote = async (quoteId, channel) => {
     try {
       const response = await api.post(`/quotations/${quoteId}/send`, { channel, customerId: '' });
       const payload = response.data;
-      if (channel === 'whatsapp') {
-        window.open(payload.url, '_blank', 'noopener,noreferrer');
-      } else {
-        window.location.href = payload.url;
+      const quote = quotes.find((item) => String(item._id || item.id) === String(quoteId));
+      const pdfFile = await getPdfFile(quoteId, quote?.quoteNumber);
+      const shareText = payload.template || '';
+
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [pdfFile] }))) {
+        await navigator.share({
+          title: payload.subject || `Quotation ${quote?.quoteNumber || ''}`,
+          text: shareText,
+          files: [pdfFile]
+        });
+        return;
       }
+
+      const downloadUrl = window.URL.createObjectURL(pdfFile);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = pdfFile.name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      window.open(payload.url, '_blank', 'noopener,noreferrer');
+      setError(`PDF downloaded. Attach ${pdfFile.name} in the ${channel} message.`);
     } catch (err) {
+      if (err?.name === 'AbortError') return;
       console.error('Failed to send quotation', err);
-      setError('Unable to send quotation.');
+      setError('Unable to prepare quotation PDF for sending.');
     }
   };
 
