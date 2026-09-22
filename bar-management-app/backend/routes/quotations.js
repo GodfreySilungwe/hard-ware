@@ -6,6 +6,10 @@ const Customer = require('../models/Customer');
 const { protect } = require('../middleware/auth');
 
 const toMoney = (value) => Number(value || 0);
+const formatPdfMoney = (value) => `MK ${toMoney(value).toLocaleString('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+})}`;
 const sanitizeQuotePayload = (payload = {}) => {
   const items = Array.isArray(payload.items) ? payload.items.map((item) => ({
     id: item?.id || item?.productId || `${Date.now()}-${Math.random()}`,
@@ -195,8 +199,8 @@ const buildPdf = (quote) => new Promise((resolve, reject) => {
 
     doc.text(itemName, 50, y, { width: itemWidth, align: 'left' });
     doc.text(String(qty), 310, y, { width: qtyWidth, align: 'center' });
-    doc.text(toMoney(unitPrice).toLocaleString(), 360, y, { width: rateWidth, align: 'right' });
-    doc.text(toMoney(amount).toLocaleString(), 440, y, { width: amountWidth, align: 'right' });
+    doc.text(formatPdfMoney(unitPrice), 360, y, { width: rateWidth, align: 'right' });
+    doc.text(formatPdfMoney(amount), 440, y, { width: amountWidth, align: 'right' });
     y += 20;
   }
 
@@ -210,13 +214,13 @@ const buildPdf = (quote) => new Promise((resolve, reject) => {
 
   doc.font('Helvetica-Bold');
   doc.text('Subtotal', summaryLabelX, y, { width: summaryLabelWidth, align: 'right' });
-  doc.text(subtotal.toLocaleString(), summaryAmountX, y, { width: amountWidth, align: 'right' });
+  doc.text(formatPdfMoney(subtotal), summaryAmountX, y, { width: amountWidth, align: 'right' });
   y += 18;
   doc.text(`Tax (${quote.taxRate || 0}%)`, summaryLabelX, y, { width: summaryLabelWidth, align: 'right' });
-  doc.text(taxAmount.toLocaleString(), summaryAmountX, y, { width: amountWidth, align: 'right' });
+  doc.text(formatPdfMoney(taxAmount), summaryAmountX, y, { width: amountWidth, align: 'right' });
   y += 22;
   doc.fontSize(14).text('Total', summaryLabelX, y, { width: summaryLabelWidth, align: 'right' });
-  doc.text(total.toLocaleString(), summaryAmountX, y, { width: amountWidth, align: 'right' });
+  doc.text(formatPdfMoney(total), summaryAmountX, y, { width: amountWidth, align: 'right' });
 
   doc.moveDown(3);
   if (quote.notes) {

@@ -284,7 +284,7 @@ async function findByField(entityType, field, value) {
  * @param {string} endDate - ISO date string (optional, inclusive)
  * @returns {Promise<Array>} Array of order records
  */
-async function queryByGSI(tenantId, startDate, endDate) {
+async function queryByGSI(tenantId, startDate, endDate, options = {}) {
   if (!tenantId) {
     throw new Error('tenantId is required for GSI query');
   }
@@ -320,6 +320,17 @@ async function queryByGSI(tenantId, startDate, endDate) {
     ExpressionAttributeValues: expressionAttributeValues,
     ConsistentRead: false // GSI doesn't support ConsistentRead
   };
+
+  if (Array.isArray(options.projection) && options.projection.length > 0) {
+    const projectionNames = {};
+    const projectionTokens = options.projection.map((field, index) => {
+      const token = `#field${index}`;
+      projectionNames[token] = field;
+      return token;
+    });
+    queryParams.ProjectionExpression = projectionTokens.join(', ');
+    queryParams.ExpressionAttributeNames = projectionNames;
+  }
 
   const items = await queryAllPages(
     (params) => docClient.send(new QueryCommand(params)),
