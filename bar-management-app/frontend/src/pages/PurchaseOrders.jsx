@@ -11,6 +11,8 @@ const PurchaseOrders = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState('idle');
+  const [statusFeedback, setStatusFeedback] = useState({});
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [productSearchTerms, setProductSearchTerms] = useState(['']);
@@ -150,6 +152,7 @@ const PurchaseOrders = () => {
         return;
       }
 
+      setSubmitStatus('submitting');
       const orderData = {
         supplier: formData.supplier,
         items: formData.items.map(item => ({
@@ -162,8 +165,8 @@ const PurchaseOrders = () => {
       };
 
       await api.post('/purchase-orders', orderData);
+      setSubmitStatus('success');
       setSuccess('✅ Purchase order created successfully!');
-      setShowForm(false);
       setFormData({
         supplier: '',
         items: [{ product: '', quantity: '', costPrice: '' }],
@@ -172,8 +175,13 @@ const PurchaseOrders = () => {
       });
       setProductSearchTerms(['']);
       await loadData();
+      setTimeout(() => {
+        setShowForm(false);
+        setSubmitStatus('idle');
+      }, 1200);
       setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
+      setSubmitStatus('idle');
       console.error('Error creating purchase order:', err);
       setError(err.response?.data?.message || 'Failed to create purchase order');
       setTimeout(() => setError(''), 5000);
@@ -181,12 +189,29 @@ const PurchaseOrders = () => {
   };
 
   const handleUpdateStatus = async (orderId, status) => {
+    if (statusFeedback[orderId]?.state === 'loading') return;
+    setStatusFeedback(prev => ({ ...prev, [orderId]: { status, state: 'loading' } }));
+    setError('');
     try {
       await api.put(`/purchase-orders/${orderId}/status`, { status });
+      setStatusFeedback(prev => ({ ...prev, [orderId]: { status, state: 'success' } }));
       setSuccess(`✅ Order status updated to ${status}`);
       await loadData();
+      setTimeout(() => {
+        setStatusFeedback(prev => {
+          if (prev[orderId]?.status !== status) return prev;
+          const next = { ...prev };
+          delete next[orderId];
+          return next;
+        });
+      }, 1800);
       setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
+      setStatusFeedback(prev => {
+        const next = { ...prev };
+        delete next[orderId];
+        return next;
+      });
       console.error('Error updating status:', err);
       setError('Failed to update status');
       setTimeout(() => setError(''), 5000);
@@ -228,7 +253,10 @@ const PurchaseOrders = () => {
     <PageContainer title="📦 Purchase Orders">
       <div style={styles.header}>
         <p style={styles.subtitle}>Manage supplier purchase orders</p>
-        <Button onClick={() => setShowForm(!showForm)}>
+        <Button onClick={() => {
+          setSubmitStatus('idle');
+          setShowForm(!showForm);
+        }}>
           {showForm ? '✕ Close' : '+ New Purchase Order'}
         </Button>
       </div>
@@ -241,14 +269,13 @@ const PurchaseOrders = () => {
           <UnifiedCard title="Create Purchase Order">
             <form onSubmit={handleSubmit} style={styles.form}>
               <div className="form-group" style={styles.formGroup}>
-                <label style={styles.label}>Supplier *</label>
+                <label style={styles.label}>Supplier (optional)</label>
                 <select
-                  required
                   style={styles.input}
                   value={formData.supplier}
                   onChange={(e) => setFormData({...formData, supplier: e.target.value})}
                 >
-                  <option value="">Select Supplier</option>
+                  <option value="">General (default)</option>
                   {suppliers.map(s => (
                     <option key={s._id} value={s._id}>{s.name}</option>
                   ))}
@@ -374,7 +401,13 @@ const PurchaseOrders = () => {
 
               <div className="form-actions" style={styles.formActions}>
                 <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
-                <Button type="submit">Create Order</Button>
+                <Button
+                  type="submit"
+                  variant={submitStatus === 'success' ? 'success' : 'primary'}
+                  disabled={submitStatus !== 'idle'}
+                >
+                  {submitStatus === 'submitting' ? 'Creating...' : submitStatus === 'success' ? '✓ Order Created' : 'Create Order'}
+                </Button>
               </div>
             </form>
           </UnifiedCard>
@@ -440,10 +473,20 @@ const PurchaseOrders = () => {
               </div>
 
               <div style={styles.orderActions}>
+                {statusFeedback[order._id]?.state === 'success' && (
+                  <button type="button" disabled aria-live="polite" style={{...styles.actionBtn, ...styles.statusFeedbackBtn}}>
+                    {statusFeedback[order._id].status === 'ordered'
+                      ? '✓ Marked Ordered'
+                      : statusFeedback[order._id].status === 'received'
+                        ? '✓ Marked Received'
+                        : '✓ Order Cancelled'}
+                  </button>
+                )}
                 {order.status === 'pending' && (
                   <>
                     <button
-                      style={{...styles.actionBtn, ...styles.orderedBtn}}
+                      disabled={statusFeedback[order._id]?.state === 'loading'}
+                      style={{...styles.actionBtn, ...styles.orderedBtn, ...(statusFeedback[order._id]?.state === 'loading' && styles.actionBtnDisabled)}}
                       onClick={() => handleUpdateStatus(order._id, 'ordered')}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.backgroundColor = '#2980b9';
@@ -452,10 +495,11 @@ const PurchaseOrders = () => {
                         e.currentTarget.style.backgroundColor = '#3498db';
                       }}
                     >
-                      📦 Mark Ordered
+                      {statusFeedback[order._id]?.status === 'ordered' && statusFeedback[order._id]?.state === 'loading' ? 'Updating...' : '📦 Mark Ordered'}
                     </button>
                     <button
-                      style={{...styles.actionBtn, ...styles.receivedBtn}}
+                      disabled={statusFeedback[order._id]?.state === 'loading'}
+                      style={{...styles.actionBtn, ...styles.receivedBtn, ...(statusFeedback[order._id]?.state === 'loading' && styles.actionBtnDisabled)}}
                       onClick={() => handleUpdateStatus(order._id, 'received')}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.backgroundColor = '#27ae60';
@@ -464,13 +508,14 @@ const PurchaseOrders = () => {
                         e.currentTarget.style.backgroundColor = '#2ecc71';
                       }}
                     >
-                      ✅ Mark Received
+                      {statusFeedback[order._id]?.status === 'received' && statusFeedback[order._id]?.state === 'loading' ? 'Updating...' : '✅ Mark Received'}
                     </button>
                   </>
                 )}
                 {order.status === 'ordered' && (
                   <button
-                    style={{...styles.actionBtn, ...styles.receivedBtn}}
+                    disabled={statusFeedback[order._id]?.state === 'loading'}
+                    style={{...styles.actionBtn, ...styles.receivedBtn, ...(statusFeedback[order._id]?.state === 'loading' && styles.actionBtnDisabled)}}
                     onClick={() => handleUpdateStatus(order._id, 'received')}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.backgroundColor = '#27ae60';
@@ -479,12 +524,13 @@ const PurchaseOrders = () => {
                       e.currentTarget.style.backgroundColor = '#2ecc71';
                     }}
                   >
-                    ✅ Mark Received
+                    {statusFeedback[order._id]?.status === 'received' && statusFeedback[order._id]?.state === 'loading' ? 'Updating...' : '✅ Mark Received'}
                   </button>
                 )}
                 {(order.status === 'pending' || order.status === 'ordered') && (
                   <button
-                    style={{...styles.actionBtn, ...styles.cancelBtn}}
+                    disabled={statusFeedback[order._id]?.state === 'loading'}
+                    style={{...styles.actionBtn, ...styles.cancelBtn, ...(statusFeedback[order._id]?.state === 'loading' && styles.actionBtnDisabled)}}
                     onClick={() => handleUpdateStatus(order._id, 'cancelled')}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.backgroundColor = '#c0392b';
@@ -493,7 +539,7 @@ const PurchaseOrders = () => {
                       e.currentTarget.style.backgroundColor = '#e74c3c';
                     }}
                   >
-                    ❌ Cancel
+                    {statusFeedback[order._id]?.status === 'cancelled' && statusFeedback[order._id]?.state === 'loading' ? 'Updating...' : '❌ Cancel'}
                   </button>
                 )}
               </div>
@@ -599,6 +645,15 @@ const styles = {
     fontSize: '12px',
     fontWeight: '500',
     transition: 'all 0.3s ease'
+  },
+  actionBtnDisabled: {
+    opacity: 0.65,
+    cursor: 'wait'
+  },
+  statusFeedbackBtn: {
+    backgroundColor: '#2ecc71',
+    color: 'white',
+    cursor: 'default'
   },
   orderedBtn: {
     backgroundColor: '#3498db',

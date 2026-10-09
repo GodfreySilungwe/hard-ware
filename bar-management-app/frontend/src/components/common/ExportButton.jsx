@@ -2,7 +2,7 @@ import { useState } from 'react';
 import api from '../../api/api';
 import { saveAs } from 'file-saver';
 
-const ExportButton = ({ type, label, icon = '📤', variant = 'primary' }) => {
+const ExportButton = ({ type, label, icon = '📤', variant = 'primary', params = {} }) => {
   const [loading, setLoading] = useState(false);
 
   const handleExport = async () => {
@@ -34,12 +34,13 @@ const ExportButton = ({ type, label, icon = '📤', variant = 'primary' }) => {
       }
 
       const response = await api.get(endpoint, {
+        params,
         responseType: 'blob'
       });
 
-      const blob = new Blob([response.data], {
-        type: response.headers['content-type'] || 'application/octet-stream'
-      });
+      const blob = response.data instanceof Blob
+        ? response.data
+        : new Blob([response.data], { type: response.headers['content-type'] || 'application/octet-stream' });
 
       saveAs(blob, filename);
       

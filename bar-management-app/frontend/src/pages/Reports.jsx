@@ -168,6 +168,22 @@ const Reports = () => {
     };
   };
 
+  const getReportParams = () => {
+    const { currentStart, currentEnd } = getDateRangeBounds();
+    const startLocal = new Date(currentStart.getFullYear(), currentStart.getMonth(), currentStart.getDate(), 0, 0, 0, 0);
+    const endLocal = new Date(currentEnd.getFullYear(), currentEnd.getMonth(), currentEnd.getDate(), 23, 59, 59, 999);
+    const params = {
+      startDateUtc: startLocal.toISOString(),
+      endDateUtc: endLocal.toISOString()
+    };
+
+    if (paymentFilter !== 'all') params.paymentMethod = paymentFilter;
+    if (statusFilter !== 'all') params.status = statusFilter;
+    if (customerFilter !== 'all') params.customerName = customerFilter;
+    if (productFilter !== 'all') params.productName = productFilter;
+    return params;
+  };
+
   const filterOrdersByCriteria = (ordersList, includeReversed = true) => {
     return ordersList.filter(order => {
       if (!order) return false;
@@ -210,10 +226,9 @@ const Reports = () => {
       const currentParams = buildParams(currentStart, currentEnd);
       const previousParams = buildParams(previousStart, previousEnd);
 
-      const [ordersRes, previousRes, productsRes] = await Promise.all([
+      const [ordersRes, previousRes] = await Promise.all([
         api.get('/orders', { params: { ...currentParams, summaryOnly: true } }),
-        api.get('/orders', { params: { ...previousParams, summaryOnly: true } }),
-        api.get('/products')
+        api.get('/orders', { params: { ...previousParams, summaryOnly: true } })
       ]);
 
       const currentSummary = ordersRes.data || {};
@@ -523,10 +538,10 @@ const Reports = () => {
 
       {/* Export Buttons */}
       <div style={styles.exportSection} className="reports-exportSection">
-        <ExportButton type="sales" label="Export Sales (Excel)" icon="📊" variant="success" />
-        <ExportButton type="sales-pdf" label="Export Sales (PDF)" icon="📄" variant="info" />
-        <ExportButton type="inventory" label="Export Inventory" icon="📦" variant="warning" />
-        <ExportButton type="customers" label="Export Customers" icon="👤" variant="secondary" />
+        <ExportButton type="sales" label="Export Sales (Excel)" icon="📊" variant="success" params={getReportParams()} />
+        <ExportButton type="sales-pdf" label="Export Sales (PDF)" icon="📄" variant="info" params={getReportParams()} />
+        <ExportButton type="inventory" label="Export Inventory" icon="📦" variant="warning" params={getReportParams()} />
+        <ExportButton type="customers" label="Export Customers" icon="👤" variant="secondary" params={getReportParams()} />
       </div>
 
       {/* Summary Cards with Animations */}

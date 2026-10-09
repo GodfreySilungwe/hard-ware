@@ -485,15 +485,15 @@ const Dashboard = () => {
                 <div style={styles.handoverValue}>{formatPriceMK(dashboardSummary.handover.totalProfit)}</div>
               </div>
             )}
-            <div style={styles.handoverCard}>
+            <div className={isHardwareManagerRole || isSalesRole ? 'mobile-hidden-handover-card' : undefined} style={styles.handoverCard}>
               <div style={styles.handoverLabel}>Orders Processed</div>
               <div style={styles.handoverValue}>{dashboardSummary.handover.ordersProcessed}</div>
             </div>
-            <div style={styles.handoverCard}>
+            <div className={isHardwareManagerRole || isSalesRole ? 'mobile-hidden-handover-card' : undefined} style={styles.handoverCard}>
               <div style={styles.handoverLabel}>Items Sold</div>
               <div style={styles.handoverValue}>{dashboardSummary.handover.itemsSold}</div>
             </div>
-            <div style={styles.handoverCard}>
+            <div className={isHardwareManagerRole || isSalesRole ? 'mobile-hidden-handover-card' : undefined} style={styles.handoverCard}>
               <div style={styles.handoverLabel}>Products</div>
               <div style={styles.handoverValue}>{stats.totalProducts}</div>
             </div>
@@ -1365,6 +1365,9 @@ responsiveStyles.textContent = `
   .handover-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
   .stats-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
   .summaryList { display: block; }
+  @media (max-width: 639px) {
+    .mobile-hidden-handover-card { display: none !important; }
+  }
   @media (min-width: 640px) {
     .handover-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
     .stats-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
