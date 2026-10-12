@@ -1,6 +1,19 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { queryAllPages } = require('../lib/dynamodb');
+const { queryAllPages, buildGsiKeyConditionExpression } = require('../lib/dynamodb');
+
+test('builds a valid GSI date-range key condition', () => {
+  assert.equal(
+    buildGsiKeyConditionExpression('2026-10-11T22:00:00.000Z', '2026-10-12T16:59:59.999Z'),
+    'GSI1PK = :gsi1pk AND GSI1SK BETWEEN :startDate AND :endDate'
+  );
+});
+
+test('builds valid one-sided GSI date key conditions', () => {
+  assert.equal(buildGsiKeyConditionExpression('start', null), 'GSI1PK = :gsi1pk AND GSI1SK >= :startDate');
+  assert.equal(buildGsiKeyConditionExpression(null, 'end'), 'GSI1PK = :gsi1pk AND GSI1SK <= :endDate');
+  assert.equal(buildGsiKeyConditionExpression(null, null), 'GSI1PK = :gsi1pk');
+});
 
 test('queryAllPages follows DynamoDB continuation keys', async () => {
   const requests = [];

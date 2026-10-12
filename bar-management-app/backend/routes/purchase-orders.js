@@ -39,10 +39,17 @@ router.get('/:id', protect, async (req, res) => {
 // Create purchase order
 router.post('/', protect, async (req, res) => {
   try {
-    const { supplier, items, expectedDelivery, notes } = req.body;
+    const { items, expectedDelivery, notes } = req.body;
+    let { supplier } = req.body;
 
     if (!supplier) {
-      return res.status(400).json({ message: 'Supplier is required' });
+      const tenantId = req.user?.tenantId || null;
+      let generalSupplier = await Supplier.findOne({ name: 'General', tenantId }, req);
+      if (!generalSupplier) {
+        generalSupplier = new Supplier({ name: 'General', tenantId });
+        await generalSupplier.save();
+      }
+      supplier = generalSupplier._id || generalSupplier.id;
     }
 
     let normalizedItems;

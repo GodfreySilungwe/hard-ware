@@ -143,19 +143,22 @@ const buildPdf = (quote) => new Promise((resolve, reject) => {
     }
   });
 
-  doc.fontSize(24).fillColor('#111827').font('Helvetica-Bold').text(quote.businessName || 'Smart Inventory App', leftMargin, headerCardY, { width: 250 });
-  doc.moveDown(0.4);
-  let businessY = 84;
+  const businessName = quote.businessName || 'Smart Inventory App';
+  doc.fontSize(24).fillColor('#111827').font('Helvetica-Bold').text(businessName, leftMargin, headerCardY, { width: 250 });
+  let businessY = Math.max(84, doc.y + 6);
   doc.font('Helvetica').fontSize(10);
   if (quote.businessAddress) {
     doc.text(quote.businessAddress, leftMargin, businessY, { width: 250 });
-    businessY += 15;
+    businessY = doc.y + 4;
   }
   if (quote.businessPhone) {
     doc.text(quote.businessPhone, leftMargin, businessY, { width: 250 });
-    businessY += 15;
+    businessY = doc.y + 4;
   }
-  if (quote.businessEmail) doc.text(quote.businessEmail, leftMargin, businessY, { width: 250 });
+  if (quote.businessEmail) {
+    doc.text(quote.businessEmail, leftMargin, businessY, { width: 250 });
+    businessY = doc.y;
+  }
 
   doc.roundedRect(headerCardX, headerCardY, headerCardWidth, headerCardHeight, 10).fill('#111827');
   doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(20).text('QUOTE/INV', headerCardX + 16, headerCardY + 14, { width: headerCardWidth - 32 });
@@ -165,7 +168,7 @@ const buildPdf = (quote) => new Promise((resolve, reject) => {
   doc.text(`Valid Until: ${quote.validUntil || 'N/A'}`, headerCardX + 16, headerCardY + 84, { width: headerCardWidth - 32 });
 
   doc.fillColor('#111827').font('Helvetica').fontSize(12);
-  doc.y = headerCardY + headerCardHeight + 22;
+  doc.y = Math.max(headerCardY + headerCardHeight, businessY) + 22;
   doc.fontSize(12).text(`Customer: ${quote.customerName || 'Walk-in Customer'}`);
   if (quote.customerPhone) doc.text(`Phone: ${quote.customerPhone}`);
   if (quote.customerEmail) doc.text(`Email: ${quote.customerEmail}`);

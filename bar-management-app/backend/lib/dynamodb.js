@@ -275,6 +275,18 @@ async function findByField(entityType, field, value) {
   return records.find((record) => record[field] === value) || null;
 }
 
+function buildGsiKeyConditionExpression(startDate, endDate) {
+  const conditions = ['GSI1PK = :gsi1pk'];
+  if (startDate && endDate) {
+    conditions.push('GSI1SK BETWEEN :startDate AND :endDate');
+  } else if (startDate) {
+    conditions.push('GSI1SK >= :startDate');
+  } else if (endDate) {
+    conditions.push('GSI1SK <= :endDate');
+  }
+  return conditions.join(' AND ');
+}
+
 /**
  * Query orders by GSI1 (tenantId + dateRange)
  * Enables efficient queries instead of full partition scans
@@ -291,27 +303,13 @@ async function queryByGSI(tenantId, startDate, endDate, options = {}) {
 
   await ensureTableExists();
 
-  // Build key condition expression
-  let keyConditionExpression = 'GSI1PK = :gsi1pk';
+  const keyConditionExpression = buildGsiKeyConditionExpression(startDate, endDate);
   const expressionAttributeValues = {
     ':gsi1pk': tenantId
   };
 
-  // Add date range filter if provided
-  if (startDate || endDate) {
-    const conditions = [];
-    if (startDate) {
-      conditions.push('GSI1SK >= :startDate');
-      expressionAttributeValues[':startDate'] = startDate;
-    }
-    if (endDate) {
-      conditions.push('GSI1SK <= :endDate');
-      expressionAttributeValues[':endDate'] = endDate;
-    }
-    if (conditions.length > 0) {
-      keyConditionExpression += ' AND (' + conditions.join(' AND ') + ')';
-    }
-  }
+  if (startDate) expressionAttributeValues[':startDate'] = startDate;
+  if (endDate) expressionAttributeValues[':endDate'] = endDate;
 
   const queryParams = {
     TableName: TABLE_NAME,
@@ -352,6 +350,7 @@ module.exports = {
   updateEntity,
   deleteEntity,
   findByField,
+  buildGsiKeyConditionExpression,
   queryAllPages,
   fromDynamoItem,
   toDynamoItem
