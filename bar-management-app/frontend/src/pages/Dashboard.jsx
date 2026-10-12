@@ -647,7 +647,9 @@ const Dashboard = () => {
                         method.method?.toLowerCase().includes('credit') ? '#0ea5e9' : '#14b8a6'
                     }} />
                     <div>
-                      <div style={styles.summaryTitle}>{method.label || method.method}</div>
+                      <div style={styles.summaryTitle}>
+                        {String(method.method || '').toLowerCase() === 'card' ? 'Bank' : method.label || method.method}
+                      </div>
                       <div style={styles.summaryMeta}>{method.count} transaction{method.count === 1 ? '' : 's'}</div>
                     </div>
                   </div>
