@@ -48,6 +48,70 @@ function getOwnerConfig() {
   };
 }
 
+function normalizeLoginIdentifier(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeShopName(value) {
+  return String(value || '').trim();
+}
+
+function getShopNameValidationError(value) {
+  const shopName = normalizeShopName(value);
+  if (!shopName) return 'Shop name is required.';
+  if (shopName.length > 120) return 'Shop name must be 120 characters or fewer.';
+  return null;
+}
+
+function normalizeShopProfile(data = {}) {
+  return {
+    district: String(data.district || '').trim(),
+    tradingCenter: String(data.tradingCenter || '').trim(),
+    shopDescription: String(data.shopDescription || '').trim()
+  };
+}
+
+function getShopProfileValidationError(profile) {
+  if (!profile.district) return 'District is required.';
+  if (!profile.tradingCenter) return 'Trading center is required.';
+  if (!profile.shopDescription) return 'Please briefly describe what the shop sells.';
+  if (profile.district.length > 100) return 'District must be 100 characters or fewer.';
+  if (profile.tradingCenter.length > 120) return 'Trading center must be 120 characters or fewer.';
+  if (profile.shopDescription.length > 300) return 'Shop description must be 300 characters or fewer.';
+  return null;
+}
+
+function getRegistrationConflicts(users, { username, email, tenantId }) {
+  const normalizedUsername = normalizeLoginIdentifier(username);
+  const normalizedEmail = normalizeLoginIdentifier(email);
+  return {
+    usernameExists: (users || []).some((user) => normalizeLoginIdentifier(user.username) === normalizedUsername),
+    emailExistsInTenant: Boolean(tenantId) && (users || []).some((user) => (
+      normalizeLoginIdentifier(user.email) === normalizedEmail
+      && String(user.tenantId || '') === String(tenantId)
+    ))
+  };
+}
+
+function resolveLoginIdentity(users, identifier) {
+  const normalizedIdentifier = normalizeLoginIdentifier(identifier);
+  const usernameMatches = (users || []).filter((user) => (
+    normalizeLoginIdentifier(user.username) === normalizedIdentifier
+  ));
+  if (usernameMatches.length > 1) return { user: null, ambiguousUsername: true, requiresUsername: false };
+  if (usernameMatches.length === 1) {
+    return { user: usernameMatches[0], ambiguousUsername: false, requiresUsername: false };
+  }
+
+  const emailMatches = (users || []).filter((user) => (
+    normalizeLoginIdentifier(user.email) === normalizedIdentifier
+  ));
+  if (emailMatches.length > 1) {
+    return { user: null, ambiguousUsername: false, requiresUsername: true };
+  }
+  return { user: emailMatches[0] || null, ambiguousUsername: false, requiresUsername: false };
+}
+
 function buildApprovalMessage(user = {}) {
   const fullName = user.fullName || user.username || 'there';
   const username = user.username || 'your username';
@@ -291,14 +355,29 @@ router.post('/register', async (req, res) => {
   try {
     await ensureDefaultOwnerUser();
 
-    const { username, email, password, fullName, inviteToken, tenantName, hardwareName } = req.body;
+    const { inviteToken, tenantName, hardwareName } = req.body || {};
+    const username = String(req.body?.username || '').trim();
+    const email = String(req.body?.email || '').trim();
+    const password = req.body?.password;
+    const fullName = String(req.body?.fullName || '').trim();
+    const shopName = normalizeShopName(req.body?.shopName);
+    const shopNameError = getShopNameValidationError(shopName);
+    if (shopNameError) {
+      return res.status(400).json({ message: shopNameError });
+    }
+    const shopProfile = normalizeShopProfile(req.body);
+    const shopProfileError = getShopProfileValidationError(shopProfile);
+    if (shopProfileError) {
+      return res.status(400).json({ message: shopProfileError });
+    }
+    if (!username || !email || !password || !fullName) {
+      return res.status(400).json({ message: 'Username, email, full name, and password are required.' });
+    }
 
-    const existingUser = await User.findOne({ 
-      $or: [{ email }, { username }] 
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ message: 'User already exists' });
+    const registrationUsers = await User.find();
+    const usernameConflict = getRegistrationConflicts(registrationUsers, { username, email }).usernameExists;
+    if (usernameConflict) {
+      return res.status(400).json({ message: 'Username is already in use. Choose a unique username.' });
     }
 
     let tenant = null;
@@ -310,13 +389,24 @@ router.post('/register', async (req, res) => {
       tenant = await Tenant.findById(invite.tenantId);
     }
 
+    const tenantId = tenant?._id || tenant?.id;
+    const emailConflict = getRegistrationConflicts(registrationUsers, { username, email, tenantId }).emailExistsInTenant;
+    if (emailConflict) {
+      return res.status(400).json({ message: 'An account with this email already exists for this shop.' });
+    }
+
     if (!tenant && tenantName) {
       tenant = new Tenant({
         name: tenantName,
         hardwareName: hardwareName || tenantName,
+        shopName,
+        ...shopProfile,
         status: 'pending',
         ownerId: null
       });
+      await tenant.save();
+    } else if (tenant && !tenant.shopName) {
+      tenant.shopName = shopName;
       await tenant.save();
     }
 
@@ -329,6 +419,8 @@ router.post('/register', async (req, res) => {
       phone: req.body?.phone || req.body?.whatsappNumber || null,
       password: hashedPassword,
       fullName,
+      shopName,
+      ...shopProfile,
       role: 'hardware-manager',
       tenantId: tenant ? tenant._id || tenant.id : null,
       isActive: false,
@@ -366,20 +458,32 @@ router.post('/register', async (req, res) => {
 // Owner-only hardware manager creation
 router.post('/create-hardware-manager', protect, isOwner, async (req, res) => {
   try {
-    const { username, email, phone, password, fullName, tenantName, hardwareName } = req.body || {};
+    const { username, email, phone, password, fullName, tenantName, hardwareName, shopName } = req.body || {};
+    const normalizedShopName = normalizeShopName(shopName);
+    const shopNameError = getShopNameValidationError(normalizedShopName);
+    if (shopNameError) {
+      return res.status(400).json({ message: shopNameError });
+    }
+    const shopProfile = normalizeShopProfile(req.body);
+    const shopProfileError = getShopProfileValidationError(shopProfile);
+    if (shopProfileError) {
+      return res.status(400).json({ message: shopProfileError });
+    }
 
     if (!username || !email || !password || !fullName || !tenantName || !hardwareName || !phone) {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
-    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
-    if (existingUser) {
-      return res.status(400).json({ message: 'User already exists' });
+    const registrationUsers = await User.find();
+    if (getRegistrationConflicts(registrationUsers, { username, email }).usernameExists) {
+      return res.status(400).json({ message: 'Username is already in use. Choose a unique username.' });
     }
 
     const tenant = new Tenant({
       name: tenantName,
       hardwareName,
+      shopName: normalizedShopName,
+      ...shopProfile,
       status: 'active',
       ownerId: req.user?._id || req.user?.id
     });
@@ -394,6 +498,8 @@ router.post('/create-hardware-manager', protect, isOwner, async (req, res) => {
       phone,
       password: hashedPassword,
       fullName,
+      shopName: normalizedShopName,
+      ...shopProfile,
       role: 'hardware-manager',
       tenantId: tenant._id || tenant.id,
       isActive: true
@@ -453,15 +559,39 @@ router.post('/approve-registration/:id', protect, isOwner, async (req, res) => {
       }
     }
 
+    const approvedShopName = normalizeShopName(req.body?.shopName || user.shopName || tenant?.shopName);
+    const shopNameError = getShopNameValidationError(approvedShopName);
+    if (shopNameError) {
+      return res.status(400).json({ message: shopNameError });
+    }
+    const shopProfile = normalizeShopProfile({
+      district: tenant?.district || req.body?.district || user.district,
+      tradingCenter: tenant?.tradingCenter || req.body?.tradingCenter || user.tradingCenter,
+      shopDescription: tenant?.shopDescription || req.body?.shopDescription || user.shopDescription
+    });
+    const shopProfileError = getShopProfileValidationError(shopProfile);
+    if (shopProfileError) {
+      return res.status(400).json({ message: shopProfileError });
+    }
+
     if (!tenant) {
       tenant = new Tenant({
         name: req.body?.tenantName || user.fullName || 'Hardware',
         hardwareName: req.body?.hardwareName || req.body?.tenantName || user.fullName || 'Hardware',
+        shopName: approvedShopName,
+        ...shopProfile,
         status: 'active',
         ownerId: req.user?._id || req.user?.id
       });
       await tenant.save();
       user.tenantId = tenant._id || tenant.id;
+    }
+
+    const updatedShopProfile = { shopName: approvedShopName, ...shopProfile };
+    const shopProfileChanged = Object.entries(updatedShopProfile).some(([key, value]) => tenant[key] !== value);
+    if (shopProfileChanged) {
+      Object.assign(tenant, updatedShopProfile);
+      await tenant.save();
     }
 
     if (tenant.status !== 'active') {
@@ -739,6 +869,27 @@ router.get('/tenants', protect, isOwner, async (req, res) => {
   }
 });
 
+router.patch('/tenants/:id/shop-name', protect, isOwner, async (req, res) => {
+  try {
+    const tenant = await Tenant.findById(req.params.id);
+    if (!tenant) {
+      return res.status(404).json({ message: 'Shop not found' });
+    }
+
+    const shopName = String(req.body?.shopName || '').trim();
+    if (shopName.length > 120) {
+      return res.status(400).json({ message: 'Shop name must be 120 characters or fewer.' });
+    }
+
+    tenant.shopName = shopName || null;
+    await tenant.save();
+    res.json({ message: 'Shop name updated successfully.', tenant });
+  } catch (error) {
+    console.error('Shop name update error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.patch('/tenants/:id/subscription', protect, isOwner, async (req, res) => {
   try {
     const tenant = await Tenant.findById(req.params.id);
@@ -990,33 +1141,28 @@ router.post('/create-invite', protect, isOwner, async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const body = req.body || {};
-    const username = body.username || body.email || body.userName || body.login;
+    const loginIdentifier = body.username || body.email || body.userName || body.login;
     const password = body.password;
 
-    if (!username || !password) {
+    if (!loginIdentifier || !password) {
       return res.status(400).json({ message: 'Username and password are required' });
     }
 
-    console.log('Login attempt:', { username, password: password ? '[REDACTED]' : undefined, body });
+    console.log('Login attempt:', { username: loginIdentifier, password: '[REDACTED]' });
 
-    const user = await User.findOne({ 
-      $or: [{ username }, { email: username }] 
-    });
-    console.log('Login lookup result:', !!user, user ? { id: user._id, username: user.username, email: user.email, role: user.role, isActive: user.isActive, tenantId: user.tenantId } : null);
+    const allUsers = await User.find();
+    const identity = resolveLoginIdentity(allUsers, loginIdentifier);
+    if (identity.requiresUsername) {
+      return res.status(400).json({ message: 'This email is linked to multiple shops. Sign in with your unique username.' });
+    }
+    if (identity.ambiguousUsername) {
+      return res.status(401).json({ message: 'Login conflict. Contact support to resolve duplicate usernames.' });
+    }
+    const user = identity.user;
+    console.log('Login lookup result:', !!user, user ? { id: user._id, username: user.username, role: user.role, isActive: user.isActive, tenantId: user.tenantId } : null);
 
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
-    }
-
-    const crossTenantDuplicate = await User.findOne({
-      $or: [{ username }, { email: username }],
-      _id: { $ne: user._id },
-      tenantId: { $ne: user.tenantId || null }
-    });
-
-    if (crossTenantDuplicate) {
-      console.error('Cross-tenant login conflict detected', { userId: user._id, duplicateId: crossTenantDuplicate._id });
-      return res.status(401).json({ message: 'Login conflict across tenant boundaries' });
     }
 
     await normalizeOwnerAccount(user);
@@ -1080,6 +1226,7 @@ router.post('/login', async (req, res) => {
         email: user.email,
         fullName: user.fullName,
         role: user.role,
+        shopName: tenant?.shopName || null,
         tenantStatus,
         suspensionMessage,
         subscription: subscriptionAccess
@@ -1096,6 +1243,7 @@ router.get('/me', protect, async (req, res) => {
   try {
     const userPayload = {
       ...req.user,
+      shopName: req.tenant?.shopName || null,
       tenantStatus: req.tenant?.status || 'active',
       suspensionMessage: getTenantAccessMessage(req.tenant?.status),
       subscription: req.tenant?.subscriptionAccess || getSubscriptionAccess(req.tenant)
@@ -1113,6 +1261,12 @@ module.exports.ensureDefaultOwnerUser = ensureDefaultOwnerUser;
 module.exports.getTenantAccessMessage = getTenantAccessMessage;
 module.exports.shouldPromoteToOwner = shouldPromoteToOwner;
 module.exports.buildApprovalMessage = buildApprovalMessage;
+module.exports.getRegistrationConflicts = getRegistrationConflicts;
+module.exports.resolveLoginIdentity = resolveLoginIdentity;
+module.exports.normalizeShopName = normalizeShopName;
+module.exports.getShopNameValidationError = getShopNameValidationError;
+module.exports.normalizeShopProfile = normalizeShopProfile;
+module.exports.getShopProfileValidationError = getShopProfileValidationError;
 module.exports.buildManagerInstructions = buildManagerInstructions;
 module.exports.isHardwareManagerUser = isHardwareManagerUser;
 module.exports.buildManagerInstructions = buildManagerInstructions;

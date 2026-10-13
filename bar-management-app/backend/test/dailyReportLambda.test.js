@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   getReportWindow,
   getTenantReportRecipients,
+  getShopDisplayName,
   buildReportLookupMaps,
   buildReportActivityMetrics,
   getReportPaymentLabel,
@@ -96,13 +97,23 @@ test('uses Bank for card tender and includes shop name in email body', () => {
 
   assert.equal(getReportPaymentLabel({ method: 'card', label: 'Card' }), 'Bank');
   assert.equal(getReportPaymentLabel({ method: 'cash', label: 'Cash' }), 'Cash');
-  assert.match(buildReportEmailText({ tenantName: 'Central Hardware', window }), /Shop name: Central Hardware/);
+  assert.match(buildReportEmailText({ shopName: 'Central Hardware', window }), /Shop name: Central Hardware/);
+});
+
+test('uses the manager name when a tenant has no shop name', () => {
+  assert.equal(getShopDisplayName({ id: 'tenant-1', hardwareName: 'Legacy name' }, [
+    { tenantId: 'tenant-1', role: 'hardware-manager', fullName: 'Amina Banda', username: 'amina' }
+  ]), 'Amina Banda');
+  assert.equal(getShopDisplayName({ id: 'tenant-1', shopName: '   ' }, [
+    { tenantId: 'tenant-1', role: 'hardware-manager', fullName: 'Amina Banda' }
+  ]), 'Amina Banda');
+  assert.equal(getShopDisplayName({ id: 'tenant-1', shopName: 'Central Hardware' }, []), 'Central Hardware');
 });
 
 test('creates a PDF sales report and MIME email attachment', async () => {
   const window = getReportWindow(new Date(), '2026-10-12');
   const pdf = await createSalesPdf({
-    tenantName: 'Test Hardware',
+    shopName: 'Test Hardware',
     window,
     orders: [{
       id: 'order-1',

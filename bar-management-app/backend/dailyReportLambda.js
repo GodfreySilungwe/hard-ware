@@ -70,12 +70,30 @@ const formatMoney = (value) => Number(value || 0).toLocaleString('en-US', {
   maximumFractionDigits: 2
 });
 
+const getShopDisplayName = (tenant, users = []) => {
+  const tenantId = String(tenant?._id || tenant?.id || '');
+  const shopName = String(tenant?.shopName || '').trim();
+  if (shopName) return shopName;
+
+  const manager = users.find((user) => (
+    user.role === 'hardware-manager'
+    && String(user.tenantId || '') === tenantId
+  ));
+  return String(
+    manager?.fullName
+    || manager?.username
+    || tenant?.hardwareName
+    || tenant?.name
+    || 'Shop'
+  ).trim();
+};
+
 const getReportPaymentLabel = (payment) => (
   String(payment?.method || '').toLowerCase() === 'card' ? 'Bank' : payment?.label
 );
 
-const buildReportEmailText = ({ tenantName, window }) => (
-  `Shop name: ${tenantName}\n`
+const buildReportEmailText = ({ shopName, window }) => (
+  `Shop name: ${shopName}\n`
   + `Report period: ${formatDateTime(window.startDate)} to ${formatDateTime(window.endExclusive)} CAT\n\n`
   + 'Attached is the daily sales report.'
 );
@@ -219,7 +237,7 @@ const collectTenantOrders = async (tenantId, window, legacyOrders = null) => {
   return [...ordersById.values()];
 };
 
-const createSalesPdf = async ({ tenantName, orders, window, productMap = new Map(), categoryMap = new Map() }) => new Promise((resolve, reject) => {
+const createSalesPdf = async ({ shopName, orders, window, productMap = new Map(), categoryMap = new Map() }) => new Promise((resolve, reject) => {
   const document = new PDFDocument({ size: 'A4', margin: 42 });
   const chunks = [];
   document.on('data', (chunk) => chunks.push(chunk));
@@ -233,11 +251,11 @@ const createSalesPdf = async ({ tenantName, orders, window, productMap = new Map
   document.rect(0, 0, document.page.width, 138).fill(REPORT_COLORS.ink);
   document.rect(0, 134, document.page.width, 4).fill(REPORT_COLORS.amber);
   document.fillColor('#C5D8D8').font('Helvetica-Bold').fontSize(8)
-    .text('HARDWARE MANAGER  /  OPERATIONS', contentX, 24, { characterSpacing: 1.2 });
+    .text('SHOP  /  OPERATIONS', contentX, 24, { characterSpacing: 1.2 });
   document.fillColor(REPORT_COLORS.white).font('Helvetica-Bold').fontSize(23)
     .text('Daily Sales Report', contentX, 49, { width: contentWidth });
   document.font('Helvetica').fontSize(11).fillColor('#E0ECEB')
-    .text(`Shop name: ${tenantName || 'Hardware'}`, contentX, 82, { width: contentWidth });
+    .text(`Shop name: ${shopName || 'Shop'}`, contentX, 82, { width: contentWidth });
   document.fontSize(9).fillColor('#C5D8D8')
     .text(`${formatDateTime(window.startDate)} to ${formatDateTime(window.endExclusive)} CAT`, contentX, 101);
   document.fontSize(8).fillColor('#C5D8D8')
@@ -400,13 +418,13 @@ const buildRawEmail = ({ from, to, cc = [], subject, text, filename, attachment 
   return Buffer.from(message);
 };
 
-const sendReport = async ({ recipients, from, tenantName, pdf, window }) => {
+const sendReport = async ({ recipients, from, shopName, pdf, window }) => {
   const filename = `sales-report-${window.reportDate}.pdf`;
   const rawMessage = buildRawEmail({
     from,
     ...recipients,
-    subject: `Daily sales report - ${window.reportDate}`,
-    text: buildReportEmailText({ tenantName, window }),
+    subject: `Daily sales report - ${shopName} - ${window.reportDate}`,
+    text: buildReportEmailText({ shopName, window }),
     filename,
     attachment: pdf
   });
@@ -424,7 +442,7 @@ const handler = async (event = {}) => {
     : tenants;
   if (event.tenantId && selectedTenants.length === 0) throw new Error(`Tenant not found: ${event.tenantId}`);
 
-  const users = await dynamodb.listEntities('user', { projection: ['_id', 'id', 'tenantId', 'role', 'isActive', 'email'] });
+  const users = await dynamodb.listEntities('user', { projection: ['_id', 'id', 'tenantId', 'role', 'isActive', 'email', 'fullName', 'username'] });
   const results = { reportDate: window.reportDate, sent: 0, skipped: 0, failed: [] };
   let legacyOrders = null;
   let catalogRecords = null;
@@ -465,8 +483,9 @@ const handler = async (event = {}) => {
         catalogRecords = { products, categories };
       }
       const lookups = buildReportLookupMaps(tenantId, orders, catalogRecords.products, catalogRecords.categories);
-      const pdf = await createSalesPdf({ tenantName: tenant.hardwareName || tenant.name, orders, window, ...lookups });
-      await sendReport({ recipients, from, tenantName: tenant.hardwareName || tenant.name || 'Hardware', pdf, window });
+      const shopName = getShopDisplayName(tenant, users);
+      const pdf = await createSalesPdf({ shopName, orders, window, ...lookups });
+      await sendReport({ recipients, from, shopName, pdf, window });
       results.sent += 1;
       console.info('Daily sales report sent', { tenantId, reportDate: window.reportDate });
     } catch (error) {
@@ -483,6 +502,7 @@ module.exports = {
   handler,
   getReportWindow,
   getTenantReportRecipients,
+  getShopDisplayName,
   buildReportLookupMaps,
   buildReportActivityMetrics,
   getReportPaymentLabel,
