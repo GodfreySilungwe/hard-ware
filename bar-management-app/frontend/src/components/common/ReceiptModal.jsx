@@ -51,7 +51,7 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <button style={styles.closeBtn} onClick={onClose}>✕</button>
+        <button type="button" aria-label="Close receipt" style={styles.closeBtn} onClick={onClose}>✕</button>
         
         <div id="receipt" style={styles.receipt}>
           {/* Header */}
@@ -202,13 +202,20 @@ const styles = {
   closeBtn: {
     position: 'absolute',
     top: '12px',
-    right: '16px',
-    background: 'none',
+    left: '12px',
+    width: '32px',
+    height: '32px',
+    display: 'grid',
+    placeItems: 'center',
+    backgroundColor: '#c93636',
     border: 'none',
-    fontSize: '24px',
+    borderRadius: '50%',
+    fontSize: '16px',
+    lineHeight: 1,
     cursor: 'pointer',
-    color: '#888',
-    zIndex: 10
+    color: '#fff',
+    zIndex: 10,
+    boxShadow: '0 2px 6px rgba(120, 20, 20, 0.25)'
   },
   receipt: {
     fontFamily: 'monospace',

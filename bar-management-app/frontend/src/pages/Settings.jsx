@@ -27,6 +27,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
     confirmPassword: ''
   });
   const [tenants, setTenants] = useState([]);
+  const [hardwareSearch, setHardwareSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteAction, setDeleteAction] = useState(null);
 
@@ -91,6 +92,27 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
   const [hardwareManagers, setHardwareManagers] = useState([]);
   const [salesAccounts, setSalesAccounts] = useState([]);
+  const normalizedHardwareSearch = hardwareSearch.trim().toLowerCase();
+  const hardwareSearchDigits = normalizedHardwareSearch.replace(/\D/g, '');
+  const filteredHardwareTenants = tenants.filter((tenant) => {
+    const tenantId = tenant._id || tenant.id;
+    const manager = tenant.registeredManagerInfo
+      || hardwareManagers.find((item) => (item.tenantId || item.tenant_id) === tenantId)
+      || {};
+    const searchableText = [
+      tenant.shopName,
+      tenant.hardwareName,
+      tenant.name,
+      manager.fullName,
+      manager.username
+    ].filter(Boolean).join(' ').toLowerCase();
+    const phoneDigits = String(manager.phone || '').replace(/\D/g, '');
+    return !normalizedHardwareSearch
+      || searchableText.includes(normalizedHardwareSearch)
+      || (hardwareSearchDigits && phoneDigits.includes(hardwareSearchDigits));
+  });
+  const [shopNameDrafts, setShopNameDrafts] = useState({});
+  const [shopNameSavingId, setShopNameSavingId] = useState('');
   const [ownerPerformance, setOwnerPerformance] = useState({
     totalSales: 0,
     totalProfit: 0,
@@ -370,6 +392,27 @@ const Settings = ({ initialMenu = 'settings' }) => {
       setTimeout(() => setError(''), 4000);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleShopNameSave = async (tenant) => {
+    const tenantId = tenant._id || tenant.id;
+    const shopName = String(shopNameDrafts[tenantId] ?? tenant.shopName ?? '').trim();
+    setShopNameSavingId(tenantId);
+    setMessage('');
+    setError('');
+
+    try {
+      const response = await api.patch(`/auth/tenants/${tenantId}/shop-name`, { shopName });
+      setTenants((current) => current.map((item) => (
+        (item._id || item.id) === tenantId ? { ...item, shopName: response.data?.tenant?.shopName || '' } : item
+      )));
+      setShopNameDrafts((current) => ({ ...current, [tenantId]: response.data?.tenant?.shopName || '' }));
+      setMessage(response.data?.message || 'Shop name updated successfully.');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update shop name.');
+    } finally {
+      setShopNameSavingId('');
     }
   };
 
@@ -811,79 +854,107 @@ const Settings = ({ initialMenu = 'settings' }) => {
           <div style={{ marginTop: '16px' }}>
             <UnifiedCard title="🏢 Global Hardware Overview">
               {tenants.length === 0 ? (
-                <div style={{ color: '#888' }}>No Smart Inventory App accounts found yet.</div>
+                <div style={styles.hardwareEmpty}>No shops found. Create a shop from Applications to get started.</div>
               ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={styles.hardwareTable}>
-                    <thead>
-                      <tr>
-                        <th style={styles.hardwareTableHead}>Hardware</th>
-                        <th style={styles.hardwareTableHead}>Owner</th>
-                        <th style={styles.hardwareTableHead}>Manager</th>
-                        <th style={styles.hardwareTableHead}>Email</th>
-                        <th style={styles.hardwareTableHead}>Phone</th>
-                        <th style={styles.hardwareTableHead}>Users</th>
-                        <th style={styles.hardwareTableHead}>Sales accounts</th>
-                        <th style={styles.hardwareTableHead}>Status</th>
-                        <th style={styles.hardwareTableHead}>Subscription</th>
-                        <th style={styles.hardwareTableHead}>Created</th>
-                        <th style={styles.hardwareTableHead}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tenants.map((tenant) => {
-                        const tenantUsers = hardwareManagers.filter((manager) => (manager.tenantId || manager.tenant_id) === (tenant._id || tenant.id));
-                        const userSummary = tenantUsers.length > 0
-                          ? tenantUsers.map((manager) => manager.fullName || manager.username || 'Unnamed user').join(', ')
-                          : 'No users linked';
+                <>
+                  <div style={styles.hardwareSearchToolbar}>
+                    <label style={styles.hardwareSearchField}>
+                      <span aria-hidden="true" style={styles.hardwareSearchIcon}>⌕</span>
+                      <input
+                        type="search"
+                        value={hardwareSearch}
+                        onChange={(event) => setHardwareSearch(event.target.value)}
+                        placeholder="Search shop, hardware, manager, or phone"
+                        aria-label="Search shops by shop name, hardware name, manager, or phone"
+                        style={styles.hardwareSearchInput}
+                      />
+                    </label>
+                    <span style={styles.hardwareSearchCount}>{filteredHardwareTenants.length} of {tenants.length} shops</span>
+                  </div>
+                  {filteredHardwareTenants.length === 0 ? (
+                    <div style={styles.hardwareEmpty}>No shops match “{hardwareSearch}”.</div>
+                  ) : (
+                    <div style={styles.hardwareCardsGrid}>
+                  {filteredHardwareTenants.map((tenant) => {
+                    const tenantId = tenant._id || tenant.id;
+                    const tenantUsers = hardwareManagers.filter((manager) => (manager.tenantId || manager.tenant_id) === tenantId);
+                    const manager = tenant.registeredManagerInfo || tenantUsers[0] || {};
+                    const status = String(tenant.status || 'active').toLowerCase();
+                    const statusStyle = status === 'active'
+                      ? styles.hardwareStatusActive
+                      : status === 'pending'
+                        ? styles.hardwareStatusPending
+                        : styles.hardwareStatusMuted;
+                    const displayShopName = String(tenant.shopName || '').trim()
+                      || manager.fullName
+                      || manager.username
+                      || tenant.hardwareName
+                      || tenant.name
+                      || 'Shop name not set';
 
-                        return (
-                          <tr key={tenant._id || tenant.id}>
-                            <td style={styles.hardwareTableCell}>{tenant.hardwareName || tenant.name || 'Not provided'}</td>
-                            <td style={styles.hardwareTableCell}>{tenant.name || 'Not provided'}</td>
-                            <td style={styles.hardwareTableCell}>{tenant.registeredManagerInfo?.fullName || tenant.registeredManagerInfo?.username || tenant.ownerInfo?.fullName || tenant.ownerInfo?.username || 'Not provided'}</td>
-                            <td style={styles.hardwareTableCell}>{tenant.registeredManagerInfo?.email || tenant.ownerInfo?.email || 'Not provided'}</td>
-                            <td style={styles.hardwareTableCell}>{tenant.registeredManagerInfo?.phone || tenant.ownerInfo?.phone || 'Not provided'}</td>
-                            <td style={styles.hardwareTableCell}>{userSummary}</td>
-                            <td style={styles.hardwareTableCell}>{tenant.activeSalesAccountCount || 0}</td>
-                            <td style={styles.hardwareTableCell}>{tenant.status || 'active'}</td>
-                            <td style={styles.hardwareTableCell}>
-                              <div>{tenant.subscriptionAccess?.status || 'legacy'}</div>
-                              {tenant.subscriptionAccess?.expiresAt && <small>Expires {formatDate(tenant.subscriptionAccess.expiresAt)}</small>}
-                            </td>
-                            <td style={styles.hardwareTableCell}>{formatDate(tenant.createdAt || tenant.created_at)}</td>
-                            <td style={styles.hardwareTableCell}>
-                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                <button type="button" style={styles.secondaryButton} onClick={() => handleSubscriptionRenewal(tenant._id || tenant.id)}>
-                                  Activate / renew
-                                </button>
-                                {tenantUsers.map((manager) => (
-                                  <button
-                                    key={manager.id || manager._id}
-                                    type="button"
-                                    style={styles.secondaryButton}
-                                    onClick={() => handleResetManagerPassword(manager.id || manager._id)}
-                                  >
-                                    Reset password
-                                  </button>
-                                ))}
-                                {tenant.status !== 'suspended' && tenant.status !== 'deleted' && (
-                                  <button type="button" style={styles.secondaryButton} onClick={() => handleTenantAction(tenant._id || tenant.id, 'suspend')}>Suspend</button>
-                                )}
-                                {tenant.status === 'suspended' && (
-                                  <button type="button" style={styles.secondaryButton} onClick={() => handleTenantAction(tenant._id || tenant.id, 'restore')}>Restore</button>
-                                )}
-                                {tenant.status !== 'deleted' && (
-                                  <button type="button" style={styles.deleteButton} onClick={() => openDeleteModal(tenant._id || tenant.id, 'tenant')}>Delete</button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                    return (
+                      <article key={tenantId} style={styles.hardwareCard}>
+                        <header style={styles.hardwareCardHeader}>
+                          <div style={styles.hardwareCardIdentity}>
+                            <span style={styles.hardwareEyebrow}>SHOP</span>
+                            <h3 style={styles.hardwareShopName}>{displayShopName}</h3>
+                            <span style={styles.hardwareAppName}>{tenant.hardwareName || tenant.name || 'Smart Inventory App'}</span>
+                          </div>
+                          <span style={{ ...styles.hardwareStatus, ...statusStyle }}>{status}</span>
+                        </header>
+
+                        <div style={styles.shopNameEditor}>
+                          <label style={styles.hardwareDetailLabel} htmlFor={`shop-name-${tenantId}`}>Shop name</label>
+                          <div style={styles.shopNameEditorRow}>
+                            <input
+                              id={`shop-name-${tenantId}`}
+                              value={shopNameDrafts[tenantId] ?? tenant.shopName ?? ''}
+                              onChange={(event) => setShopNameDrafts((current) => ({ ...current, [tenantId]: event.target.value }))}
+                              maxLength={120}
+                              style={styles.shopNameInput}
+                              placeholder={`Blank uses ${manager.fullName || manager.username || 'manager name'}`}
+                            />
+                            <button type="button" style={styles.shopNameSaveButton} disabled={shopNameSavingId === tenantId} onClick={() => handleShopNameSave(tenant)}>
+                              {shopNameSavingId === tenantId ? 'Saving…' : 'Save'}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div style={styles.hardwareDetailsGrid}>
+                          <div><span style={styles.hardwareDetailLabel}>Manager</span><strong style={styles.hardwareDetailValue}>{manager.fullName || manager.username || 'Not assigned'}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>Email</span><strong style={styles.hardwareDetailValue}>{manager.email || tenant.ownerInfo?.email || 'Not provided'}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>Phone</span><strong style={styles.hardwareDetailValue}>{manager.phone || tenant.ownerInfo?.phone || 'Not provided'}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>Owner</span><strong style={styles.hardwareDetailValue}>{tenant.ownerInfo?.fullName || tenant.name || 'Not provided'}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>Manager accounts</span><strong style={styles.hardwareDetailValue}>{tenantUsers.length}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>Sales accounts</span><strong style={styles.hardwareDetailValue}>{Number(tenant.activeSalesAccountCount || 0)}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>Subscription</span><strong style={styles.hardwareDetailValue}>{tenant.subscriptionAccess?.status || 'legacy'}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>Created</span><strong style={styles.hardwareDetailValue}>{formatDate(tenant.createdAt || tenant.created_at)}</strong></div>
+                        </div>
+                        {tenant.subscriptionAccess?.expiresAt && (
+                          <div style={styles.hardwareExpiry}>Subscription expires {formatDate(tenant.subscriptionAccess.expiresAt)}</div>
+                        )}
+
+                        <div style={styles.hardwareActions}>
+                          <button type="button" style={styles.secondaryButton} onClick={() => handleSubscriptionRenewal(tenantId)}>Activate / renew</button>
+                          {tenantUsers.map((linkedManager) => (
+                            <button key={linkedManager.id || linkedManager._id} type="button" style={styles.secondaryButton} onClick={() => handleResetManagerPassword(linkedManager.id || linkedManager._id)}>Reset password</button>
+                          ))}
+                          {tenant.status !== 'suspended' && tenant.status !== 'deleted' && (
+                            <button type="button" style={styles.secondaryButton} onClick={() => handleTenantAction(tenantId, 'suspend')}>Suspend</button>
+                          )}
+                          {tenant.status === 'suspended' && (
+                            <button type="button" style={styles.secondaryButton} onClick={() => handleTenantAction(tenantId, 'restore')}>Restore</button>
+                          )}
+                          {tenant.status !== 'deleted' && (
+                            <button type="button" style={styles.deleteButton} onClick={() => openDeleteModal(tenantId, 'tenant')}>Delete</button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                    </div>
+                  )}
+                </>
               )}
             </UnifiedCard>
           </div>
@@ -1060,30 +1131,175 @@ const styles = {
     fontSize: '13px',
     fontWeight: '600'
   },
-  hardwareTable: {
-    width: '100%',
-    borderCollapse: 'collapse',
-    minWidth: '1080px',
-    backgroundColor: '#fff',
-    borderRadius: '12px',
-    overflow: 'hidden'
+  hardwareCardsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))',
+    gap: '14px',
+    alignItems: 'stretch'
   },
-  hardwareTableHead: {
-    textAlign: 'left',
-    padding: '12px 14px',
-    backgroundColor: '#f8fafc',
-    color: '#374151',
+  hardwareSearchToolbar: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '10px',
+    marginBottom: '14px'
+  },
+  hardwareSearchField: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '9px',
+    width: 'min(100%, 440px)',
+    padding: '0 11px',
+    border: '1px solid #cbd5dc',
+    borderRadius: '6px',
+    backgroundColor: '#ffffff'
+  },
+  hardwareSearchIcon: {
+    color: '#667085',
+    fontSize: '20px',
+    lineHeight: 1
+  },
+  hardwareSearchInput: {
+    width: '100%',
+    minWidth: 0,
+    padding: '10px 0',
+    border: 0,
+    outline: 'none',
+    color: '#243746',
     fontSize: '13px',
-    fontWeight: '700',
-    borderBottom: '1px solid #e5e7eb',
+    backgroundColor: 'transparent'
+  },
+  hardwareSearchCount: {
+    color: '#667085',
+    fontSize: '12px',
     whiteSpace: 'nowrap'
   },
-  hardwareTableCell: {
-    padding: '12px 14px',
-    borderBottom: '1px solid #f1f5f9',
+  hardwareCard: {
+    minWidth: 0,
+    backgroundColor: '#ffffff',
+    border: '1px solid #dce3e8',
+    borderRadius: '8px',
+    padding: '16px'
+  },
+  hardwareCardHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: '12px',
+    paddingBottom: '13px',
+    borderBottom: '1px solid #edf0f2'
+  },
+  hardwareCardIdentity: {
+    display: 'grid',
+    gap: '4px',
+    minWidth: 0
+  },
+  hardwareEyebrow: {
+    color: '#667085',
+    fontSize: '10px',
+    fontWeight: '700',
+    textTransform: 'uppercase'
+  },
+  hardwareShopName: {
+    color: '#172b3a',
+    fontSize: '17px',
+    lineHeight: 1.3,
+    margin: 0,
+    overflowWrap: 'anywhere'
+  },
+  hardwareAppName: {
+    color: '#667085',
+    fontSize: '12px',
+    overflowWrap: 'anywhere'
+  },
+  hardwareStatus: {
+    flexShrink: 0,
+    borderRadius: '4px',
+    fontSize: '11px',
+    fontWeight: '700',
+    padding: '5px 8px',
+    textTransform: 'capitalize'
+  },
+  hardwareStatusActive: {
+    backgroundColor: '#e8f5ef',
+    color: '#147d64'
+  },
+  hardwareStatusPending: {
+    backgroundColor: '#fff4dd',
+    color: '#a96708'
+  },
+  hardwareStatusMuted: {
+    backgroundColor: '#f1f3f5',
+    color: '#667085'
+  },
+  shopNameEditor: {
+    padding: '13px 0',
+    borderBottom: '1px solid #edf0f2'
+  },
+  shopNameEditorRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+  shopNameInput: {
+    minWidth: 0,
+    flex: 1,
+    border: '1px solid #cbd5dc',
+    borderRadius: '5px',
+    padding: '9px 10px',
     fontSize: '13px',
-    color: '#374151',
-    verticalAlign: 'top'
+    color: '#243746'
+  },
+  shopNameSaveButton: {
+    flexShrink: 0,
+    padding: '9px 13px',
+    border: '1px solid #176b61',
+    borderRadius: '5px',
+    backgroundColor: '#176b61',
+    color: '#ffffff',
+    fontSize: '12px',
+    fontWeight: '700',
+    cursor: 'pointer'
+  },
+  hardwareDetailsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: '13px 16px',
+    padding: '14px 0'
+  },
+  hardwareDetailLabel: {
+    display: 'block',
+    color: '#667085',
+    fontSize: '11px',
+    marginBottom: '4px'
+  },
+  hardwareDetailValue: {
+    display: 'block',
+    color: '#243746',
+    fontSize: '12px',
+    fontWeight: '600',
+    overflowWrap: 'anywhere'
+  },
+  hardwareExpiry: {
+    color: '#667085',
+    fontSize: '11px',
+    marginTop: '-4px',
+    paddingBottom: '12px'
+  },
+  hardwareActions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '7px',
+    borderTop: '1px solid #edf0f2',
+    paddingTop: '12px'
+  },
+  hardwareEmpty: {
+    border: '1px dashed #cbd5dc',
+    borderRadius: '8px',
+    color: '#667085',
+    padding: '24px',
+    textAlign: 'center'
   },
   success: {
     backgroundColor: '#d4edda',

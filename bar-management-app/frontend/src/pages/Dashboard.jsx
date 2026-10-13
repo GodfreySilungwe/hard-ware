@@ -6,7 +6,8 @@ import {
   faClock,
   faTools,
   faClipboardCheck,
-  faWarehouse
+  faWarehouse,
+  faSearch
 } from '@fortawesome/free-solid-svg-icons';
 import api from '../api/api';
 import StatsCard from '../components/common/StatsCard';
@@ -43,6 +44,7 @@ const Dashboard = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [todayOrders, setTodayOrders] = useState([]);
   const [hardwareBreakdown, setHardwareBreakdown] = useState([]);
+  const [ownerHardwareSearch, setOwnerHardwareSearch] = useState('');
   const [paymentSummary, setPaymentSummary] = useState([]);
   const [dashboardSummary, setDashboardSummary] = useState(null);
   const [startDate, setStartDate] = useState(getTodayString());
@@ -282,6 +284,23 @@ const Dashboard = () => {
       ?? lowStockProducts.length
   );
 
+  const normalizedHardwareSearch = ownerHardwareSearch.trim().toLowerCase();
+  const hardwareSearchDigits = normalizedHardwareSearch.replace(/\D/g, '');
+  const filteredHardwareBreakdown = hardwareBreakdown.filter((tenant) => {
+    const manager = tenant.registeredManagerInfo || {};
+    const searchableText = [
+      tenant.shopName,
+      tenant.hardwareName,
+      tenant.name,
+      manager.fullName,
+      manager.username
+    ].filter(Boolean).join(' ').toLowerCase();
+    const phoneDigits = String(manager.phone || '').replace(/\D/g, '');
+    return !normalizedHardwareSearch
+      || searchableText.includes(normalizedHardwareSearch)
+      || (hardwareSearchDigits && phoneDigits.includes(hardwareSearchDigits));
+  });
+
   const visibleStats = isOwnerRole
     ? [
         { title: 'Total Smart Inventory App Accounts', value: stats.totalHardwareAccounts, icon: faWarehouse, color: '#2ecc71' },
@@ -466,6 +485,91 @@ const Dashboard = () => {
           </div>
 
         </div>
+      )}
+
+      {isOwnerRole && (
+        <section className="fade-in" style={styles.ownerHardwareSection}>
+          <div style={styles.ownerPortfolioHeader}>
+            <div>
+              <h3 style={styles.panelTitle}>Global hardware overview</h3>
+              <p style={styles.ownerHardwareSubtitle}>Shop identity, manager contact, and account status</p>
+            </div>
+            <span style={styles.panelHint}>
+              {ownerHardwareSearch.trim()
+                ? `${filteredHardwareBreakdown.length} of ${hardwareBreakdown.length} shops`
+                : `${hardwareBreakdown.length} shop${hardwareBreakdown.length === 1 ? '' : 's'}`}
+            </span>
+          </div>
+          {hardwareBreakdown.length === 0 ? (
+            <div style={styles.ownerHardwareEmpty}>No hardware shops are registered yet.</div>
+          ) : (
+            <>
+              <label style={styles.ownerHardwareSearch}>
+                <FontAwesomeIcon icon={faSearch} style={styles.ownerHardwareSearchIcon} />
+                <input
+                  type="search"
+                  value={ownerHardwareSearch}
+                  onChange={(event) => setOwnerHardwareSearch(event.target.value)}
+                  placeholder="Search shop, hardware, manager, or phone"
+                  aria-label="Search shops by shop name, hardware name, manager, or phone"
+                  style={styles.ownerHardwareSearchInput}
+                />
+              </label>
+              {filteredHardwareBreakdown.length === 0 ? (
+                <div style={styles.ownerHardwareEmpty}>No shops match “{ownerHardwareSearch}”.</div>
+              ) : (
+                <div style={styles.ownerHardwareGrid}>
+                  {filteredHardwareBreakdown.map((tenant) => {
+                const manager = tenant.registeredManagerInfo || {};
+                const shopName = String(tenant.shopName || '').trim()
+                  || manager.fullName
+                  || manager.username
+                  || tenant.hardwareName
+                  || tenant.name
+                  || 'Shop name not set';
+                const status = String(tenant.status || 'unknown').toLowerCase();
+                const statusColors = status === 'active'
+                  ? { color: '#147D64', backgroundColor: '#E8F5EF' }
+                  : status === 'pending'
+                    ? { color: '#A96708', backgroundColor: '#FFF4DD' }
+                    : { color: '#667085', backgroundColor: '#F1F3F5' };
+
+                return (
+                  <article key={tenant._id || tenant.id} style={styles.ownerHardwareCard}>
+                    <div style={styles.ownerHardwareCardHeader}>
+                      <div style={styles.ownerHardwareIdentity}>
+                        <span style={styles.ownerHardwareEyebrow}>SHOP</span>
+                        <h4 style={styles.ownerHardwareName}>{shopName}</h4>
+                        <span style={styles.ownerHardwareAppName}>{tenant.hardwareName || tenant.name || 'Smart Inventory App'}</span>
+                      </div>
+                      <span style={{ ...styles.ownerHardwareStatus, ...statusColors }}>{status}</span>
+                    </div>
+                    <div style={styles.ownerHardwareDetails}>
+                      <div>
+                        <span style={styles.ownerHardwareDetailLabel}>Manager</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{manager.fullName || manager.username || 'Not assigned'}</strong>
+                      </div>
+                      <div>
+                        <span style={styles.ownerHardwareDetailLabel}>Email</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{manager.email || 'Not provided'}</strong>
+                      </div>
+                      <div>
+                        <span style={styles.ownerHardwareDetailLabel}>Phone</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{manager.phone || 'Not provided'}</strong>
+                      </div>
+                      <div>
+                        <span style={styles.ownerHardwareDetailLabel}>Sales accounts</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{Number(tenant.activeSalesAccountCount || 0)}</strong>
+                      </div>
+                    </div>
+                  </article>
+                );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </section>
       )}
 
       {dashboardSummary && !isOwnerRole && (
@@ -1005,6 +1109,116 @@ const styles = {
     gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
     gap: '12px',
     marginBottom: '18px'
+  },
+  ownerHardwareSection: {
+    marginTop: '18px'
+  },
+  ownerHardwareSubtitle: {
+    color: '#667085',
+    fontSize: '13px',
+    margin: '5px 0 0'
+  },
+  ownerHardwareSearch: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '9px',
+    width: 'min(100%, 440px)',
+    marginBottom: '14px',
+    padding: '0 11px',
+    border: '1px solid #cbd5dc',
+    borderRadius: '6px',
+    backgroundColor: '#ffffff'
+  },
+  ownerHardwareSearchIcon: {
+    color: '#667085',
+    fontSize: '13px'
+  },
+  ownerHardwareSearchInput: {
+    width: '100%',
+    minWidth: 0,
+    padding: '10px 0',
+    border: 0,
+    outline: 'none',
+    color: '#243746',
+    fontSize: '13px',
+    backgroundColor: 'transparent'
+  },
+  ownerHardwareGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))',
+    gap: '14px'
+  },
+  ownerHardwareCard: {
+    backgroundColor: '#ffffff',
+    border: '1px solid #dce3e8',
+    borderRadius: '8px',
+    padding: '16px',
+    minWidth: 0
+  },
+  ownerHardwareCardHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: '12px',
+    paddingBottom: '14px',
+    borderBottom: '1px solid #edf0f2'
+  },
+  ownerHardwareIdentity: {
+    minWidth: 0,
+    display: 'grid',
+    gap: '4px'
+  },
+  ownerHardwareEyebrow: {
+    color: '#667085',
+    fontSize: '10px',
+    fontWeight: '700'
+  },
+  ownerHardwareName: {
+    color: '#172b3a',
+    fontSize: '16px',
+    lineHeight: 1.3,
+    margin: 0,
+    overflowWrap: 'anywhere'
+  },
+  ownerHardwareAppName: {
+    color: '#667085',
+    fontSize: '12px',
+    overflowWrap: 'anywhere'
+  },
+  ownerHardwareStatus: {
+    borderRadius: '4px',
+    flexShrink: 0,
+    fontSize: '11px',
+    fontWeight: '700',
+    padding: '5px 8px',
+    textTransform: 'capitalize'
+  },
+  ownerHardwareDetails: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: '12px 16px',
+    paddingTop: '14px'
+  },
+  ownerHardwareDetailLabel: {
+    color: '#667085',
+    display: 'block',
+    fontSize: '11px',
+    marginBottom: '4px'
+  },
+  ownerHardwareDetailValue: {
+    color: '#243746',
+    display: 'block',
+    fontSize: '12px',
+    fontWeight: '600',
+    overflowWrap: 'anywhere'
+  },
+  ownerHardwareEmpty: {
+    backgroundColor: '#ffffff',
+    border: '1px dashed #cbd5dc',
+    borderRadius: '8px',
+    color: '#667085',
+    padding: '24px',
+    textAlign: 'center'
   },
   ownerCard: {
     padding: '16px',

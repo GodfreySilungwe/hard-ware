@@ -58,13 +58,13 @@ const Login = () => {
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.formGroup}>
-            <label style={styles.label}>Username</label>
+            <label style={styles.label}>Username or email</label>
             <input
               type="text"
               style={styles.input}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your username"
+              placeholder="Enter username or email"
               required
               onFocus={(e) => {
                 e.currentTarget.style.borderColor = '#e94560';

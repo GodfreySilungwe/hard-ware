@@ -11,6 +11,7 @@ const Applications = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
+    shopName: '',
     tenantName: '',
     hardwareName: '',
     fullName: '',
@@ -61,7 +62,7 @@ const Applications = () => {
   };
 
   const handleOpenDecisionModal = (registration) => {
-    setSelectedRegistration(registration);
+    setSelectedRegistration({ ...registration, shopName: registration.shopName || '' });
     setFormError('');
     setFormSuccess('');
     setShowDecisionModal(true);
@@ -75,14 +76,24 @@ const Applications = () => {
   const handleApproveRegistration = async () => {
     if (!selectedRegistration) return;
 
-    setDecisionLoading(true);
     setFormError('');
     setFormSuccess('');
+    const shopName = String(selectedRegistration.shopName || '').trim();
+    if (!shopName) {
+      setFormError('Shop name is required to approve this registration.');
+      return;
+    }
+    if (shopName.length > 120) {
+      setFormError('Shop name must be 120 characters or fewer.');
+      return;
+    }
+    setDecisionLoading(true);
 
     try {
       const response = await api.post(`/auth/approve-registration/${selectedRegistration._id}`, {
         tenantName: selectedRegistration.tenantName || selectedRegistration.hardwareName || selectedRegistration.fullName || 'Hardware',
         hardwareName: selectedRegistration.hardwareName || selectedRegistration.tenantName || selectedRegistration.fullName || 'Hardware',
+        shopName,
         temporaryPassword: selectedRegistration.password || 'temporary-password'
       });
 
@@ -125,9 +136,9 @@ const Applications = () => {
     setShowConfirmationModal(false);
     setFormLoading(true);
 
-    const { tenantName, hardwareName, fullName, username, email, phone, password, confirmPassword } = formData;
+    const { shopName, tenantName, hardwareName, fullName, username, email, phone, password, confirmPassword } = formData;
 
-    if (!tenantName || !hardwareName || !fullName || !username || !email || !phone || !password || !confirmPassword) {
+    if (!shopName.trim() || !tenantName || !hardwareName || !fullName || !username || !email || !phone || !password || !confirmPassword) {
       setFormError('Please fill in all fields.');
       setFormLoading(false);
       return;
@@ -147,6 +158,7 @@ const Applications = () => {
 
     try {
       const response = await api.post('/auth/create-hardware-manager', {
+        shopName,
         tenantName,
         hardwareName,
         fullName,
@@ -159,6 +171,7 @@ const Applications = () => {
       setFormSuccess(response.data?.message || 'Smart Inventory App account created successfully.');
       setShowConfirmationModal(true);
       setFormData({
+        shopName: '',
         tenantName: '',
         hardwareName: '',
         fullName: '',
@@ -231,6 +244,19 @@ const Applications = () => {
           {formSuccess && <div style={styles.success}>{formSuccess}</div>}
           {formError && <div style={styles.error}>{formError}</div>}
           <form style={styles.form} onSubmit={handleCreateHardware}>
+            <div style={{ ...styles.formSectionTitle, ...styles.formSectionTitleFirst }}>Shop details</div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Shop name *</label>
+              <input
+                name="shopName"
+                value={formData.shopName}
+                onChange={handleFormChange}
+                style={styles.input}
+                placeholder="Enter shop name"
+                maxLength={120}
+                required
+              />
+            </div>
             <div style={styles.formGroup}>
               <label style={styles.label}>Owner Name *</label>
               <input
@@ -253,6 +279,7 @@ const Applications = () => {
                 required
               />
             </div>
+            <div style={styles.formSectionTitle}>Manager account</div>
             <div style={styles.formGroup}>
               <label style={styles.label}>App Manager Name *</label>
               <input
@@ -323,9 +350,11 @@ const Applications = () => {
                 required
               />
             </div>
-            <button type="submit" style={styles.button} disabled={formLoading}>
-              {formLoading ? 'Creating account...' : 'Create Smart Inventory App'}
-            </button>
+            <div style={styles.formActions}>
+              <button type="submit" style={styles.button} disabled={formLoading}>
+                {formLoading ? 'Creating account...' : 'Create Smart Inventory App'}
+              </button>
+            </div>
           </form>
         </UnifiedCard>
       </div>
@@ -352,6 +381,18 @@ const Applications = () => {
             <div style={styles.registrationDetails}>
               <div style={styles.registrationDetail}><strong>Owner:</strong> {selectedRegistration.tenantName || selectedRegistration.hardwareName || 'Not provided'}</div>
               <div style={styles.registrationDetail}><strong>Smart Inventory App:</strong> {selectedRegistration.hardwareName || selectedRegistration.tenantName || 'Not provided'}</div>
+              {formError && <div style={styles.error}>{formError}</div>}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Shop name *</label>
+                <input
+                  value={selectedRegistration.shopName || ''}
+                  onChange={(event) => setSelectedRegistration((current) => ({ ...current, shopName: event.target.value }))}
+                  style={styles.input}
+                  placeholder="Enter shop name"
+                  maxLength={120}
+                  required
+                />
+              </div>
               <div style={styles.registrationDetail}><strong>Email:</strong> {selectedRegistration.email || 'Not provided'}</div>
               <div style={styles.registrationDetail}><strong>Phone:</strong> {selectedRegistration.phone || 'Not provided'}</div>
             </div>
@@ -423,6 +464,57 @@ const styles = {
     gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
     gap: '20px'
   },
+  form: {
+    display: 'grid',
+    gap: '12px',
+    padding: '4px 0'
+  },
+  formSectionTitle: {
+    borderTop: '1px solid #e5eaf0',
+    color: '#176b61',
+    fontSize: '11px',
+    fontWeight: '700',
+    letterSpacing: '0.06em',
+    marginTop: '4px',
+    paddingTop: '14px',
+    textTransform: 'uppercase'
+  },
+  formSectionTitleFirst: {
+    borderTop: 0,
+    marginTop: 0,
+    paddingTop: '4px'
+  },
+  formGroup: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(100px, 0.8fr) minmax(0, 1.6fr)',
+    alignItems: 'center',
+    gap: '12px'
+  },
+  label: {
+    color: '#344054',
+    fontSize: '12px',
+    fontWeight: '600',
+    lineHeight: 1.35,
+    textAlign: 'right'
+  },
+  input: {
+    boxSizing: 'border-box',
+    width: '100%',
+    minWidth: 0,
+    border: '1px solid #cbd5dc',
+    borderRadius: '6px',
+    backgroundColor: '#fff',
+    color: '#243746',
+    fontSize: '13px',
+    padding: '10px 11px',
+    outline: 'none',
+    boxShadow: '0 1px 2px rgba(16, 24, 40, 0.04)'
+  },
+  formActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    marginTop: '4px'
+  },
   list: {
     display: 'flex',
     flexDirection: 'column',
@@ -477,15 +569,15 @@ const styles = {
     fontWeight: '700'
   },
   button: {
-    padding: '14px 16px',
-    borderRadius: '12px',
+    padding: '11px 16px',
+    borderRadius: '6px',
     border: 'none',
-    backgroundColor: '#e94560',
+    backgroundColor: '#176b61',
     color: '#fff',
     cursor: 'pointer',
-    fontSize: '16px',
+    fontSize: '13px',
     fontWeight: '700',
-    marginTop: '10px'
+    minWidth: '220px'
   },
   loadingText: {
     color: '#6b7280',

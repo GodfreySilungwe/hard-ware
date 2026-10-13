@@ -28,11 +28,12 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
   const { logout, user } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
   const [cashSessionOpen, setCashSessionOpen] = useState(false);
+  const shopDisplayName = String(user?.shopName || '').trim() || 'Smart Inventory App';
 
   const getRoleLabel = () => {
     if (user?.role === 'owner') return 'Global Owner';
-    if (user?.role === 'hardware-manager') return 'Smart Inventory App';
-    if (user?.role === 'sales') return 'Sales';
+    if (user?.role === 'hardware-manager') return shopDisplayName;
+    if (user?.role === 'sales') return shopDisplayName;
     return 'User';
   };
 
@@ -101,7 +102,6 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
       { path: '/quotations', label: 'Quotations', icon: faFileInvoiceDollar },
       { path: '/quotation-history', label: 'Quotation History', icon: faClipboardCheck },
       { path: '/reports', label: 'Reports', icon: faChartPie },
-      { path: '/settings', label: 'Settings', icon: faCog },
       { path: '/sales-team', label: 'Sales Team', icon: faUsers }
     ],
     sales: [
@@ -122,7 +122,9 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
       <div style={styles.logo}>
         <div style={styles.logoBadge}>🏢</div>
         <div>
-          <div style={styles.logoText}>Smart Inventory App</div>
+          <div style={styles.logoText}>
+            {user?.role === 'hardware-manager' || user?.role === 'sales' ? shopDisplayName : 'Smart Inventory App'}
+          </div>
           <div style={styles.logoSubtext}>Owner Console</div>
         </div>
         {window.innerWidth < 900 && (

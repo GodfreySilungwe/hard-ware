@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 
 const Register = () => {
   const [formData, setFormData] = useState({
+    shopName: '',
     username: '',
     email: '',
     phone: '',
@@ -36,6 +37,12 @@ const Register = () => {
     setError('');
     setSuccess('');
 
+    if (!formData.shopName.trim()) {
+      setError('Shop name is required');
+      setLoading(false);
+      return;
+    }
+
     // Check password match
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
@@ -66,6 +73,7 @@ const Register = () => {
       if (result.success) {
         setSuccess(result.message || 'Registration submitted for owner approval.');
         setFormData({
+          shopName: '',
           username: '',
           email: '',
           phone: '',
@@ -105,6 +113,20 @@ const Register = () => {
         {success && <div style={styles.success}>{success}</div>}
 
         <form onSubmit={handleSubmit} style={styles.form}>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Shop Name *</label>
+            <input
+              type="text"
+              name="shopName"
+              style={styles.input}
+              value={formData.shopName}
+              onChange={handleChange}
+              placeholder="Enter your shop name"
+              maxLength={120}
+              required
+            />
+          </div>
+
           <div style={styles.formGroup}>
             <label style={styles.label}>Full Name *</label>
             <input
