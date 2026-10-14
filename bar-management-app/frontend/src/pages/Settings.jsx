@@ -925,10 +925,16 @@ const Settings = ({ initialMenu = 'settings' }) => {
                           <div><span style={styles.hardwareDetailLabel}>Email</span><strong style={styles.hardwareDetailValue}>{manager.email || tenant.ownerInfo?.email || 'Not provided'}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Phone</span><strong style={styles.hardwareDetailValue}>{manager.phone || tenant.ownerInfo?.phone || 'Not provided'}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Owner</span><strong style={styles.hardwareDetailValue}>{tenant.ownerInfo?.fullName || tenant.name || 'Not provided'}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>District</span><strong style={styles.hardwareDetailValue}>{tenant.district || 'Not provided'}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>Trading center</span><strong style={styles.hardwareDetailValue}>{tenant.tradingCenter || 'Not provided'}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Manager accounts</span><strong style={styles.hardwareDetailValue}>{tenantUsers.length}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Sales accounts</span><strong style={styles.hardwareDetailValue}>{Number(tenant.activeSalesAccountCount || 0)}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Subscription</span><strong style={styles.hardwareDetailValue}>{tenant.subscriptionAccess?.status || 'legacy'}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Created</span><strong style={styles.hardwareDetailValue}>{formatDate(tenant.createdAt || tenant.created_at)}</strong></div>
+                        </div>
+                        <div style={styles.hardwareShopDescription}>
+                          <span style={styles.hardwareDetailLabel}>What the shop sells</span>
+                          <strong style={styles.hardwareDetailValue}>{tenant.shopDescription || 'Not provided'}</strong>
                         </div>
                         {tenant.subscriptionAccess?.expiresAt && (
                           <div style={styles.hardwareExpiry}>Subscription expires {formatDate(tenant.subscriptionAccess.expiresAt)}</div>
@@ -1280,6 +1286,10 @@ const styles = {
     fontSize: '12px',
     fontWeight: '600',
     overflowWrap: 'anywhere'
+  },
+  hardwareShopDescription: {
+    borderTop: '1px solid #edf0f2',
+    padding: '12px 0'
   },
   hardwareExpiry: {
     color: '#667085',

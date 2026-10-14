@@ -561,6 +561,18 @@ const Dashboard = () => {
                         <span style={styles.ownerHardwareDetailLabel}>Sales accounts</span>
                         <strong style={styles.ownerHardwareDetailValue}>{Number(tenant.activeSalesAccountCount || 0)}</strong>
                       </div>
+                      <div>
+                        <span style={styles.ownerHardwareDetailLabel}>District</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{tenant.district || 'Not provided'}</strong>
+                      </div>
+                      <div>
+                        <span style={styles.ownerHardwareDetailLabel}>Trading center</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{tenant.tradingCenter || 'Not provided'}</strong>
+                      </div>
+                    </div>
+                    <div style={styles.ownerHardwareDescription}>
+                      <span style={styles.ownerHardwareDetailLabel}>What the shop sells</span>
+                      <strong style={styles.ownerHardwareDetailValue}>{tenant.shopDescription || 'Not provided'}</strong>
                     </div>
                   </article>
                 );
@@ -1198,6 +1210,10 @@ const styles = {
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     gap: '12px 16px',
     paddingTop: '14px'
+  },
+  ownerHardwareDescription: {
+    borderTop: '1px solid #edf0f2',
+    paddingTop: '12px'
   },
   ownerHardwareDetailLabel: {
     color: '#667085',

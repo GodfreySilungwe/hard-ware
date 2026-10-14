@@ -12,6 +12,9 @@ const Applications = () => {
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
     shopName: '',
+    district: '',
+    tradingCenter: '',
+    shopDescription: '',
     tenantName: '',
     hardwareName: '',
     fullName: '',
@@ -62,7 +65,13 @@ const Applications = () => {
   };
 
   const handleOpenDecisionModal = (registration) => {
-    setSelectedRegistration({ ...registration, shopName: registration.shopName || '' });
+    setSelectedRegistration({
+      ...registration,
+      shopName: registration.shopName || '',
+      district: registration.district || '',
+      tradingCenter: registration.tradingCenter || '',
+      shopDescription: registration.shopDescription || ''
+    });
     setFormError('');
     setFormSuccess('');
     setShowDecisionModal(true);
@@ -79,8 +88,15 @@ const Applications = () => {
     setFormError('');
     setFormSuccess('');
     const shopName = String(selectedRegistration.shopName || '').trim();
+    const district = String(selectedRegistration.district || '').trim();
+    const tradingCenter = String(selectedRegistration.tradingCenter || '').trim();
+    const shopDescription = String(selectedRegistration.shopDescription || '').trim();
     if (!shopName) {
       setFormError('Shop name is required to approve this registration.');
+      return;
+    }
+    if (!district || !tradingCenter || !shopDescription) {
+      setFormError('District, trading center, and a description of what the shop sells are required.');
       return;
     }
     if (shopName.length > 120) {
@@ -94,6 +110,9 @@ const Applications = () => {
         tenantName: selectedRegistration.tenantName || selectedRegistration.hardwareName || selectedRegistration.fullName || 'Hardware',
         hardwareName: selectedRegistration.hardwareName || selectedRegistration.tenantName || selectedRegistration.fullName || 'Hardware',
         shopName,
+        district,
+        tradingCenter,
+        shopDescription,
         temporaryPassword: selectedRegistration.password || 'temporary-password'
       });
 
@@ -136,9 +155,9 @@ const Applications = () => {
     setShowConfirmationModal(false);
     setFormLoading(true);
 
-    const { shopName, tenantName, hardwareName, fullName, username, email, phone, password, confirmPassword } = formData;
+    const { shopName, district, tradingCenter, shopDescription, tenantName, hardwareName, fullName, username, email, phone, password, confirmPassword } = formData;
 
-    if (!shopName.trim() || !tenantName || !hardwareName || !fullName || !username || !email || !phone || !password || !confirmPassword) {
+    if (!shopName.trim() || !district.trim() || !tradingCenter.trim() || !shopDescription.trim() || !tenantName || !hardwareName || !fullName || !username || !email || !phone || !password || !confirmPassword) {
       setFormError('Please fill in all fields.');
       setFormLoading(false);
       return;
@@ -159,6 +178,9 @@ const Applications = () => {
     try {
       const response = await api.post('/auth/create-hardware-manager', {
         shopName,
+        district,
+        tradingCenter,
+        shopDescription,
         tenantName,
         hardwareName,
         fullName,
@@ -172,6 +194,9 @@ const Applications = () => {
       setShowConfirmationModal(true);
       setFormData({
         shopName: '',
+        district: '',
+        tradingCenter: '',
+        shopDescription: '',
         tenantName: '',
         hardwareName: '',
         fullName: '',
@@ -256,6 +281,18 @@ const Applications = () => {
                 maxLength={120}
                 required
               />
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>District *</label>
+              <input name="district" value={formData.district} onChange={handleFormChange} style={styles.input} placeholder="Enter district" maxLength={100} required />
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Trading center *</label>
+              <input name="tradingCenter" value={formData.tradingCenter} onChange={handleFormChange} style={styles.input} placeholder="Enter trading center" maxLength={120} required />
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>What the shop sells *</label>
+              <textarea name="shopDescription" value={formData.shopDescription} onChange={handleFormChange} style={styles.input} placeholder="Briefly describe the products sold" maxLength={300} rows={3} required />
             </div>
             <div style={styles.formGroup}>
               <label style={styles.label}>Owner Name *</label>
@@ -392,6 +429,18 @@ const Applications = () => {
                   maxLength={120}
                   required
                 />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>District *</label>
+                <input value={selectedRegistration.district || ''} onChange={(event) => setSelectedRegistration((current) => ({ ...current, district: event.target.value }))} style={styles.input} placeholder="Enter district" maxLength={100} required />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Trading center *</label>
+                <input value={selectedRegistration.tradingCenter || ''} onChange={(event) => setSelectedRegistration((current) => ({ ...current, tradingCenter: event.target.value }))} style={styles.input} placeholder="Enter trading center" maxLength={120} required />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>What the shop sells *</label>
+                <textarea value={selectedRegistration.shopDescription || ''} onChange={(event) => setSelectedRegistration((current) => ({ ...current, shopDescription: event.target.value }))} style={styles.input} placeholder="Briefly describe the products sold" maxLength={300} rows={3} required />
               </div>
               <div style={styles.registrationDetail}><strong>Email:</strong> {selectedRegistration.email || 'Not provided'}</div>
               <div style={styles.registrationDetail}><strong>Phone:</strong> {selectedRegistration.phone || 'Not provided'}</div>

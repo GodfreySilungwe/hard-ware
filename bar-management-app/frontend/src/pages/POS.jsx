@@ -346,7 +346,7 @@ const POS = () => {
     : displayedProducts;
 
   return (
-    <PageContainer title="🛒 Point of Sale">
+    <PageContainer title="🛒 Point of Sale" className="pos-page-container">
       <DeleteConfirmModal
         open={clearCartOpen}
         title="Clear cart"
@@ -361,6 +361,9 @@ const POS = () => {
       <style>{`
         .pos-mobile-sticky-total {
           display: none;
+        }
+        .pos-mobile-product-section .mobile-card > h3 {
+          text-align: center;
         }
 
         @media (max-width: 1024px) {
@@ -377,11 +380,21 @@ const POS = () => {
         }
 
         @media (max-width: 768px) {
+          .pos-page-container > .headerBar {
+            display: none !important;
+          }
+          .pos-page-container > .page-content {
+            padding-top: 94px !important;
+          }
           .pos-mobile-sticky-total {
             display: flex !important;
-          }
-          .pos-mobile-stack {
-            padding-bottom: 92px;
+            top: 76px !important;
+            right: 50px !important;
+            bottom: auto !important;
+            left: 50px !important;
+            min-height: 94px;
+            box-sizing: border-box;
+            padding: 18px 22px;
           }
           .pos-mobile-stack {
             grid-template-columns: 1fr !important;
@@ -411,6 +424,16 @@ const POS = () => {
         }
 
         @media (max-width: 480px) {
+          .pos-page-container > .page-content {
+            padding-top: 76px !important;
+          }
+          .pos-mobile-sticky-total {
+            top: 66px !important;
+            right: 34px !important;
+            left: 34px !important;
+            min-height: 76px;
+            padding: 14px;
+          }
           .pos-mobile-product-grid {
             grid-template-columns: 1fr !important;
             max-height: 500px !important;

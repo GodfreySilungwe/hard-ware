@@ -5,6 +5,9 @@ import { useAuth } from '../context/AuthContext';
 const Register = () => {
   const [formData, setFormData] = useState({
     shopName: '',
+    district: '',
+    tradingCenter: '',
+    shopDescription: '',
     username: '',
     email: '',
     phone: '',
@@ -42,6 +45,11 @@ const Register = () => {
       setLoading(false);
       return;
     }
+    if (!formData.district.trim() || !formData.tradingCenter.trim() || !formData.shopDescription.trim()) {
+      setError('District, trading center, and a description of what the shop sells are required.');
+      setLoading(false);
+      return;
+    }
 
     // Check password match
     if (formData.password !== formData.confirmPassword) {
@@ -74,6 +82,9 @@ const Register = () => {
         setSuccess(result.message || 'Registration submitted for owner approval.');
         setFormData({
           shopName: '',
+          district: '',
+          tradingCenter: '',
+          shopDescription: '',
           username: '',
           email: '',
           phone: '',
@@ -123,6 +134,48 @@ const Register = () => {
               onChange={handleChange}
               placeholder="Enter your shop name"
               maxLength={120}
+              required
+            />
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>District *</label>
+            <input
+              type="text"
+              name="district"
+              style={styles.input}
+              value={formData.district}
+              onChange={handleChange}
+              placeholder="Enter district"
+              maxLength={100}
+              required
+            />
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Trading Center *</label>
+            <input
+              type="text"
+              name="tradingCenter"
+              style={styles.input}
+              value={formData.tradingCenter}
+              onChange={handleChange}
+              placeholder="Enter trading center"
+              maxLength={120}
+              required
+            />
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>What the shop sells *</label>
+            <textarea
+              name="shopDescription"
+              style={styles.input}
+              value={formData.shopDescription}
+              onChange={handleChange}
+              placeholder="Briefly describe the products sold"
+              maxLength={300}
+              rows={3}
               required
             />
           </div>

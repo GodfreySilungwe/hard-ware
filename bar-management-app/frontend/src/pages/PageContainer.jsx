@@ -1,6 +1,6 @@
-const PageContainer = ({ children, title }) => {
+const PageContainer = ({ children, title, className = '' }) => {
   return (
-    <div className="page-shell" style={styles.container}>
+    <div className={`page-shell ${className}`.trim()} style={styles.container}>
       {title && (
         <div className="headerBar" style={styles.headerBar}>
           <div>
