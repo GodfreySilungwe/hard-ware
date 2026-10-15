@@ -20,7 +20,7 @@ const getPaymentMethodLabel = (method) => {
 const Orders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('today');
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
   const [hasMore, setHasMore] = useState(false);
@@ -53,20 +53,24 @@ const Orders = () => {
       const params = { page: currentPage, limit };
       let endpoint = '/orders';
 
-      if (filter === 'today') {
+      if (filter === 'today' || filter === 'month' || filter === 'year') {
         const now = new Date();
-        const startLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        const startLocal = filter === 'year'
+          ? new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0)
+          : filter === 'month'
+            ? new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
+            : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
         const endLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
         params.startDateUtc = startLocal.toISOString();
         params.endDateUtc = endLocal.toISOString();
       }
 
-      if (startDate) {
+      if (filter === 'custom' && startDate) {
         const [ys, ms, ds] = startDate.split('-').map((p) => Number(p));
         const sLocal = new Date(ys, ms - 1, ds, 0, 0, 0, 0);
         params.startDateUtc = sLocal.toISOString();
       }
-      if (endDate) {
+      if (filter === 'custom' && endDate) {
         const [ye, me, de] = endDate.split('-').map((p) => Number(p));
         const eLocal = new Date(ye, me - 1, de, 23, 59, 59, 999);
         params.endDateUtc = eLocal.toISOString();
@@ -114,14 +118,22 @@ const Orders = () => {
 
   const handleDateApply = () => {
     setPage(1);
-    loadOrders();
+    loadOrders(1);
   };
 
-  const handleClearDates = () => {
+  const handlePeriodChange = (period) => {
+    setFilter(period);
+    setPage(1);
+    if (period === 'custom') {
+      if (!startDate || !endDate) {
+        const today = formatLocalDateString(new Date());
+        setStartDate(today);
+        setEndDate(today);
+      }
+      return;
+    }
     setStartDate('');
     setEndDate('');
-    setPage(1);
-    loadOrders();
   };
 
   const handleReverseOrder = async () => {
@@ -206,44 +218,20 @@ const Orders = () => {
       <div style={styles.header}>
         <div>
           <p style={styles.subtitle}>View all orders and transactions</p>
-          <div style={styles.dateFilterRow}>
-            <label style={styles.dateInputLabel}>
-              From
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                style={styles.dateInput}
-              />
-            </label>
-            <label style={styles.dateInputLabel}>
-              To
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                style={styles.dateInput}
-              />
-            </label>
-            <button style={styles.applyBtn} onClick={handleDateApply}>Apply</button>
-            <button style={styles.clearBtn} onClick={handleClearDates}>Clear</button>
-          </div>
         </div>
-        <div style={styles.filters}>
-          {['all', 'today'].map((filterOption, index) => (
+        <div className="orders-period-controls">
+          <div style={styles.filters} className="orders-period-filter">
+          {['all', 'today', 'month', 'year', 'custom'].map((filterOption, index) => (
             <button
               key={filterOption}
+              type="button"
+              aria-pressed={filter === filterOption}
               className={`fade-in delay-${(index % 4) + 1}`}
               style={{
                 ...styles.filterBtn,
                 ...(filter === filterOption ? styles.filterBtnActive : {})
               }}
-              onClick={() => {
-                setFilter(filterOption);
-                setPage(1);
-                setStartDate('');
-                setEndDate('');
-              }}
+              onClick={() => handlePeriodChange(filterOption)}
               onMouseEnter={(e) => {
                 if (filter !== filterOption) {
                   e.currentTarget.style.backgroundColor = '#f0f0f0';
@@ -258,6 +246,35 @@ const Orders = () => {
               {filterOption.charAt(0).toUpperCase() + filterOption.slice(1)}
             </button>
           ))}
+          </div>
+          {filter === 'custom' && (
+            <div className="orders-custom-range" style={styles.dateFilterRow}>
+              <label style={styles.dateInputLabel}>
+                From
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  style={styles.dateInput}
+                />
+              </label>
+              <label style={styles.dateInputLabel}>
+                To
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  style={styles.dateInput}
+                />
+              </label>
+              <button
+                type="button"
+                style={styles.applyBtn}
+                onClick={handleDateApply}
+                disabled={!startDate || !endDate || startDate > endDate}
+              >Apply</button>
+            </div>
+          )}
         </div>
       </div>
 

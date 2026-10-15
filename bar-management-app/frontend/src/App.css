@@ -405,3 +405,72 @@ textarea {
     padding-top: 2px;
   }
 }
+
+.orders-period-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.orders-period-filter {
+  gap: 4px !important;
+  padding: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.orders-period-filter > button {
+  flex: 1 1 auto;
+  min-width: 64px;
+  border-radius: 7px !important;
+  box-shadow: none;
+  font-weight: 700;
+}
+
+.orders-custom-range {
+  align-items: end;
+}
+
+@media (max-width: 640px) {
+  .orders-period-controls {
+    width: 100%;
+  }
+
+  .orders-period-filter {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .orders-period-filter > button {
+    min-width: 0;
+    padding: 8px 2px !important;
+    font-size: 12px !important;
+  }
+
+  .orders-custom-range {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px !important;
+    width: 100%;
+  }
+
+  .orders-custom-range > label {
+    min-width: 0;
+  }
+
+  .orders-custom-range input[type='date'] {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0 !important;
+    padding: 8px 4px !important;
+    font-size: 12px;
+  }
+
+  .orders-custom-range > button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}

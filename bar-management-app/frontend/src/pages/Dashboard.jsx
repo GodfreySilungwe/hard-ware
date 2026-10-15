@@ -342,7 +342,7 @@ const Dashboard = () => {
   return (
     <PageContainer title="📊 Dashboard">
       {/* Executive Welcome Section */}
-      <div style={styles.welcomeSection}>
+      <div style={styles.welcomeSection} className="dashboard-welcome-section">
         <div style={styles.heroPanel}>
           <div>
             <p style={styles.eyebrow}>Executive overview</p>
@@ -377,7 +377,7 @@ const Dashboard = () => {
       )}
 
       {!isOwnerRole && (
-        <div style={styles.periodFilterBar}>
+        <div style={styles.periodFilterBar} className="dashboard-period-filter-bar">
           <span style={styles.periodLabel}>Period:</span>
           <button
             style={{
@@ -1599,6 +1599,42 @@ responsiveStyles.textContent = `
   .summaryList { display: block; }
   @media (max-width: 639px) {
     .mobile-hidden-handover-card { display: none !important; }
+    .dashboard-welcome-section { display: none; }
+    .dashboard-period-filter-bar {
+      display: grid !important;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 4px !important;
+      padding: 4px !important;
+      margin-bottom: 14px !important;
+      border-radius: 10px !important;
+    }
+    .dashboard-period-filter-bar > span { display: none; }
+    .dashboard-period-filter-bar > button {
+      min-width: 0;
+      padding: 8px 2px !important;
+      border-radius: 7px !important;
+      box-shadow: none !important;
+      font-size: 12px !important;
+    }
+    .dashboard-period-filter-bar .customRangeRow {
+      grid-column: 1 / -1;
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+      gap: 6px !important;
+      margin-top: 4px !important;
+      align-items: center;
+    }
+    .dashboard-period-filter-bar .periodDateInput {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0 !important;
+      padding: 8px 4px !important;
+      font-size: 12px;
+    }
+    .dashboard-period-filter-bar .applyDateButton {
+      padding: 8px 10px !important;
+      white-space: nowrap;
+    }
   }
   @media (min-width: 640px) {
     .handover-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
