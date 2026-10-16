@@ -8,8 +8,11 @@ const {
   buildReportActivityMetrics,
   getReportPaymentLabel,
   buildReportEmailText,
+  buildNoSalesReminderText,
   createSalesPdf,
-  buildRawEmail
+  buildRawEmail,
+  buildRawTextEmail,
+  sendNoSalesReminderForTenant
 } = require('../dailyReportLambda');
 const { buildReportSummary } = require('../lib/orderMetrics');
 
@@ -138,4 +141,65 @@ test('creates a PDF sales report and MIME email attachment', async () => {
   assert.ok(pdf.subarray(0, 4).equals(Buffer.from('%PDF')));
   assert.match(rawMessage, /Content-Type: application\/pdf/);
   assert.match(rawMessage, /filename="report\.pdf"/);
+});
+
+test('builds a setup reminder for a shop with no sales', () => {
+  const window = getReportWindow(new Date('2026-10-12T12:00:00.000Z'), '2026-10-12');
+  const text = buildNoSalesReminderText({ shopName: 'Central Hardware', window });
+
+  assert.match(text, /We did not record sales for Central Hardware/);
+  assert.match(text, /add your products and prices/);
+  assert.match(text, /contact your account administrator or support team/);
+  assert.match(text, /Please do not reply/);
+});
+
+test('claims a no-sales reminder once per tenant and marks a successful send', async () => {
+  const window = getReportWindow(new Date('2026-10-12T12:00:00.000Z'), '2026-10-12');
+  const claimedTenants = new Set();
+  const updates = [];
+  const sends = [];
+  const db = {
+    async createEntityIfAbsent(entityType, data) {
+      assert.equal(entityType, 'dailyReportNoSalesReminder');
+      if (claimedTenants.has(data.id)) return false;
+      claimedTenants.add(data.id);
+      return true;
+    },
+    async updateEntity(...args) {
+      updates.push(args);
+    }
+  };
+  const options = {
+    tenant: { id: 'tenant-1', status: 'active', shopName: 'Central Hardware' },
+    users: [{ tenantId: 'tenant-1', role: 'hardware-manager', email: 'manager@example.com' }],
+    from: 'reports@example.com',
+    window,
+    db,
+    async send(payload) {
+      sends.push(payload);
+    }
+  };
+
+  assert.equal(await sendNoSalesReminderForTenant(options), 'sent');
+  assert.equal(await sendNoSalesReminderForTenant(options), 'previously-attempted');
+  assert.equal(sends.length, 1);
+  assert.deepEqual(updates[0].slice(0, 2), ['dailyReportNoSalesReminder', 'tenant-1']);
+  assert.equal(updates[0][2].status, 'sent');
+});
+
+test('no-sales reminder email is plain text and has no PDF attachment', () => {
+  const text = 'Setup help';
+  const raw = buildRawTextEmail({
+    from: 'reports@example.com',
+    to: ['manager@example.com'],
+    cc: ['owner@example.com'],
+    subject: 'Help getting started',
+    text
+  }).toString();
+  const [headers, encodedBody] = raw.split('\r\n\r\n');
+
+  assert.match(headers, /Content-Type: text\/plain; charset=UTF-8/);
+  assert.match(headers, /Cc: owner@example\.com/);
+  assert.doesNotMatch(headers, /application\/pdf/);
+  assert.equal(Buffer.from(encodedBody.replace(/\r\n/g, ''), 'base64').toString('utf8'), text);
 });

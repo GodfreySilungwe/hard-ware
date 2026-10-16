@@ -98,6 +98,32 @@ const buildReportEmailText = ({ shopName, window }) => (
   + 'Attached is the daily sales report.'
 );
 
+const buildNoSalesReminderText = ({ shopName, window }) => (
+  `Hello,\n\n`
+  + `We did not record sales for ${shopName || 'your shop'} during `
+  + `${formatDateTime(window.startDate)} to ${formatDateTime(window.endExclusive)} CAT.\n\n`
+  + 'If you are still getting set up, add your products and prices in the app to start recording sales. '
+  + 'For help getting started, contact your account administrator or support team.\n\n'
+  + 'Please do not reply to this email.\n\n'
+  + 'Support'
+);
+
+const buildRawTextEmail = ({ from, to, cc = [], subject, text }) => {
+  const encodedText = Buffer.from(text, 'utf8').toString('base64').replace(/.{1,76}/g, '$&\r\n');
+  const message = [
+    `From: ${from}`,
+    `To: ${formatEmailHeader(to)}`,
+    ...(formatEmailHeader(cc) ? [`Cc: ${formatEmailHeader(cc)}`] : []),
+    `Subject: ${subject}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    encodedText
+  ].join('\r\n');
+  return Buffer.from(message);
+};
+
 const buildReportActivityMetrics = (orders) => {
   const hourFormatter = new Intl.DateTimeFormat('en-GB', {
     timeZone: REPORT_TIME_ZONE,
@@ -431,6 +457,50 @@ const sendReport = async ({ recipients, from, shopName, pdf, window }) => {
   await sesClient.send(new SendRawEmailCommand({ RawMessage: { Data: rawMessage } }));
 };
 
+const sendNoSalesReminder = async ({ recipients, from, shopName, window }) => {
+  const rawMessage = buildRawTextEmail({
+    from,
+    ...recipients,
+    subject: `Help getting started with ${shopName || 'your shop'}`,
+    text: buildNoSalesReminderText({ shopName, window })
+  });
+  await sesClient.send(new SendRawEmailCommand({ RawMessage: { Data: rawMessage } }));
+};
+
+const sendNoSalesReminderForTenant = async ({
+  tenant,
+  users,
+  from,
+  window,
+  db = dynamodb,
+  send = sendNoSalesReminder
+}) => {
+  const tenantId = String(tenant?._id || tenant?.id || '');
+  if (String(tenant?.status || '').toLowerCase() !== 'active') return 'inactive';
+
+  const recipients = getTenantReportRecipients(tenant, users);
+  if (recipients.to.length === 0) return 'no-recipient';
+
+  const attemptedAt = new Date().toISOString();
+  const claimed = await db.createEntityIfAbsent('dailyReportNoSalesReminder', {
+    id: tenantId,
+    tenantId,
+    recipients,
+    reportDate: window.reportDate,
+    status: 'claimed',
+    attemptedAt
+  });
+  if (!claimed) return 'previously-attempted';
+
+  const shopName = getShopDisplayName(tenant, users);
+  await send({ recipients, from, shopName, window });
+  await db.updateEntity('dailyReportNoSalesReminder', tenantId, {
+    status: 'sent',
+    sentAt: new Date().toISOString()
+  });
+  return 'sent';
+};
+
 const handler = async (event = {}) => {
   const window = getReportWindow(event.time || new Date(), event.reportDate || null);
   const from = String(process.env.SES_FROM_EMAIL || '').trim();
@@ -443,7 +513,14 @@ const handler = async (event = {}) => {
   if (event.tenantId && selectedTenants.length === 0) throw new Error(`Tenant not found: ${event.tenantId}`);
 
   const users = await dynamodb.listEntities('user', { projection: ['_id', 'id', 'tenantId', 'role', 'isActive', 'email', 'fullName', 'username'] });
-  const results = { reportDate: window.reportDate, sent: 0, skipped: 0, failed: [] };
+    const results = {
+      reportDate: window.reportDate,
+      sent: 0,
+      noSalesRemindersSent: 0,
+      noSalesRemindersPreviouslyAttempted: 0,
+      skipped: 0,
+      failed: []
+    };
   let legacyOrders = null;
   let catalogRecords = null;
   for (const tenant of selectedTenants) {
@@ -466,7 +543,16 @@ const handler = async (event = {}) => {
       const orders = await collectTenantOrders(tenantId, window, legacyOrders);
       if (orders.length === 0) {
         results.skipped += 1;
-        console.info('No sales in report window; skipped tenant', tenantId);
+        const reminderResult = await sendNoSalesReminderForTenant({ tenant, users, from, window });
+        if (reminderResult === 'sent') {
+          results.noSalesRemindersSent += 1;
+          console.info('One-time no-sales reminder sent', { tenantId, reportDate: window.reportDate });
+        } else if (reminderResult === 'previously-attempted') {
+          results.noSalesRemindersPreviouslyAttempted += 1;
+          console.info('No-sales reminder already attempted; skipped tenant', tenantId);
+        } else {
+          console.info(`No-sales reminder not sent (${reminderResult}); skipped tenant`, tenantId);
+        }
         continue;
       }
       const recipients = getTenantReportRecipients(tenant, users);
@@ -507,6 +593,9 @@ module.exports = {
   buildReportActivityMetrics,
   getReportPaymentLabel,
   buildReportEmailText,
+  buildNoSalesReminderText,
+  buildRawTextEmail,
+  sendNoSalesReminderForTenant,
   collectTenantOrders,
   createSalesPdf,
   buildRawEmail,

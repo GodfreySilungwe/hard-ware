@@ -209,6 +209,23 @@ async function createEntity(entityType, data) {
   return fromDynamoItem(item);
 }
 
+async function createEntityIfAbsent(entityType, data) {
+  await ensureTableExists();
+  const item = toDynamoItem(entityType, data);
+
+  try {
+    await docClient.send(new PutCommand({
+      TableName: TABLE_NAME,
+      Item: item,
+      ConditionExpression: 'attribute_not_exists(pk)'
+    }));
+    return true;
+  } catch (error) {
+    if (error.name === 'ConditionalCheckFailedException') return false;
+    throw error;
+  }
+}
+
 async function batchCreateEntities(entityType, records) {
   await ensureTableExists();
   const items = records.map((record) => toDynamoItem(entityType, record));
@@ -346,6 +363,7 @@ module.exports = {
   queryByGSI,
   getEntity,
   createEntity,
+  createEntityIfAbsent,
   batchCreateEntities,
   updateEntity,
   deleteEntity,
