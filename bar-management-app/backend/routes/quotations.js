@@ -34,6 +34,7 @@ const sanitizeQuotePayload = (payload = {}) => {
     businessAddress: String(payload.businessAddress || '').trim(),
     businessPhone: String(payload.businessPhone || '').trim(),
     businessEmail: String(payload.businessEmail || '').trim(),
+    hardwareManagerName: String(payload.hardwareManagerName || '').trim(),
     status: String(payload.status || 'draft').trim(),
     items,
     subtotal: items.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.unitPrice) || 0)), 0),
@@ -234,6 +235,7 @@ const buildPdf = (quote) => new Promise((resolve, reject) => {
   doc.moveDown(3);
   doc.fontSize(10).font('Helvetica');
   doc.text('Director');
+  if (quote.hardwareManagerName) doc.text(quote.hardwareManagerName);
   doc.moveDown(2.5);
   doc.text('________________________________________');
   doc.text('Signature');
@@ -306,7 +308,11 @@ router.get('/:id/pdf', protect, async (req, res) => {
     if (!quote) return res.status(404).json({ message: 'Quotation not found' });
     if (!ensureTenantAccess(req, quote)) return res.status(403).json({ message: 'Access denied' });
 
-    const pdfBuffer = await buildPdf(finalizeQuoteTotals(quote));
+    const pdfBuffer = await buildPdf(finalizeQuoteTotals({
+      ...quote,
+      businessName: req.tenant?.shopName || quote.businessName || 'Smart Inventory App',
+      hardwareManagerName: quote.hardwareManagerName || req.user?.fullName || ''
+    }));
     const filename = `quotation-${quote.quoteNumber || 'draft'}.pdf`;
     res.status(200).set({
       'Content-Type': 'application/pdf',

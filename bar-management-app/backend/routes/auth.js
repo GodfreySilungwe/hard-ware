@@ -671,14 +671,15 @@ router.post('/reject-registration/:id', protect, isOwner, async (req, res) => {
 router.post('/create-sales-account', protect, isOwnerOrHardwareManager, async (req, res) => {
   try {
     const { username, email, password, fullName, phone } = req.body || {};
+    const normalizedEmail = String(email || '').trim();
     const tenantId = req.user?.tenantId;
 
-    if (!username || !email || !phone || !password || !fullName) {
-      return res.status(400).json({ message: 'Username, email, phone, password, and full name are required' });
+    if (!username || !phone || !password || !fullName) {
+      return res.status(400).json({ message: 'Username, phone, password, and full name are required' });
     }
 
     const existingUser = await User.findOne({
-      $or: [{ email }, { username }]
+      $or: [{ username }, ...(normalizedEmail ? [{ email: normalizedEmail }] : [])]
     });
 
     if (existingUser) {
@@ -690,7 +691,7 @@ router.post('/create-sales-account', protect, isOwnerOrHardwareManager, async (r
 
     const user = new User({
       username,
-      email,
+      email: normalizedEmail,
       phone,
       password: hashedPassword,
       fullName,
@@ -1227,6 +1228,7 @@ router.post('/login', async (req, res) => {
         fullName: user.fullName,
         role: user.role,
         shopName: tenant?.shopName || null,
+        hardwareName: tenant?.hardwareName || tenant?.name || null,
         tenantStatus,
         suspensionMessage,
         subscription: subscriptionAccess
@@ -1241,9 +1243,19 @@ router.post('/login', async (req, res) => {
 // Get current user
 router.get('/me', protect, async (req, res) => {
   try {
+    const hardwareManager = req.user?.role === 'hardware-manager'
+      ? req.user
+      : req.user?.tenantId
+        ? await User.findOne({ tenantId: req.user.tenantId, role: 'hardware-manager' })
+        : null;
     const userPayload = {
       ...req.user,
       shopName: req.tenant?.shopName || null,
+      hardwareName: req.tenant?.hardwareName || req.tenant?.name || null,
+      hardwareAddress: req.tenant?.address || [req.tenant?.district, req.tenant?.tradingCenter].filter(Boolean).join(', ') || null,
+      hardwareManagerName: hardwareManager?.fullName || null,
+      hardwareManagerEmail: hardwareManager?.email || null,
+      hardwareManagerPhone: hardwareManager?.phone || null,
       tenantStatus: req.tenant?.status || 'active',
       suspensionMessage: getTenantAccessMessage(req.tenant?.status),
       subscription: req.tenant?.subscriptionAccess || getSubscriptionAccess(req.tenant)
