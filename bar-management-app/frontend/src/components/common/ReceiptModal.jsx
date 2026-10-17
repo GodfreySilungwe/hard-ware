@@ -1,4 +1,5 @@
 import { formatPriceMK } from '../../utils/formatPrice';
+import { useAuth } from '../../context/AuthContext';
 
 const getBusinessSettings = () => {
   if (typeof window === 'undefined') return {};
@@ -36,10 +37,11 @@ const getItemName = (item) => {
 };
 
 const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
+  const { user } = useAuth();
   if (!order) return null;
 
   const settings = businessSettings.name ? businessSettings : getBusinessSettings();
-  const businessName = settings.name || 'Smart Inventory App';
+  const businessName = user?.shopName || settings.name || 'Smart Inventory App';
   const businessAddress = settings.address || '';
   const businessPhone = settings.phone || '';
   const businessEmail = settings.email || '';

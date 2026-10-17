@@ -102,6 +102,7 @@ const Sidebar = ({ isMobileOpen = false, onClose = () => {} }) => {
       { path: '/quotations', label: 'Quotations', icon: faFileInvoiceDollar },
       { path: '/quotation-history', label: 'Quotation History', icon: faClipboardCheck },
       { path: '/reports', label: 'Reports', icon: faChartPie },
+      { path: '/settings', label: 'Settings', icon: faCog },
       { path: '/sales-team', label: 'Sales Team', icon: faUsers }
     ],
     sales: [

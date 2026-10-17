@@ -9,6 +9,7 @@ const defaultBusinessSettings = {
   address: '',
   phone: '',
   email: '',
+  hardwareManagerName: '',
   taxCompliant: false
 };
 
@@ -64,7 +65,20 @@ const Quotations = () => {
   const [previewQuote, setPreviewQuote] = useState(null);
 
   useEffect(() => {
-    setBusinessSettings(getBusinessSettings());
+    const localSettings = getBusinessSettings();
+    setBusinessSettings(localSettings);
+    api.get('/auth/me').then(({ data }) => {
+      setBusinessSettings((current) => ({
+        ...current,
+        name: data.shopName || localSettings.name || defaultBusinessSettings.name,
+        address: localSettings.address || data.hardwareAddress || '',
+        phone: localSettings.phone || data.hardwareManagerPhone || data.phone || '',
+        email: localSettings.email || data.hardwareManagerEmail || data.email || '',
+        hardwareManagerName: data.hardwareManagerName || data.fullName || ''
+      }));
+    }).catch((error) => {
+      console.error('Failed to load hardware details for quotation', error);
+    });
     const saved = localStorage.getItem('savedQuotes');
     if (saved) {
       try {
@@ -162,7 +176,24 @@ const Quotations = () => {
   };
 
   const handleSelectProduct = (product) => {
-    addItem(product);
+    setQuote((current) => {
+      const emptyIndex = current.items.findIndex((item) => !item.productId && !String(item.name || '').trim());
+      if (emptyIndex === -1) {
+        return { ...current, items: [...current.items, makeLineItem(product)] };
+      }
+
+      return {
+        ...current,
+        items: current.items.map((item, index) => index === emptyIndex
+          ? {
+            ...item,
+            productId: product?._id || product?.id || '',
+            name: product?.name || '',
+            unitPrice: Number(product?.sellingPrice || product?.costPrice || 0)
+          }
+          : item)
+      };
+    });
     setProductSearch('');
     setSearchResults([]);
   };
@@ -174,6 +205,7 @@ const Quotations = () => {
       businessAddress: businessSettings.address || '',
       businessPhone: businessSettings.phone || '',
       businessEmail: businessSettings.email || '',
+      hardwareManagerName: businessSettings.hardwareManagerName || '',
       status: quote.status || 'draft',
       customerId: quote.customerId || '',
       taxRate: Number(quote.taxRate || 0),
@@ -213,6 +245,7 @@ const Quotations = () => {
           businessAddress: businessSettings.address || '',
           businessPhone: businessSettings.phone || '',
           businessEmail: businessSettings.email || '',
+          hardwareManagerName: businessSettings.hardwareManagerName || '',
           status: quote.status || 'draft',
           customerId: quote.customerId || '',
           taxRate: Number(quote.taxRate || 0),
@@ -262,6 +295,7 @@ const Quotations = () => {
         businessAddress: businessSettings.address || '',
         businessPhone: businessSettings.phone || '',
         businessEmail: businessSettings.email || '',
+        hardwareManagerName: businessSettings.hardwareManagerName || '',
         status: quote.status || 'draft',
         customerId: quote.customerId || '',
         taxRate: Number(quote.taxRate || 0),
@@ -644,6 +678,7 @@ const Quotations = () => {
 
             <div style={styles.signatureBlock}>
               <div style={styles.signatureTitle}>Director</div>
+              {businessSettings.hardwareManagerName && <div>{businessSettings.hardwareManagerName}</div>}
               <div style={styles.signatureLine}>________________________________________</div>
               <div style={styles.signatureLabel}>Signature</div>
             </div>

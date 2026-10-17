@@ -517,7 +517,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
     setMessage('');
     setError('');
 
-    if (!salesAccountForm.fullName || !salesAccountForm.username || !salesAccountForm.email || !salesAccountForm.phone || !salesAccountForm.password) {
+    if (!salesAccountForm.fullName || !salesAccountForm.username || !salesAccountForm.phone || !salesAccountForm.password) {
       setError('❌ Please fill in all sales account fields');
       setTimeout(() => setError(''), 3000);
       setLoading(false);
@@ -542,7 +542,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
       const response = await api.post('/auth/create-sales-account', {
         fullName: salesAccountForm.fullName,
         username: salesAccountForm.username,
-        email: salesAccountForm.email,
+        email: salesAccountForm.email.trim() || undefined,
         phone: salesAccountForm.phone,
         password: salesAccountForm.password
       });
@@ -579,10 +579,9 @@ const Settings = ({ initialMenu = 'settings' }) => {
         { id: 'settings', label: '⚙️ Settings' },
         { id: 'hardware', label: '🏢 Management' }
       ]
-    : [
-        { id: 'settings', label: '⚙️ Settings' },
-        { id: 'sales-team', label: '👥 Sales Team' }
-      ];
+    : initialMenu === 'sales-team'
+      ? [{ id: 'sales-team', label: '👥 Sales Team' }]
+      : [{ id: 'settings', label: '⚙️ Settings' }];
 
   useEffect(() => {
     if (!menuItems.some((item) => item.id === activeMenu)) {
@@ -798,8 +797,8 @@ const Settings = ({ initialMenu = 'settings' }) => {
                   <input type="text" required style={styles.input} value={salesAccountForm.username} onChange={(e) => setSalesAccountForm({ ...salesAccountForm, username: e.target.value })} />
                 </div>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Email *</label>
-                  <input type="email" required style={styles.input} value={salesAccountForm.email} onChange={(e) => setSalesAccountForm({ ...salesAccountForm, email: e.target.value })} />
+                  <label style={styles.label}>Email</label>
+                  <input type="email" style={styles.input} value={salesAccountForm.email} onChange={(e) => setSalesAccountForm({ ...salesAccountForm, email: e.target.value })} />
                 </div>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Phone *</label>
