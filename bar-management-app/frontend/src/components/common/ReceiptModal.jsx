@@ -1,16 +1,7 @@
-import { formatPriceMK } from '../../utils/formatPrice';
+import { formatPrice } from '../../utils/formatPrice';
+import { DEFAULT_BUSINESS_SETTINGS } from '../../utils/businessSettings';
 import { useAuth } from '../../context/AuthContext';
-
-const getBusinessSettings = () => {
-  if (typeof window === 'undefined') return {};
-  try {
-    const saved = localStorage.getItem('businessSettings');
-    return saved ? JSON.parse(saved) : {};
-  } catch (err) {
-    console.error('Failed to parse business settings for receipt:', err);
-    return {};
-  }
-};
+import { createPortal } from 'react-dom';
 
 const getItemName = (item) => {
   if (!item) return 'Unknown';
@@ -40,19 +31,21 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
   const { user } = useAuth();
   if (!order) return null;
 
-  const settings = businessSettings.name ? businessSettings : getBusinessSettings();
-  const businessName = user?.shopName || settings.name || 'Smart Inventory App';
+  const settings = { ...DEFAULT_BUSINESS_SETTINGS, ...businessSettings };
+  const businessName = settings.name || user?.shopName || 'Smart Inventory App';
   const businessAddress = settings.address || '';
   const businessPhone = settings.phone || '';
   const businessEmail = settings.email || '';
+  const taxRate = Number(order.taxRate ?? settings.taxRate);
+  const formatReceiptPrice = (amount) => `${settings.currency === 'MWK' ? 'MK' : settings.currency} ${formatPrice(amount)}`;
 
   const handlePrint = () => {
     window.print();
   };
 
-  return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+  return createPortal(
+    <div className="receipt-overlay" style={styles.overlay} onClick={onClose}>
+      <div className="receipt-modal" style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <button type="button" aria-label="Close receipt" style={styles.closeBtn} onClick={onClose}>✕</button>
         
         <div id="receipt" style={styles.receipt}>
@@ -62,6 +55,7 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
             {businessAddress && <p style={styles.address}>{businessAddress}</p>}
             {businessPhone && <p style={styles.phone}>{businessPhone}</p>}
             {businessEmail && <p style={styles.phone}>{businessEmail}</p>}
+            {settings.taxId && <p style={styles.phone}>Tax ID: {settings.taxId}</p>}
             <div style={styles.divider} />
           </div>
 
@@ -72,10 +66,10 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
             <p><strong>Customer:</strong> {order.customer?.name || 'Walk-in Customer'}</p>
             <p><strong>Payment:</strong> {order.paymentMethodLabel || String(order.paymentMethod || '').replace('_', ' ')}</p>
             { (Number(order.paidAmount || 0) > 0) && (
-              <p><strong>Paid:</strong> {formatPriceMK(Number(order.paidAmount || 0))}</p>
+              <p><strong>Paid:</strong> {formatReceiptPrice(Number(order.paidAmount || 0))}</p>
             ) }
             { (String(order.paymentMethod || '').toLowerCase() === 'credit' || Number(order.dueAmount || 0) > 0) && (
-              <p><strong>Due:</strong> {formatPriceMK(Number(order.dueAmount || 0))}</p>
+              <p><strong>Due:</strong> {formatReceiptPrice(Number(order.dueAmount || 0))}</p>
             ) }
           </div>
 
@@ -96,8 +90,8 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
                 <tr key={index}>
                   <td style={styles.tdItem}>{getItemName(item)}</td>
                   <td style={styles.tdQty}>{item.quantity}</td>
-                  <td style={styles.tdPrice}>{formatPriceMK(item.priceAtSale)}</td>
-                  <td style={styles.tdSubtotal}>{formatPriceMK(item.subtotal)}</td>
+                  <td style={styles.tdPrice}>{formatReceiptPrice(item.priceAtSale)}</td>
+                  <td style={styles.tdSubtotal}>{formatReceiptPrice(item.subtotal)}</td>
                 </tr>
               ))}
             </tbody>
@@ -111,42 +105,42 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
               <>
                 <div style={styles.totalRow}>
                   <span>Inclusive Total:</span>
-                  <span>{formatPriceMK(order.totalAmount)}</span>
+                  <span>{formatReceiptPrice(order.totalAmount)}</span>
                 </div>
                 {Number(order.discountAmount || 0) > 0 && (
                   <div style={styles.totalRow}>
                     <span>Discount:</span>
-                    <span>-{formatPriceMK(Number(order.discountAmount || 0))}</span>
+                    <span>-{formatReceiptPrice(Number(order.discountAmount || 0))}</span>
                   </div>
                 )}
                 <div style={styles.totalRow}>
-                  <span>Tax (17.5% incl.):</span>
-                  <span>{formatPriceMK(order.taxAmount || 0)}</span>
+                  <span>Tax ({taxRate}% incl.):</span>
+                  <span>{formatReceiptPrice(order.taxAmount || 0)}</span>
                 </div>
                 <div style={styles.totalRow}>
                   <span>Net (excl. tax):</span>
-                  <span>{formatPriceMK(order.netAmount || (order.totalAmount - (order.taxAmount || 0)))}</span>
+                  <span>{formatReceiptPrice(order.netAmount || (order.totalAmount - (order.taxAmount || 0)))}</span>
                 </div>
                 <div style={styles.totalRowBig}>
                   <span><strong>TOTAL:</strong></span>
-                  <span style={styles.totalAmount}>{formatPriceMK(order.totalAmount)}</span>
+                  <span style={styles.totalAmount}>{formatReceiptPrice(order.totalAmount)}</span>
                 </div>
               </>
             ) : (
               <>
                 <div style={styles.totalRow}>
                   <span>Subtotal:</span>
-                  <span>{formatPriceMK(order.totalAmount + (Number(order.discountAmount || 0) || 0))}</span>
+                  <span>{formatReceiptPrice(order.totalAmount + (Number(order.discountAmount || 0) || 0))}</span>
                 </div>
                 {Number(order.discountAmount || 0) > 0 && (
                   <div style={styles.totalRow}>
                     <span>Discount:</span>
-                    <span>-{formatPriceMK(Number(order.discountAmount || 0))}</span>
+                    <span>-{formatReceiptPrice(Number(order.discountAmount || 0))}</span>
                   </div>
                 )}
                 <div style={styles.totalRowBig}>
                   <span><strong>TOTAL:</strong></span>
-                  <span style={styles.totalAmount}>{formatPriceMK(order.totalAmount)}</span>
+                  <span style={styles.totalAmount}>{formatReceiptPrice(order.totalAmount)}</span>
                 </div>
               </>
             )}
@@ -156,9 +150,7 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
 
           {/* Footer */}
           <div style={styles.footer}>
-            <p style={styles.thankYou}>Thank you for your business!</p>
-            <p style={styles.footerText}>Visit us again 😊</p>
-            <p style={styles.footerText}>Follow us on Facebook: @SmartInventoryApp</p>
+            <p style={styles.thankYou}>{settings.receiptFooter}</p>
           </div>
         </div>
 
@@ -172,7 +164,8 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

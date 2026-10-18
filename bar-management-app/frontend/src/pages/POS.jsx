@@ -5,6 +5,7 @@ import UnifiedCard from '../components/common/UnifiedCard';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import ReceiptModal from '../components/common/ReceiptModal';
 import { formatPriceMK } from '../utils/formatPrice';
+import { DEFAULT_BUSINESS_SETTINGS } from '../utils/businessSettings';
 
 const POS = () => {
   const [loadedProducts, setLoadedProducts] = useState([]);
@@ -22,7 +23,8 @@ const POS = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [receiptOrder, setReceiptOrder] = useState(null);
-  const [businessSettings, setBusinessSettings] = useState({ taxCompliant: false });
+  const [businessSettings, setBusinessSettings] = useState({ ...DEFAULT_BUSINESS_SETTINGS });
+  const [businessSettingsLoaded, setBusinessSettingsLoaded] = useState(false);
   const [clearCartOpen, setClearCartOpen] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [highlightedProductId, setHighlightedProductId] = useState(null);
@@ -37,14 +39,15 @@ const POS = () => {
 
   useEffect(() => {
     loadData();
-    const savedBusiness = localStorage.getItem('businessSettings');
-    if (savedBusiness) {
-      try {
-        setBusinessSettings(JSON.parse(savedBusiness));
-      } catch (err) {
-        console.error('Failed to parse business settings', err);
-      }
-    }
+    api.get('/auth/business-settings')
+      .then((response) => {
+        setBusinessSettings({ ...DEFAULT_BUSINESS_SETTINGS, ...response.data.settings });
+        setBusinessSettingsLoaded(true);
+      })
+      .catch((err) => {
+        console.error('Failed to load business settings:', err);
+        setError(err.response?.data?.message || 'Failed to load business settings');
+      });
 
     return () => {
       if (feedbackTimerRef.current) {
@@ -215,7 +218,10 @@ const POS = () => {
   };
 
   const subtotal = cart.reduce((sum, item) => sum + (item.sellingPrice * item.quantity), 0);
-  const taxRate = 0.175;
+  const configuredTaxRate = Number(businessSettings.taxRate ?? DEFAULT_BUSINESS_SETTINGS.taxRate);
+  const taxRate = Number.isFinite(configuredTaxRate) && configuredTaxRate >= 0 && configuredTaxRate <= 100
+    ? configuredTaxRate / 100
+    : DEFAULT_BUSINESS_SETTINGS.taxRate / 100;
   const discountNumber = Math.max(0, Number(discountAmount) || 0);
   const cappedDiscount = Math.min(discountNumber, subtotal);
   const discountedTotal = Math.max(0, subtotal - cappedDiscount);
@@ -224,6 +230,11 @@ const POS = () => {
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   const checkout = async () => {
+    if (!businessSettingsLoaded) {
+      setError('Business settings are not loaded. Please try again.');
+      return;
+    }
+
     if (cart.length === 0) {
       setError('Cart is empty!');
       setTimeout(() => setError(''), 3000);
@@ -245,6 +256,7 @@ const POS = () => {
         paidAmount: Number(paidAmount) || 0,
         discountAmount: cappedDiscount,
         taxCompliant: businessSettings.taxCompliant,
+        taxRate: configuredTaxRate,
         taxAmount,
         netAmount
       };

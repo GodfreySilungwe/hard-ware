@@ -6,6 +6,7 @@ import Button from '../components/common/Button';
 import AvatarUpload from '../components/common/AvatarUpload';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import { formatPriceMK } from '../utils/formatPrice';
+import { DEFAULT_BUSINESS_SETTINGS } from '../utils/businessSettings';
 import { useAuth } from '../context/AuthContext';
 
 const Settings = ({ initialMenu = 'settings' }) => {
@@ -47,16 +48,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
   });
 
   // Business settings state
-  const [business, setBusiness] = useState({
-    name: 'Global Account Manager',
-    address: '123 Main Street, Lilongwe',
-    phone: '+265 999 123 456',
-    email: 'info@smartinventoryapp.com',
-    taxId: '',
-    taxCompliant: false,
-    currency: 'MWK',
-    receiptFooter: 'Thank you for your business!'
-  });
+  const [business, setBusiness] = useState({ ...DEFAULT_BUSINESS_SETTINGS });
 
   // Load user profile from localStorage on mount
   useEffect(() => {
@@ -500,11 +492,12 @@ const Settings = ({ initialMenu = 'settings' }) => {
     setError('');
 
     try {
-      localStorage.setItem('businessSettings', JSON.stringify(business));
+      const response = await api.put('/auth/business-settings', business);
+      setBusiness({ ...DEFAULT_BUSINESS_SETTINGS, ...response.data.settings });
       setMessage('✅ Business settings saved successfully!');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
-      setError('❌ Failed to save settings');
+      setError(err.response?.data?.message || '❌ Failed to save settings');
       setTimeout(() => setError(''), 3000);
     } finally {
       setLoading(false);
@@ -566,13 +559,42 @@ const Settings = ({ initialMenu = 'settings' }) => {
     }
   };
 
-  // Load business settings from localStorage
+  // Load shared settings for this business account.
   useEffect(() => {
-    const saved = localStorage.getItem('businessSettings');
-    if (saved) {
-      setBusiness(JSON.parse(saved));
-    }
-  }, []);
+    if (authLoading) return undefined;
+
+    let cancelled = false;
+    const loadBusinessSettings = async () => {
+      try {
+        const response = await api.get('/auth/business-settings');
+        let settings = { ...DEFAULT_BUSINESS_SETTINGS, ...response.data.settings };
+
+        if (!response.data.configured && ['hardware-manager', 'owner'].includes(user?.role)) {
+          try {
+            const saved = localStorage.getItem('businessSettings');
+            if (saved) {
+              const legacySettings = { ...DEFAULT_BUSINESS_SETTINGS, ...JSON.parse(saved) };
+              const savedResponse = await api.put('/auth/business-settings', legacySettings);
+              settings = { ...DEFAULT_BUSINESS_SETTINGS, ...savedResponse.data.settings };
+            }
+          } catch (migrationError) {
+            console.warn('Could not migrate locally saved business settings:', migrationError);
+          }
+        }
+
+        if (!cancelled) setBusiness(settings);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.response?.data?.message || 'Failed to load business settings');
+        }
+      }
+    };
+
+    loadBusinessSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, user?.role, user?.tenantId]);
 
   const menuItems = isOwnerRole
     ? [
@@ -742,6 +764,19 @@ const Settings = ({ initialMenu = 'settings' }) => {
                       <option value="R">R - South African Rand</option>
                     </select>
                   </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>VAT rate (%)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      required
+                      style={styles.input}
+                      value={business.taxRate}
+                      onChange={(e) => setBusiness({ ...business, taxRate: e.target.value })}
+                    />
+                  </div>
                   <div style={{...styles.formGroup, gridColumn: '1 / -1'}}>
                     <label style={styles.label}>Receipt Footer Message</label>
                     <input type="text" style={styles.input} value={business.receiptFooter} onChange={(e) => setBusiness({...business, receiptFooter: e.target.value})} placeholder="Thank you for your business!" />
@@ -754,7 +789,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
                         onChange={(e) => setBusiness({ ...business, taxCompliant: e.target.checked })}
                         style={{ width: '16px', height: '16px' }}
                       />
-                      Tax compliant (prices include 17.5% tax)
+                      Tax compliant (prices include VAT)
                     </label>
                     <span style={styles.helperText}>If enabled, receipts will include a tax breakdown for inclusive pricing.</span>
                   </div>

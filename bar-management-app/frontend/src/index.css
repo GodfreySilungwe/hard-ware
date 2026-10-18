@@ -441,7 +441,33 @@ body {
     padding: 0 !important;
     background: white;
     width: 80mm;
+    min-height: 0 !important;
+    height: auto !important;
     overflow: visible;
+  }
+
+  #root {
+    display: none !important;
+  }
+
+  .receipt-overlay {
+    position: static !important;
+    display: block !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+
+  .receipt-modal {
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
   }
 
   body * {
@@ -458,14 +484,22 @@ body {
     top: auto;
     width: 100%;
     max-width: 72mm;
-    margin: 0 auto;
+    margin: 0;
     padding: 0;
     background: white;
     font-family: monospace;
+    font-weight: 500;
     box-sizing: border-box;
     overflow: hidden;
     word-break: break-word;
     overflow-wrap: break-word;
+  }
+
+  #receipt, #receipt * {
+    color: #000 !important;
+    border-color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   #receipt table,
