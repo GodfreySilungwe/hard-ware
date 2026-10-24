@@ -16,6 +16,18 @@ const {
 
 const jwtSecret = process.env.JWT_SECRET || 'secret_key';
 
+const DEFAULT_BUSINESS_SETTINGS = {
+  name: '',
+  address: '',
+  phone: '',
+  email: '',
+  taxId: '',
+  taxCompliant: false,
+  taxRate: 17.5,
+  currency: 'MWK',
+  receiptFooter: 'Thank you for your business!'
+};
+
 function getTenantAccessMessage(status) {
   switch (status) {
     case 'suspended':
@@ -768,6 +780,65 @@ router.delete('/sales-accounts/:id', protect, isHardwareManagerOrOwner, async (r
   } catch (error) {
     console.error('Sales account delete error:', error);
     res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/business-settings', protect, (req, res) => {
+  const savedSettings = req.tenant?.businessSettings || req.user?.businessSettings;
+  const defaultSettings = {
+    ...DEFAULT_BUSINESS_SETTINGS,
+    name: req.tenant?.shopName || req.user?.shopName || ''
+  };
+
+  res.json({
+    settings: { ...defaultSettings, ...(savedSettings || {}) },
+    configured: Boolean(savedSettings)
+  });
+});
+
+router.put('/business-settings', protect, isHardwareManagerOrOwner, async (req, res) => {
+  try {
+    const taxRate = Number(req.body?.taxRate);
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) {
+      return res.status(400).json({ message: 'VAT rate must be between 0 and 100.' });
+    }
+
+    const settings = {
+      name: String(req.body?.name || '').trim(),
+      address: String(req.body?.address || '').trim(),
+      phone: String(req.body?.phone || '').trim(),
+      email: String(req.body?.email || '').trim(),
+      taxId: String(req.body?.taxId || '').trim(),
+      taxCompliant: req.body?.taxCompliant === true,
+      taxRate,
+      currency: String(req.body?.currency || 'MWK').trim(),
+      receiptFooter: String(req.body?.receiptFooter || '').trim()
+    };
+
+    if (req.user?.tenantId) {
+      const tenant = await Tenant.findById(req.user.tenantId);
+      if (!tenant) {
+        return res.status(404).json({ message: 'Tenant not found' });
+      }
+
+      tenant.businessSettings = settings;
+      await tenant.save();
+    } else if (req.user?.role === 'owner') {
+      const owner = await User.findById(req.user.id || req.user._id);
+      if (!owner) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      owner.businessSettings = settings;
+      await owner.save();
+    } else {
+      return res.status(400).json({ message: 'A business account is required to save these settings.' });
+    }
+
+    return res.json({ settings, configured: true });
+  } catch (error) {
+    console.error('Business settings update error:', error);
+    return res.status(500).json({ message: error.message || 'Failed to save business settings' });
   }
 });
 

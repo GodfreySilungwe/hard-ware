@@ -102,7 +102,10 @@ const buildBulkReferenceMaps = async (orders = [], req) => {
 
   const [customers, products] = await Promise.all([
     customerIds.size ? Customer.find({ _id: [...customerIds] }, req) : [],
-    productIds.size ? Product.find({ _id: [...productIds] }, req) : []
+    productIds.size
+      ? Promise.all([...productIds].map((productId) => Product.findById(productId, req)))
+        .then((records) => records.filter(Boolean))
+      : []
   ]);
 
   const customerMap = new Map((customers || []).map((customer) => [getReferenceId(customer), customer]));
@@ -271,7 +274,10 @@ router.get('/', protect, async (req, res) => {
     }));
 
     if (productName) {
-      const matchingProducts = await Product.find({ name: productName }, req);
+      const matchingProducts = req.user?.tenantId
+        ? (await dynamodb.listProductsByTenantGsi2(req.user.tenantId))
+          .filter((product) => product.name === productName)
+        : await Product.find({ name: productName }, req);
       const matchingProductIds = (matchingProducts || []).map((product) => product._id || product.id).filter(Boolean);
       if (matchingProductIds.length === 0) {
         return res.json({ orders: [], totalCount: 0, count: 0, totalPages: 0, page: 1, limit: Number(limit), totalSales: 0, totalProfit: 0, totalSalesNet: 0, totalTax: 0, averageOrderValue: 0, averageItemsPerOrder: 0, totalItems: 0 });
@@ -477,22 +483,16 @@ router.post('/', protect, async (req, res) => {
     }
 
     // Create order - NO createdBy field
-    const taxCompliant = Boolean(req.body?.taxCompliant);
-    const TAX_RATE = 0.175;
-    let taxAmount = Number(req.body?.taxAmount || 0);
-    let netAmount = Number(req.body?.netAmount || 0);
-
-    if (taxCompliant) {
-      if (!Number.isFinite(taxAmount) || taxAmount <= 0) {
-        netAmount = totalAmount / (1 + TAX_RATE);
-        taxAmount = totalAmount - netAmount;
-      } else if (!Number.isFinite(netAmount) || netAmount <= 0) {
-        netAmount = totalAmount - taxAmount;
-      }
-    } else {
-      taxAmount = 0;
-      netAmount = totalAmount;
-    }
+    const businessSettings = req.tenant?.businessSettings || req.user?.businessSettings || {};
+    const taxCompliant = typeof businessSettings.taxCompliant === 'boolean'
+      ? businessSettings.taxCompliant
+      : Boolean(req.body?.taxCompliant);
+    const configuredTaxRate = Number(businessSettings.taxRate ?? req.body?.taxRate ?? 17.5);
+    const taxRate = Number.isFinite(configuredTaxRate) && configuredTaxRate >= 0 && configuredTaxRate <= 100
+      ? configuredTaxRate
+      : 17.5;
+    const netAmount = taxCompliant ? totalAmount / (1 + taxRate / 100) : totalAmount;
+    const taxAmount = taxCompliant ? totalAmount - netAmount : 0;
 
     // compute profit: use netAmount for tax-compliant orders to exclude tax from profit
     const profitBase = (taxCompliant ? netAmount : totalAmount) - totalCost;
@@ -511,6 +511,7 @@ router.post('/', protect, async (req, res) => {
       status: 'completed',
       tenantId: req.user?.tenantId || null,
       taxCompliant,
+      taxRate,
       taxAmount,
       netAmount
     });

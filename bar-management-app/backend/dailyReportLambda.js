@@ -522,7 +522,7 @@ const handler = async (event = {}) => {
       failed: []
     };
   let legacyOrders = null;
-  let catalogRecords = null;
+  let categoryRecords = null;
   for (const tenant of selectedTenants) {
     const tenantId = String(tenant._id || tenant.id);
     if (['suspended', 'deleted'].includes(String(tenant.status || '').toLowerCase())) {
@@ -561,14 +561,15 @@ const handler = async (event = {}) => {
         console.warn('Skipped tenant with no valid daily report recipient', tenantId);
         continue;
       }
-      if (!catalogRecords) {
-        const [products, categories] = await Promise.all([
-          dynamodb.listEntities('product', { projection: ['_id', 'id', 'tenantId', 'name', 'category', 'costPrice'] }),
-          dynamodb.listEntities('category', { projection: ['_id', 'id', 'tenantId', 'name'] })
-        ]);
-        catalogRecords = { products, categories };
+      if (!categoryRecords) {
+        categoryRecords = await dynamodb.listEntities('category', {
+          projection: ['_id', 'id', 'tenantId', 'name']
+        });
       }
-      const lookups = buildReportLookupMaps(tenantId, orders, catalogRecords.products, catalogRecords.categories);
+      const products = await dynamodb.listProductsByTenantGsi2(tenantId, {
+        projection: ['_id', 'id', 'tenantId', 'name', 'category', 'costPrice']
+      });
+      const lookups = buildReportLookupMaps(tenantId, orders, products, categoryRecords);
       const shopName = getShopDisplayName(tenant, users);
       const pdf = await createSalesPdf({ shopName, orders, window, ...lookups });
       await sendReport({ recipients, from, shopName, pdf, window });

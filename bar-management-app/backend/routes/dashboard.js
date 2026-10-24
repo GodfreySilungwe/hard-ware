@@ -157,10 +157,15 @@ router.get('/summary', protect, async (req, res) => {
     const tenantFilter = (records) => (records || []).filter((record) => (
       !req.user?.tenantId || record.tenantId === req.user.tenantId
     ));
-    const [products, purchaseOrders, customers] = await Promise.all([
-      dynamodb.listEntities('product', {
+    const productsPromise = req.user?.tenantId
+      ? dynamodb.listProductsByTenantGsi2(req.user.tenantId, {
         projection: ['_id', 'id', 'tenantId', 'name', 'currentStock', 'costPrice', 'sellingPrice', 'lowStockThreshold', 'reorderLevel']
-      }).then(tenantFilter),
+      })
+      : dynamodb.listEntities('product', {
+        projection: ['_id', 'id', 'tenantId', 'name', 'currentStock', 'costPrice', 'sellingPrice', 'lowStockThreshold', 'reorderLevel']
+      });
+    const [products, purchaseOrders, customers] = await Promise.all([
+      productsPromise.then(tenantFilter),
       dynamodb.listEntities('purchaseorder', {
         projection: ['_id', 'id', 'tenantId', 'createdAt', 'items']
       }).then((records) => tenantFilter(records).filter((record) => {

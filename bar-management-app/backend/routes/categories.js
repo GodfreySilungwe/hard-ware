@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Category = require('../models/Category');
 const Product = require('../models/Product');
+const dynamodb = require('../lib/dynamodb');
 const { protect } = require('../middleware/auth');
 const { canDeleteCategory } = require('../lib/deletionRules');
 
@@ -73,7 +74,12 @@ router.delete('/:id', protect, async (req, res) => {
       return res.status(404).json({ message: 'Category not found' });
     }
 
-    const attachedProducts = await Product.find({ category: category._id || category.id }, req);
+    const attachedProducts = req.user?.tenantId
+      ? await dynamodb.listProductsByTenantGsi2(req.user.tenantId, {
+        categoryId: category._id || category.id,
+        projection: ['id', '_id', 'tenantId', 'category']
+      })
+      : await Product.find({ category: category._id || category.id }, req);
     const { allowed, reason } = canDeleteCategory({ attachedProducts });
     if (!allowed) {
       return res.status(400).json({ message: reason });

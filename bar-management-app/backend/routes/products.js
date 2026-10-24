@@ -9,6 +9,17 @@ const Category = require('../models/Category');
 const dynamodb = require('../lib/dynamodb');
 const { normalizeKey, validateProductRows } = require('../lib/productImport');
 
+const encodeCursor = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+
+const decodeCursor = (cursor) => {
+  if (!cursor) return null;
+  return JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+};
+
+const populateProductCategories = (products, req) => Promise.all(
+  products.map((product) => Product._populateRecord(product, ['category'], req))
+);
+
 const spreadsheetUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -21,18 +32,74 @@ const spreadsheetUpload = multer({
 // Get all products with optional pagination and search
 router.get('/', protect, async (req, res) => {
   try {
-    const { limit, offset, search, category } = req.query;
+    const { limit, offset, search, category, pagination, cursor } = req.query;
     const limitNum = Math.max(0, Number(limit) || 0);
     const offsetNum = Math.max(0, Number(offset) || 0);
     const categoryId = category && category !== 'all' ? category : null;
+    const tenantId = req.user?.tenantId;
 
     const query = {};
     if (categoryId) {
       query.category = categoryId;
     }
 
-    const products = await Product.find(query, req).populate('category', 'name');
-    const scopedProducts = products.filter((product) => !req.user?.tenantId || product.tenantId === req.user.tenantId);
+    if (pagination === 'cursor' && !(search && search.trim())) {
+      const pageLimit = Math.min(limitNum || 20, 100);
+      let pageProducts;
+      let nextCursor;
+
+      if (tenantId) {
+        let exclusiveStartKey;
+        try {
+          exclusiveStartKey = decodeCursor(cursor);
+          if (exclusiveStartKey && (
+            exclusiveStartKey.pk !== 'PRODUCT' ||
+            exclusiveStartKey.GSI2PK !== `TENANT#${tenantId}` ||
+            !String(exclusiveStartKey.GSI2SK || '').startsWith('PRODUCT#CATEGORY#')
+          )) {
+            return res.status(400).json({ message: 'Invalid product cursor' });
+          }
+        } catch (error) {
+          return res.status(400).json({ message: 'Invalid product cursor' });
+        }
+
+        const page = await dynamodb.queryProductsByTenantGsi2(tenantId, {
+          categoryId,
+          limit: pageLimit,
+          exclusiveStartKey
+        });
+        pageProducts = page.items;
+        nextCursor = page.lastEvaluatedKey ? encodeCursor(page.lastEvaluatedKey) : null;
+      } else {
+        const ownerProducts = await Product.find(query, req).populate('category', 'name');
+        let ownerOffset = 0;
+        try {
+          ownerOffset = cursor ? Number(decodeCursor(cursor)) : 0;
+        } catch (error) {
+          return res.status(400).json({ message: 'Invalid product cursor' });
+        }
+        if (!Number.isSafeInteger(ownerOffset) || ownerOffset < 0) {
+          return res.status(400).json({ message: 'Invalid product cursor' });
+        }
+        pageProducts = ownerProducts.slice(ownerOffset, ownerOffset + pageLimit);
+        nextCursor = ownerOffset + pageProducts.length < ownerProducts.length
+          ? encodeCursor(ownerOffset + pageProducts.length)
+          : null;
+      }
+
+      const populatedProducts = tenantId
+        ? await populateProductCategories(pageProducts, req)
+        : pageProducts;
+      return res.json({ products: populatedProducts, nextCursor });
+    }
+
+    const products = tenantId
+      ? await dynamodb.listProductsByTenantGsi2(tenantId, { categoryId })
+      : await Product.find(query, req).populate('category', 'name');
+    const populatedProducts = tenantId
+      ? await populateProductCategories(products, req)
+      : products;
+    const scopedProducts = populatedProducts.filter((product) => !tenantId || product.tenantId === tenantId);
 
     if (search && search.trim().length > 0) {
       const normalized = search.trim().toLowerCase();
@@ -77,12 +144,17 @@ router.get('/', protect, async (req, res) => {
 // Get low stock products
 router.get('/low-stock', protect, async (req, res) => {
   try {
-    const products = await Product.find({
-      $expr: {
-        $lte: ['$currentStock', '$lowStockThreshold']
-      }
-    }, req).populate('category', 'name');
-    const scopedProducts = (products || []).filter((product) => !req.user?.tenantId || product.tenantId === req.user.tenantId);
+    const products = req.user?.tenantId
+      ? await dynamodb.listProductsByTenantGsi2(req.user.tenantId)
+      : await Product.find({
+        $expr: {
+          $lte: ['$currentStock', '$lowStockThreshold']
+        }
+      }, req).populate('category', 'name');
+    const lowStockProducts = req.user?.tenantId
+      ? (await populateProductCategories(products, req)).filter((product) => Number(product.currentStock || 0) <= Number(product.lowStockThreshold || 0))
+      : products;
+    const scopedProducts = (lowStockProducts || []).filter((product) => !req.user?.tenantId || product.tenantId === req.user.tenantId);
     res.json(scopedProducts);
   } catch (error) {
     console.error('Error fetching low stock:', error);
@@ -124,7 +196,10 @@ const importProductRows = async (req, res, rows) => {
     if (!rows.length) return res.status(400).json({ message: 'The workbook contains no product rows' });
     if (rows.length > 1000) return res.status(400).json({ message: 'A maximum of 1,000 products can be imported at once' });
 
-    const [existingProducts, categories] = await Promise.all([Product.find({}, req), Category.find({}, req)]);
+    const existingProductsPromise = req.user?.tenantId
+      ? dynamodb.listProductsByTenantGsi2(req.user.tenantId)
+      : Product.find({}, req);
+    const [existingProducts, categories] = await Promise.all([existingProductsPromise, Category.find({}, req)]);
     const validation = validateProductRows(rows, existingProducts, categories);
     if (validation.errors.length) return res.status(400).json({ message: 'Import validation failed', errors: validation.errors });
 

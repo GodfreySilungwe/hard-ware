@@ -22,6 +22,21 @@ function normalizeRecord(record) {
   return normalized;
 }
 
+function buildProductGsi2Keys(product) {
+  if (!product?.tenantId) return null;
+
+  const categoryId = typeof product.category === 'object'
+    ? product.category?._id || product.category?.id
+    : product.category;
+  const productId = product.id || product._id;
+  const createdAt = product.createdAt || product.updatedAt || 'UNKNOWN';
+
+  return {
+    GSI2PK: `TENANT#${product.tenantId}`,
+    GSI2SK: `PRODUCT#CATEGORY#${categoryId || 'UNCATEGORIZED'}#${createdAt}#${productId || 'UNKNOWN'}`
+  };
+}
+
 function toDynamoItem(entityType, data) {
   const now = new Date().toISOString();
   const entityName = String(entityType).toUpperCase();
@@ -62,6 +77,11 @@ function toDynamoItem(entityType, data) {
     item.GSI1SK = createdAt;
   }
 
+  if (String(entityType).toLowerCase() === 'product') {
+    const gsi2Keys = buildProductGsi2Keys({ ...data, id, createdAt });
+    if (gsi2Keys) Object.assign(item, gsi2Keys);
+  }
+
   return item;
 }
 
@@ -92,21 +112,33 @@ async function ensureTableExists() {
           { AttributeName: 'pk', AttributeType: 'S' },
           { AttributeName: 'sk', AttributeType: 'S' },
           { AttributeName: 'GSI1PK', AttributeType: 'S' },
-          { AttributeName: 'GSI1SK', AttributeType: 'S' }
+          { AttributeName: 'GSI1SK', AttributeType: 'S' },
+          { AttributeName: 'GSI2PK', AttributeType: 'S' },
+          { AttributeName: 'GSI2SK', AttributeType: 'S' }
         ],
         KeySchema: [
           { AttributeName: 'pk', KeyType: 'HASH' },
           { AttributeName: 'sk', KeyType: 'RANGE' }
         ],
         BillingMode: 'PAY_PER_REQUEST',
-        GlobalSecondaryIndexes: [{
-          IndexName: 'GSI1',
-          KeySchema: [
-            { AttributeName: 'GSI1PK', KeyType: 'HASH' },
-            { AttributeName: 'GSI1SK', KeyType: 'RANGE' }
-          ],
-          Projection: { ProjectionType: 'ALL' }
-        }]
+        GlobalSecondaryIndexes: [
+          {
+            IndexName: 'GSI1',
+            KeySchema: [
+              { AttributeName: 'GSI1PK', KeyType: 'HASH' },
+              { AttributeName: 'GSI1SK', KeyType: 'RANGE' }
+            ],
+            Projection: { ProjectionType: 'ALL' }
+          },
+          {
+            IndexName: 'GSI2',
+            KeySchema: [
+              { AttributeName: 'GSI2PK', KeyType: 'HASH' },
+              { AttributeName: 'GSI2SK', KeyType: 'RANGE' }
+            ],
+            Projection: { ProjectionType: 'ALL' }
+          }
+        ]
       }));
     } catch (createError) {
       if (createError?.name !== 'ResourceInUseException') {
@@ -292,6 +324,68 @@ async function findByField(entityType, field, value) {
   return records.find((record) => record[field] === value) || null;
 }
 
+function buildProductGsi2QueryParams(tenantId, options = {}) {
+  if (!tenantId) {
+    throw new Error('tenantId is required for GSI2 product queries');
+  }
+
+  const categoryId = options.categoryId && options.categoryId !== 'all'
+    ? options.categoryId
+    : null;
+  const queryParams = {
+    TableName: TABLE_NAME,
+    IndexName: 'GSI2',
+    KeyConditionExpression: 'GSI2PK = :gsi2pk AND begins_with(GSI2SK, :gsi2skPrefix)',
+    ExpressionAttributeValues: {
+      ':gsi2pk': `TENANT#${tenantId}`,
+      ':gsi2skPrefix': categoryId
+        ? `PRODUCT#CATEGORY#${categoryId}#`
+        : 'PRODUCT#CATEGORY#'
+    },
+    ConsistentRead: false
+  };
+
+  if (Number.isInteger(options.limit) && options.limit > 0) {
+    queryParams.Limit = options.limit;
+  }
+  if (options.exclusiveStartKey) {
+    queryParams.ExclusiveStartKey = options.exclusiveStartKey;
+  }
+  if (Array.isArray(options.projection) && options.projection.length > 0) {
+    const projectionNames = {};
+    const projectionTokens = options.projection.map((field, index) => {
+      const token = `#field${index}`;
+      projectionNames[token] = field;
+      return token;
+    });
+    queryParams.ProjectionExpression = projectionTokens.join(', ');
+    queryParams.ExpressionAttributeNames = projectionNames;
+  }
+
+  return queryParams;
+}
+
+async function queryProductsByTenantGsi2(tenantId, options = {}) {
+  await ensureTableExists();
+  const result = await docClient.send(new QueryCommand(
+    buildProductGsi2QueryParams(tenantId, options)
+  ));
+  return {
+    items: (result.Items || []).map(fromDynamoItem),
+    lastEvaluatedKey: result.LastEvaluatedKey
+  };
+}
+
+async function listProductsByTenantGsi2(tenantId, options = {}) {
+  await ensureTableExists();
+  const queryParams = buildProductGsi2QueryParams(tenantId, options);
+  const items = await queryAllPages(
+    (params) => docClient.send(new QueryCommand(params)),
+    queryParams
+  );
+  return items.map(fromDynamoItem);
+}
+
 function buildGsiKeyConditionExpression(startDate, endDate) {
   const conditions = ['GSI1PK = :gsi1pk'];
   if (startDate && endDate) {
@@ -368,7 +462,11 @@ module.exports = {
   updateEntity,
   deleteEntity,
   findByField,
+  buildProductGsi2QueryParams,
+  queryProductsByTenantGsi2,
+  listProductsByTenantGsi2,
   buildGsiKeyConditionExpression,
+  buildProductGsi2Keys,
   queryAllPages,
   fromDynamoItem,
   toDynamoItem

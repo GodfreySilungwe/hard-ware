@@ -112,10 +112,15 @@ const getOrdersForExport = async (req) => {
     return true;
   });
 
+  const loadProducts = () => req.user?.tenantId
+    ? dynamodb.listProductsByTenantGsi2(req.user.tenantId, {
+      projection: ['_id', 'id', 'tenantId', 'name']
+    })
+    : dynamodb.listEntities('product', { projection: ['_id', 'id', 'tenantId', 'name'] });
   const [customers, products] = await Promise.all([
     customerIds.size || filters.customerName ? dynamodb.listEntities('customer', { projection: ['_id', 'id', 'tenantId', 'name', 'phone'] }) : [],
     productIds.size || filters.productName
-      ? dynamodb.listEntities('product', { projection: ['_id', 'id', 'tenantId', 'name'] })
+      ? loadProducts()
       : []
   ]);
   const customerMap = new Map(customers.filter((customer) => !tenantId || customer.tenantId === tenantId).map((customer) => [getReferenceId(customer), customer]));
@@ -241,7 +246,11 @@ router.get('/sales/excel', protect, async (req, res) => {
 // Export Inventory Report as Excel
 router.get('/inventory/excel', protect, async (req, res) => {
   try {
-    const products = await dynamodb.listEntities('product', { projection: ['_id', 'id', 'tenantId', 'name', 'category', 'costPrice', 'sellingPrice', 'currentStock', 'lowStockThreshold'] });
+    const products = req.user?.tenantId
+      ? await dynamodb.listProductsByTenantGsi2(req.user.tenantId, {
+        projection: ['_id', 'id', 'tenantId', 'name', 'category', 'costPrice', 'sellingPrice', 'currentStock', 'lowStockThreshold']
+      })
+      : await dynamodb.listEntities('product', { projection: ['_id', 'id', 'tenantId', 'name', 'category', 'costPrice', 'sellingPrice', 'currentStock', 'lowStockThreshold'] });
     const scopedProducts = products.filter((product) => !req.user?.tenantId || product.tenantId === req.user.tenantId);
     const categoryIds = new Set(scopedProducts
       .map((product) => getReferenceId(product.category))
