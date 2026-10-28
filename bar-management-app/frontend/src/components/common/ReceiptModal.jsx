@@ -1,4 +1,5 @@
 import { formatPrice } from '../../utils/formatPrice';
+import { formatQuantity } from '../../utils/formatQuantity';
 import { DEFAULT_BUSINESS_SETTINGS } from '../../utils/businessSettings';
 import { useAuth } from '../../context/AuthContext';
 import { createPortal } from 'react-dom';
@@ -81,7 +82,7 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
               <tr>
                 <th style={styles.thItem}>ITEM</th>
                 <th style={styles.thQty}>QTY</th>
-                <th style={styles.thPrice}>PRICE</th>
+                <th style={styles.thPrice}>PRICE / UNIT</th>
                 <th style={styles.thSubtotal}>SUBTOTAL</th>
               </tr>
             </thead>
@@ -89,7 +90,7 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
               {order.items.map((item, index) => (
                 <tr key={index}>
                   <td style={styles.tdItem}>{getItemName(item)}</td>
-                  <td style={styles.tdQty}>{item.quantity}</td>
+                  <td style={styles.tdQty}>{formatQuantity(item.quantity)} {item.unit || item.product?.unit || ''}</td>
                   <td style={styles.tdPrice}>{formatReceiptPrice(item.priceAtSale)}</td>
                   <td style={styles.tdSubtotal}>{formatReceiptPrice(item.subtotal)}</td>
                 </tr>

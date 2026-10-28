@@ -44,6 +44,7 @@ const formatCurrency = (value) => formatPriceMK(Number(value || 0));
 const Quotations = () => {
   const today = new Date().toISOString().slice(0, 10);
   const [businessSettings, setBusinessSettings] = useState(defaultBusinessSettings);
+  const [businessSettingsLoaded, setBusinessSettingsLoaded] = useState(false);
   const [products, setProducts] = useState([]);
   const [productSearch, setProductSearch] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -67,17 +68,42 @@ const Quotations = () => {
   useEffect(() => {
     const localSettings = getBusinessSettings();
     setBusinessSettings(localSettings);
-    api.get('/auth/me').then(({ data }) => {
-      setBusinessSettings((current) => ({
-        ...current,
-        name: data.shopName || localSettings.name || defaultBusinessSettings.name,
-        address: localSettings.address || data.hardwareAddress || '',
-        phone: localSettings.phone || data.hardwareManagerPhone || data.phone || '',
-        email: localSettings.email || data.hardwareManagerEmail || data.email || '',
-        hardwareManagerName: data.hardwareManagerName || data.fullName || ''
-      }));
-    }).catch((error) => {
-      console.error('Failed to load hardware details for quotation', error);
+    Promise.allSettled([
+      api.get('/auth/business-settings'),
+      api.get('/auth/me')
+    ]).then(([settingsResult, userResult]) => {
+      const savedSettings = settingsResult.status === 'fulfilled'
+        ? settingsResult.value.data.settings || {}
+        : {};
+      const isConfigured = settingsResult.status === 'fulfilled' && settingsResult.value.data.configured;
+      const user = userResult.status === 'fulfilled' ? userResult.value.data : {};
+
+      if (settingsResult.status === 'rejected') {
+        console.error('Failed to load shared business settings for quotation', settingsResult.reason);
+      }
+      if (userResult.status === 'rejected') {
+        console.error('Failed to load hardware details for quotation', userResult.reason);
+      }
+
+      setBusinessSettings({
+        ...defaultBusinessSettings,
+        ...localSettings,
+        ...(isConfigured ? savedSettings : {}),
+        name: isConfigured
+          ? savedSettings.name || user.shopName || localSettings.name || defaultBusinessSettings.name
+          : user.shopName || localSettings.name || defaultBusinessSettings.name,
+        address: isConfigured
+          ? savedSettings.address || ''
+          : localSettings.address || user.hardwareAddress || '',
+        phone: isConfigured
+          ? savedSettings.phone || ''
+          : localSettings.phone || user.hardwareManagerPhone || user.phone || '',
+        email: isConfigured
+          ? savedSettings.email || ''
+          : localSettings.email || user.hardwareManagerEmail || user.email || '',
+        hardwareManagerName: user.hardwareManagerName || user.fullName || localSettings.hardwareManagerName || ''
+      });
+      setBusinessSettingsLoaded(true);
     });
     const saved = localStorage.getItem('savedQuotes');
     if (saved) {
@@ -88,6 +114,14 @@ const Quotations = () => {
       }
     }
   }, []);
+
+  const getQuoteBusinessDetails = () => ({
+    businessName: businessSettings.name || 'Smart Inventory App',
+    businessAddress: businessSettings.address || '',
+    businessPhone: businessSettings.phone || '',
+    businessEmail: businessSettings.email || '',
+    hardwareManagerName: businessSettings.hardwareManagerName || ''
+  });
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -201,11 +235,7 @@ const Quotations = () => {
   const saveDraftQuote = async () => {
     const payload = {
       ...quote,
-      businessName: businessSettings.name || 'Smart Inventory App',
-      businessAddress: businessSettings.address || '',
-      businessPhone: businessSettings.phone || '',
-      businessEmail: businessSettings.email || '',
-      hardwareManagerName: businessSettings.hardwareManagerName || '',
+      ...getQuoteBusinessDetails(),
       status: quote.status || 'draft',
       customerId: quote.customerId || '',
       taxRate: Number(quote.taxRate || 0),
@@ -241,11 +271,7 @@ const Quotations = () => {
       if (!quoteId) {
         const payload = {
           ...quote,
-          businessName: businessSettings.name || 'Smart Inventory App',
-          businessAddress: businessSettings.address || '',
-          businessPhone: businessSettings.phone || '',
-          businessEmail: businessSettings.email || '',
-          hardwareManagerName: businessSettings.hardwareManagerName || '',
+          ...getQuoteBusinessDetails(),
           status: quote.status || 'draft',
           customerId: quote.customerId || '',
           taxRate: Number(quote.taxRate || 0),
@@ -291,11 +317,7 @@ const Quotations = () => {
     if (!quoteId) {
       const payload = {
         ...quote,
-        businessName: businessSettings.name || 'Smart Inventory App',
-        businessAddress: businessSettings.address || '',
-        businessPhone: businessSettings.phone || '',
-        businessEmail: businessSettings.email || '',
-        hardwareManagerName: businessSettings.hardwareManagerName || '',
+        ...getQuoteBusinessDetails(),
         status: quote.status || 'draft',
         customerId: quote.customerId || '',
         taxRate: Number(quote.taxRate || 0),
@@ -430,9 +452,9 @@ const Quotations = () => {
 
       <PageContainer title="Quotations">
         <div className="no-print quotation-toolbar" style={styles.toolbar}>
-          <button type="button" className="quote-action" style={styles.primaryButton} onClick={saveDraftQuote}>Save Quote</button>
-          <button type="button" className="quote-action" style={styles.secondaryButton} onClick={exportQuoteToPdf}>Export to PDF</button>
-          <button type="button" className="quote-action" style={styles.secondaryButton} onClick={shareToWhatsApp}>Send on WhatsApp</button>
+          <button type="button" className="quote-action" style={styles.primaryButton} onClick={saveDraftQuote} disabled={!businessSettingsLoaded}>Save Quote</button>
+          <button type="button" className="quote-action" style={styles.secondaryButton} onClick={exportQuoteToPdf} disabled={!businessSettingsLoaded}>Export to PDF</button>
+          <button type="button" className="quote-action" style={styles.secondaryButton} onClick={shareToWhatsApp} disabled={!businessSettingsLoaded}>Send on WhatsApp</button>
           <button type="button" className="quote-action" style={styles.secondaryButton} onClick={resetQuote}>New Quote</button>
         </div>
 
@@ -564,7 +586,7 @@ const Quotations = () => {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px', gap: '12px' }}>
-            <button type="button" style={styles.secondaryButton} onClick={() => setPreviewQuote(quote)}>Preview Quote</button>
+            <button type="button" style={styles.secondaryButton} onClick={() => setPreviewQuote(quote)} disabled={!businessSettingsLoaded}>Preview Quote</button>
             <button type="button" style={styles.primaryButton} onClick={() => addItem()}>Add Line Item</button>
           </div>
         </UnifiedCard>
@@ -582,6 +604,10 @@ const Quotations = () => {
             </div>
 
             <div className="quotation-preview-grid" style={styles.previewGrid}>
+              <div><strong>Shop:</strong> {businessSettings.name || 'Smart Inventory App'}</div>
+              {businessSettings.address && <div><strong>Shop address:</strong> {businessSettings.address}</div>}
+              {businessSettings.phone && <div><strong>Shop phone:</strong> {businessSettings.phone}</div>}
+              {businessSettings.email && <div><strong>Shop email:</strong> {businessSettings.email}</div>}
               <div><strong>Issue date:</strong> {previewQuote.issueDate}</div>
               <div><strong>Valid until:</strong> {previewQuote.validUntil}</div>
               <div><strong>Phone:</strong> {previewQuote.customerPhone || '—'}</div>
@@ -600,7 +626,7 @@ const Quotations = () => {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '18px' }}>
-              <button type="button" style={styles.secondaryButton} onClick={() => window.print()}>Print Preview</button>
+              <button type="button" style={styles.secondaryButton} onClick={() => window.print()} disabled={!businessSettingsLoaded}>Print Preview</button>
               <button type="button" style={styles.primaryButton} onClick={() => setPreviewQuote(null)}>Close</button>
             </div>
           </UnifiedCard>

@@ -3,7 +3,7 @@ import api from '../api/api';
 import PageContainer from './PageContainer';
 import UnifiedCard from '../components/common/UnifiedCard';
 import Button from '../components/common/Button';
-import { formatPriceMK } from '../utils/formatPrice';
+import { formatQuantity } from '../utils/formatQuantity';
 
 const Inventory = () => {
   const [products, setProducts] = useState([]);
@@ -19,6 +19,7 @@ const Inventory = () => {
   const [summary, setSummary] = useState([]);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+  const selectedProduct = products.find((product) => String(product._id || product.id) === String(formData.product));
 
   useEffect(() => {
     loadData();
@@ -51,7 +52,7 @@ const Inventory = () => {
       await api.post('/inventory', {
         product: formData.product,
         type: formData.type,
-        quantity: parseInt(formData.quantity),
+        quantity: parseFloat(formData.quantity),
         reason: formData.reason
       });
       setSuccess('✅ Adjustment created successfully!');
@@ -145,7 +146,7 @@ const Inventory = () => {
             <div style={styles.summaryIcon}>{getTypeIcon(item._id)}</div>
             <div>
               <span style={styles.summaryLabel}>{getTypeLabel(item._id)}</span>
-              <span style={styles.summaryValue}>{item.totalQuantity}</span>
+              <span style={styles.summaryValue}>{formatQuantity(item.totalQuantity)}</span>
               <span style={styles.summaryCount}>{item.count} entries</span>
             </div>
           </div>
@@ -169,7 +170,7 @@ const Inventory = () => {
                     <option value="">Select Product</option>
                     {products.map(p => (
                       <option key={p._id} value={p._id}>
-                        {p.name} (Stock: {p.currentStock})
+                        {p.name} (Stock: {formatQuantity(p.currentStock)} {p.unit || 'piece'})
                       </option>
                     ))}
                   </select>
@@ -190,11 +191,12 @@ const Inventory = () => {
                   </select>
                 </div>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Quantity *</label>
+                  <label style={styles.label}>Quantity ({selectedProduct?.unit || 'piece'}) *</label>
                   <input
                     type="number"
                     required
-                    min="1"
+                    min={formData.type === 'count_correction' ? '0' : '0.001'}
+                    step="0.001"
                     style={styles.input}
                     value={formData.quantity}
                     onChange={(e) => setFormData({...formData, quantity: e.target.value})}
@@ -272,10 +274,10 @@ const Inventory = () => {
                         color: adj.type === 'restock' ? '#2ecc71' : '#e74c3c',
                         fontWeight: 'bold'
                       }}>
-                        {adj.type === 'restock' ? '+' : '-'}{adj.quantity}
+                        {adj.type === 'restock' ? '+' : '-'}{formatQuantity(adj.quantity)} {adj.product?.unit || ''}
                       </td>
-                      <td>{adj.previousStock}</td>
-                      <td style={{ fontWeight: 'bold', color: '#1a1a2e' }}>{adj.newStock}</td>
+                      <td>{formatQuantity(adj.previousStock)}</td>
+                      <td style={{ fontWeight: 'bold', color: '#1a1a2e' }}>{formatQuantity(adj.newStock)}</td>
                       <td style={styles.reason}>{adj.reason}</td>
                       <td style={styles.date}>{new Date(adj.createdAt).toLocaleString()}</td>
                     </tr>

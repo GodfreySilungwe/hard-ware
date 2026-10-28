@@ -6,6 +6,7 @@ import Button from '../components/common/Button';
 import UnifiedCard from '../components/common/UnifiedCard';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import { formatPriceMK } from '../utils/formatPrice';
+import { formatQuantity } from '../utils/formatQuantity';
 import { filterAndSortProducts } from '../utils/productFilters';
 import { saveAs } from 'file-saver';
 import * as XLSX from 'xlsx';
@@ -72,8 +73,8 @@ const Products = () => {
         category: formData.category,
         costPrice: parseFloat(formData.costPrice),
         sellingPrice: parseFloat(formData.sellingPrice),
-        currentStock: parseInt(formData.currentStock),
-        lowStockThreshold: parseInt(formData.lowStockThreshold),
+        currentStock: parseFloat(formData.currentStock),
+        lowStockThreshold: parseFloat(formData.lowStockThreshold),
         unit: formData.unit || 'piece'
       };
 
@@ -264,7 +265,7 @@ const Products = () => {
                 </select>
               </div>
               <div style={styles.formGroup}>
-                <label style={styles.label}>Cost Price (MK) *</label>
+                <label style={styles.label}>Cost Price (MK per {formData.unit || 'unit'}) *</label>
                 <input
                   type="number"
                   required
@@ -276,7 +277,7 @@ const Products = () => {
                 />
               </div>
               <div style={styles.formGroup}>
-                <label style={styles.label}>Selling Price (MK) *</label>
+                <label style={styles.label}>Selling Price (MK per {formData.unit || 'unit'}) *</label>
                 <input
                   type="number"
                   required
@@ -293,6 +294,7 @@ const Products = () => {
                   type="number"
                   required
                   min="0"
+                  step="0.001"
                   style={styles.input}
                   value={formData.currentStock}
                   onChange={(e) => setFormData({...formData, currentStock: e.target.value})}
@@ -303,6 +305,7 @@ const Products = () => {
                 <input
                   type="number"
                   min="0"
+                  step="0.001"
                   style={styles.input}
                   value={formData.lowStockThreshold}
                   onChange={(e) => setFormData({...formData, lowStockThreshold: e.target.value})}
@@ -390,10 +393,10 @@ const Products = () => {
             </div>
             <div style={styles.productDetails}>
               <span style={styles.productCategory}>📁 {product.category?.name || 'No Category'}</span>
-              <span style={styles.productPrice}>💰 {formatPriceMK(product.sellingPrice)}</span>
-              <span style={styles.productCost}>Cost: {formatPriceMK(product.costPrice)}</span>
+              <span style={styles.productPrice}>💰 {formatPriceMK(product.sellingPrice)} / {product.unit || 'piece'}</span>
+              <span style={styles.productCost}>Cost: {formatPriceMK(product.costPrice)} / {product.unit || 'piece'}</span>
               <span style={product.currentStock <= product.lowStockThreshold ? styles.productStockLow : styles.productStock}>
-                📦 Stock: {product.currentStock}
+                📦 Stock: {formatQuantity(product.currentStock)} {product.unit || 'piece'}
               </span>
             </div>
             <div style={styles.profitBar}>
@@ -402,7 +405,7 @@ const Products = () => {
                 width: `${(product.sellingPrice - product.costPrice) / product.sellingPrice * 100}%`
               }} />
               <span style={styles.profitText}>
-                Profit: {formatPriceMK(product.sellingPrice - product.costPrice)} per unit
+                Profit: {formatPriceMK(product.sellingPrice - product.costPrice)} per {product.unit || 'piece'}
               </span>
             </div>
           </div>

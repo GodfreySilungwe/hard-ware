@@ -4,6 +4,7 @@ import PageContainer from './PageContainer';
 import UnifiedCard from '../components/common/UnifiedCard';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import { formatPriceMK } from '../utils/formatPrice';
+import { formatQuantity } from '../utils/formatQuantity';
 import { useAuth } from '../context/AuthContext';
 
 const getPaymentMethodLabel = (method) => {
@@ -435,7 +436,7 @@ const Orders = () => {
                                     {getItemName(item)}
                                   </span>
                                   <span style={styles.itemQuantity}>
-                                    × {item.quantity}
+                                    × {formatQuantity(item.quantity)} {item.unit || item.product?.unit || ''}
                                   </span>
                                   <span style={styles.itemPrice}>
                                     {formatPriceMK(item.priceAtSale)}

@@ -5,6 +5,7 @@ import UnifiedCard from '../components/common/UnifiedCard';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import ReceiptModal from '../components/common/ReceiptModal';
 import { formatPriceMK } from '../utils/formatPrice';
+import { formatQuantity } from '../utils/formatQuantity';
 import { DEFAULT_BUSINESS_SETTINGS } from '../utils/businessSettings';
 
 const POS = () => {
@@ -28,7 +29,7 @@ const POS = () => {
   const [clearCartOpen, setClearCartOpen] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [highlightedProductId, setHighlightedProductId] = useState(null);
-  const [productOffset, setProductOffset] = useState(0);
+  const [nextProductCursor, setNextProductCursor] = useState(null);
   const [visibleProductCount, setVisibleProductCount] = useState(20);
   const [hasMoreProducts, setHasMoreProducts] = useState(true);
   const [backendSearchResults, setBackendSearchResults] = useState([]);
@@ -56,26 +57,23 @@ const POS = () => {
     };
   }, []);
 
-  const loadProducts = async (offset = 0, category = selectedCategory) => {
+  const loadProducts = async (cursor = null, category = selectedCategory) => {
     if (loadingProducts) return;
     setLoadingProducts(true);
     try {
       const params = new URLSearchParams();
       params.append('limit', '20');
-      params.append('offset', String(offset));
+      params.append('pagination', 'cursor');
+      if (cursor) params.append('cursor', cursor);
       if (category && category !== 'all') {
         params.append('category', category);
       }
       const response = await api.get(`/products?${params.toString()}`);
-      const nextProducts = Array.isArray(response.data)
-        ? response.data
-        : Array.isArray(response.data?.products)
-          ? response.data.products
-          : [];
-      setLoadedProducts((prev) => (offset === 0 ? nextProducts : [...(Array.isArray(prev) ? prev : []), ...nextProducts]));
-      setProductOffset(offset + nextProducts.length);
-      setHasMoreProducts(nextProducts.length === 20);
-      if (offset === 0) {
+      const nextProducts = Array.isArray(response.data?.products) ? response.data.products : [];
+      setLoadedProducts((prev) => (cursor ? [...(Array.isArray(prev) ? prev : []), ...nextProducts] : nextProducts));
+      setNextProductCursor(response.data?.nextCursor || null);
+      setHasMoreProducts(Boolean(response.data?.nextCursor));
+      if (!cursor) {
         setVisibleProductCount(20);
       }
     } catch (err) {
@@ -88,12 +86,12 @@ const POS = () => {
 
   const resetProducts = async (category = selectedCategory) => {
     setLoadedProducts([]);
-    setProductOffset(0);
+    setNextProductCursor(null);
     setVisibleProductCount(20);
     setHasMoreProducts(true);
     setBackendSearchResults([]);
     setSearchTerm('');
-    await loadProducts(0, category);
+    await loadProducts(null, category);
   };
 
   const loadData = async () => {
@@ -105,7 +103,7 @@ const POS = () => {
       const customerData = customersRes.data;
       setCustomers(Array.isArray(customerData) ? customerData : Array.isArray(customerData?.customers) ? customerData.customers : []);
       setCategories(categoriesRes.data);
-      await loadProducts(0, selectedCategory);
+      await loadProducts(null, selectedCategory);
     } catch (err) {
       console.error('Error loading data:', err);
       setError('Failed to load data');
@@ -127,7 +125,7 @@ const POS = () => {
       setVisibleProductCount((prev) => Math.min(prev + 10, loadedProducts.length));
     }
     if (loadedProducts.length - visibleProductCount <= 10 && hasMoreProducts && !loadingProducts) {
-      loadProducts(productOffset, selectedCategory);
+      loadProducts(nextProductCursor, selectedCategory);
     }
   };
 
@@ -165,7 +163,7 @@ const POS = () => {
     }
 
     const existingCartItem = cart.find(item => item._id === product._id);
-    if (existingCartItem && existingCartItem.quantity >= product.currentStock) {
+    if (existingCartItem && Number(existingCartItem.quantity) + 1 > Number(product.currentStock)) {
       setError(`⚠️ Not enough stock for ${product.name}`);
       setTimeout(() => setError(''), 3000);
       return;
@@ -176,11 +174,11 @@ const POS = () => {
       if (existing) {
         return prev.map(item =>
           item._id === product._id
-            ? { ...item, quantity: item.quantity + 1 }
+            ? { ...item, quantity: Number(item.quantity) + 1 }
             : item
         );
       }
-      return [...prev, { ...product, quantity: 1 }];
+      return [...prev, { ...product, quantity: Math.min(1, Number(product.currentStock)) }];
     });
 
     playAddToCartSound();
@@ -200,15 +198,22 @@ const POS = () => {
   const removeFromCart = (productId) => {
     setCart(prev => {
       const existing = prev.find(item => item._id === productId);
-      if (existing && existing.quantity === 1) {
+      if (existing && (!Number.isFinite(Number(existing.quantity)) || Number(existing.quantity) <= 1)) {
         return prev.filter(item => item._id !== productId);
       }
       return prev.map(item =>
         item._id === productId
-          ? { ...item, quantity: item.quantity - 1 }
+          ? { ...item, quantity: Number(item.quantity) - 1 }
           : item
       );
     });
+  };
+
+  const updateCartQuantity = (productId, quantity) => {
+    setError('');
+    setCart((prev) => prev.map((item) => (
+      item._id === productId ? { ...item, quantity } : item
+    )));
   };
 
   const handleClearCart = () => {
@@ -217,7 +222,7 @@ const POS = () => {
     setClearCartOpen(false);
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + (item.sellingPrice * item.quantity), 0);
+  const subtotal = cart.reduce((sum, item) => sum + (Number(item.sellingPrice) * Number(item.quantity)), 0);
   const configuredTaxRate = Number(businessSettings.taxRate ?? DEFAULT_BUSINESS_SETTINGS.taxRate);
   const taxRate = Number.isFinite(configuredTaxRate) && configuredTaxRate >= 0 && configuredTaxRate <= 100
     ? configuredTaxRate / 100
@@ -227,8 +232,7 @@ const POS = () => {
   const discountedTotal = Math.max(0, subtotal - cappedDiscount);
   const taxAmount = businessSettings.taxCompliant ? discountedTotal - discountedTotal / (1 + taxRate) : 0;
   const netAmount = businessSettings.taxCompliant ? discountedTotal - taxAmount : discountedTotal;
-  const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-
+  const totalItems = cart.length;
   const checkout = async () => {
     if (!businessSettingsLoaded) {
       setError('Business settings are not loaded. Please try again.');
@@ -241,6 +245,16 @@ const POS = () => {
       return;
     }
 
+    const invalidItem = cart.find((item) => (
+      !Number.isFinite(Number(item.quantity)) ||
+      Number(item.quantity) <= 0 ||
+      Number(item.quantity) > Number(item.currentStock)
+    ));
+    if (invalidItem) {
+      setError(`Enter a quantity greater than 0 and no more than the available ${formatQuantity(invalidItem.currentStock)} ${invalidItem.unit || 'piece'} for ${invalidItem.name}.`);
+      return;
+    }
+
     setLoading(true);
     setError('');
     setSuccess('');
@@ -249,7 +263,7 @@ const POS = () => {
       const orderData = {
         items: cart.map(item => ({
           product: item._id,
-          quantity: item.quantity
+          quantity: Number(item.quantity)
         })),
         customer: selectedCustomer || null,
         paymentMethod: paymentMethod,
@@ -471,7 +485,7 @@ const POS = () => {
             <div style={styles.mobileStickyLabel}>Cart total</div>
             <strong style={styles.mobileStickyAmount}>{formatPriceMK(discountedTotal)}</strong>
           </div>
-          <span style={styles.mobileStickyItems}>{totalItems} {totalItems === 1 ? 'item' : 'items'}</span>
+          <span style={styles.mobileStickyItems}>{totalItems} {totalItems === 1 ? 'product' : 'products'}</span>
         </div>
         {/* Left: Product Grid */}
         <div style={styles.productSection} className="pos-mobile-product-section">
@@ -545,10 +559,10 @@ const POS = () => {
                     }}
                   >
                     <div style={styles.productName}>{product.name}</div>
-                    <div style={styles.productPrice}>{formatPriceMK(product.sellingPrice)}</div>
+                    <div style={styles.productPrice}>{formatPriceMK(product.sellingPrice)} / {product.unit || 'piece'}</div>
                     <div style={styles.productUnit}>{product.unit || 'piece'}</div>
                     <div style={styles.productStock}>
-                      {product.currentStock > 0 ? `📦 ${product.currentStock}` : '❌ Out of Stock'}
+                      {product.currentStock > 0 ? `📦 ${formatQuantity(product.currentStock)} ${product.unit || 'piece'}` : '❌ Out of Stock'}
                     </div>
                   </button>
                 ))
@@ -562,7 +576,7 @@ const POS = () => {
 
         {/* Right: Cart */}
         <div style={{ ...styles.cartSection, ...(feedbackMessage ? styles.cartSectionActive : {}) }} className="pos-mobile-cart-section">
-          <UnifiedCard title={`🛒 Cart (${totalItems} items)`}>
+          <UnifiedCard title={`🛒 Cart (${cart.length} products)`}>
             <div style={styles.customerSection}>
               <select
                 style={styles.customerSelect}
@@ -594,7 +608,7 @@ const POS = () => {
                     <div style={styles.cartItemInfo}>
                       <div style={styles.cartItemName}>{item.name}</div>
                       <div style={styles.cartItemPrice}>
-                        {formatPriceMK(item.sellingPrice)} x {item.quantity}
+                        {formatPriceMK(item.sellingPrice)} / {item.unit || 'piece'} × {formatQuantity(item.quantity)}
                       </div>
                     </div>
 
@@ -611,11 +625,20 @@ const POS = () => {
                       >
                         −
                       </button>
-                      <span style={styles.cartItemQty}>{item.quantity}</span>
+                      <input
+                        type="number"
+                        min="0.001"
+                        max={item.currentStock}
+                        step="0.001"
+                        aria-label={`Quantity in ${item.unit || 'piece'} for ${item.name}`}
+                        style={styles.cartItemQty}
+                        value={item.quantity}
+                        onChange={(e) => updateCartQuantity(item._id, e.target.value)}
+                      />
                       <button
                         style={styles.cartItemBtn}
                         onClick={() => addToCart(item)}
-                        disabled={item.quantity >= item.currentStock}
+                        disabled={Number(item.quantity) >= Number(item.currentStock)}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.backgroundColor = '#f0f0f0';
                         }}
@@ -668,7 +691,7 @@ const POS = () => {
                 </div>
 
                 <div style={styles.totalRow}>
-                  <span>Items:</span>
+                  <span>Products:</span>
                   <span>{totalItems}</span>
                 </div>
 
@@ -1068,7 +1091,7 @@ productUnit: {
   },
   cartItemQty: {
     fontWeight: 'bold',
-    minWidth: '20px',
+    width: '76px',
     textAlign: 'center'
   },
   totals: {

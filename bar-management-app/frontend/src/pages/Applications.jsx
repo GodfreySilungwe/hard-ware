@@ -8,6 +8,7 @@ import PageContainer from './PageContainer';
 const Applications = () => {
   const [summary, setSummary] = useState(null);
   const [pendingRegistrations, setPendingRegistrations] = useState([]);
+  const [applicationSearch, setApplicationSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
@@ -31,6 +32,27 @@ const Applications = () => {
   const [showDecisionModal, setShowDecisionModal] = useState(false);
   const [selectedRegistration, setSelectedRegistration] = useState(null);
   const [decisionLoading, setDecisionLoading] = useState(false);
+
+  const normalizedApplicationSearch = applicationSearch.trim().toLowerCase();
+  const applicationSearchDigits = normalizedApplicationSearch.replace(/\D/g, '');
+  const filteredPendingRegistrations = pendingRegistrations.filter((registration) => {
+    const searchableText = [
+      registration.fullName,
+      registration.username,
+      registration.tenantName,
+      registration.hardwareName,
+      registration.shopName,
+      registration.email,
+      registration.district,
+      registration.tradingCenter,
+      registration.shopDescription
+    ].filter(Boolean).join(' ').toLowerCase();
+    const phoneDigits = String(registration.phone || '').replace(/\D/g, '');
+
+    return !normalizedApplicationSearch
+      || searchableText.includes(normalizedApplicationSearch)
+      || (applicationSearchDigits && phoneDigits.includes(applicationSearchDigits));
+  });
 
   useEffect(() => {
     fetchData();
@@ -244,24 +266,45 @@ const Applications = () => {
               <p style={styles.emptyText}>No pending applications right now.</p>
             </div>
           ) : (
-            <div style={styles.list}>
-              {pendingRegistrations.map((registration) => (
-                <div key={registration._id} style={styles.listItem}>
-                  <div style={styles.listItemMain}>
-                    <div>
-                      <div style={styles.name}>{registration.fullName || registration.username}</div>
-                      <div style={styles.meta}>{registration.email}</div>
-                    </div>
-                    <div style={styles.badge}>Awaiting approval</div>
-                  </div>
-                  <div style={styles.listItemActions}>
-                    <button type="button" style={styles.reviewButton} onClick={() => handleOpenDecisionModal(registration)}>
-                      Review
-                    </button>
-                  </div>
+            <>
+              <div style={styles.applicationSearchToolbar}>
+                <input
+                  type="search"
+                  value={applicationSearch}
+                  onChange={(event) => setApplicationSearch(event.target.value)}
+                  placeholder="Search applicant, shop, email, or phone"
+                  aria-label="Search pending applications by applicant, shop, email, or phone"
+                  style={{ ...styles.input, ...styles.applicationSearchInput }}
+                />
+                <span style={styles.applicationSearchCount}>
+                  {filteredPendingRegistrations.length} of {pendingRegistrations.length} applications
+                </span>
+              </div>
+              {filteredPendingRegistrations.length === 0 ? (
+                <div style={styles.emptyState}>
+                  <p style={styles.emptyText}>No applications match “{applicationSearch}”.</p>
                 </div>
-              ))}
-            </div>
+              ) : (
+                <div style={styles.list}>
+                  {filteredPendingRegistrations.map((registration) => (
+                    <div key={registration._id} style={styles.listItem}>
+                      <div style={styles.listItemMain}>
+                        <div>
+                          <div style={styles.name}>{registration.fullName || registration.username}</div>
+                          <div style={styles.meta}>{registration.email}</div>
+                        </div>
+                        <div style={styles.badge}>Awaiting approval</div>
+                      </div>
+                      <div style={styles.listItemActions}>
+                        <button type="button" style={styles.reviewButton} onClick={() => handleOpenDecisionModal(registration)}>
+                          Review
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </UnifiedCard>
 
@@ -568,6 +611,21 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '12px'
+  },
+  applicationSearchToolbar: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '12px',
+    marginBottom: '14px'
+  },
+  applicationSearchInput: {
+    flex: '1 1 220px'
+  },
+  applicationSearchCount: {
+    color: '#6b7280',
+    fontSize: '12px',
+    whiteSpace: 'nowrap'
   },
   listItem: {
     display: 'flex',

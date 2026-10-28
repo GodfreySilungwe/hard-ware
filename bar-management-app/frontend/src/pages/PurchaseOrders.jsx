@@ -141,13 +141,13 @@ const PurchaseOrders = () => {
         !item.product ||
         item.quantity === '' ||
         item.costPrice === '' ||
-        !Number.isInteger(Number(item.quantity)) ||
+        !Number.isFinite(Number(item.quantity)) ||
         Number(item.quantity) <= 0 ||
         !Number.isFinite(Number(item.costPrice)) ||
         Number(item.costPrice) < 0
       ));
       if (hasInvalidItem) {
-        setError('Please complete each item with a valid integer quantity and cost price');
+        setError('Please complete each item with a valid positive quantity and cost price');
         setTimeout(() => setError(''), 5000);
         return;
       }
@@ -340,8 +340,8 @@ const PurchaseOrders = () => {
                       type="number"
                       required
                       placeholder="Qty"
-                      min="1"
-                      step="1"
+                      min="0.001"
+                      step="0.001"
                       aria-label={`Quantity for item ${index + 1}`}
                       style={{...styles.input, flex: 1}}
                       value={item.quantity}
