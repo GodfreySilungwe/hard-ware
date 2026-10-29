@@ -57,3 +57,31 @@ test('builds a supported subscription term', () => {
     termMonths: 1
   });
 });
+
+test('builds day-based subscription terms', () => {
+  assert.deepEqual(buildSubscriptionDates({
+    startAt: '2026-01-31T12:00:00.000Z',
+    termDays: 30
+  }), {
+    startAt: '2026-01-31T12:00:00.000Z',
+    expiresAt: '2026-03-02T12:00:00.000Z',
+    termDays: 30
+  });
+  assert.equal(buildSubscriptionDates({
+    startAt: '2026-01-31T12:00:00.000Z',
+    termDays: 366
+  }), null);
+});
+
+test('supports month-based grace periods and exact grace boundaries', () => {
+  const tenant = {
+    subscriptionEnforced: true,
+    subscriptionStatus: 'active',
+    subscriptionExpiresAt: '2026-01-31T00:00:00.000Z',
+    gracePeriodUnit: 'months',
+    gracePeriodValue: 1
+  };
+
+  assert.equal(getSubscriptionAccess(tenant, new Date('2026-02-28T00:00:00.000Z')).status, 'grace');
+  assert.equal(getSubscriptionAccess(tenant, new Date('2026-03-28T00:00:00.001Z')).canAccess, false);
+});

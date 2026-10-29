@@ -5,7 +5,7 @@ const { buildReportSummary } = require('./lib/orderMetrics');
 
 const REPORT_TIME_ZONE = 'Africa/Blantyre';
 const MALAWI_OFFSET_MINUTES = 120;
-const REPORT_END_HOUR = 19;
+const REPORT_END_HOUR = 6;
 const REPORT_COLORS = {
   ink: '#18313F',
   muted: '#607681',

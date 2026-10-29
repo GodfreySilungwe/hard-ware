@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const multer = require('multer');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { protect } = require('../middleware/auth');
 
 const router = express.Router();
 

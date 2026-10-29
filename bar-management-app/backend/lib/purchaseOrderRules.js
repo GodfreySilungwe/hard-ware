@@ -16,8 +16,8 @@ function normalizePurchaseOrderItems(items) {
     const quantity = Number(item?.quantity);
     const costPrice = Number(item?.costPrice);
 
-    if (!item?.product || !Number.isInteger(quantity) || quantity <= 0 || !Number.isFinite(costPrice) || costPrice < 0) {
-      throw new Error('Each item must have a valid product, integer quantity, and cost price');
+    if (!item?.product || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(costPrice) || costPrice < 0) {
+      throw new Error('Each item must have a valid product, positive quantity, and cost price');
     }
 
     return {

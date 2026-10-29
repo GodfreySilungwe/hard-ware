@@ -60,6 +60,7 @@ const populateOrderItemProducts = async (order, req) => {
       product: productId ? {
         _id: productId,
         name: productName,
+        unit: item?.unit || product?.unit || 'piece',
         costPrice: normalizeNumber(item?.costPrice ?? product?.costPrice ?? 0),
         category
       } : null,
@@ -82,6 +83,29 @@ const getReferenceId = (reference) => {
   if (!reference) return null;
   if (typeof reference === 'string') return reference;
   return reference._id || reference.id || null;
+};
+
+const populateOrderCustomer = async (order, req) => {
+  const customerId = getReferenceId(order?.customer);
+  if (!customerId) return order;
+
+  const customer = await Customer.findById(customerId, req);
+  if (!customer) {
+    return {
+      ...order,
+      customer: null
+    };
+  }
+
+  return {
+    ...order,
+    customer: {
+      _id: customer._id || customer.id || customerId,
+      id: customer.id || customer._id || customerId,
+      name: customer.name || '',
+      phone: customer.phone || ''
+    }
+  };
 };
 
 const buildBulkReferenceMaps = async (orders = [], req) => {
@@ -126,6 +150,7 @@ const buildBulkReferenceMaps = async (orders = [], req) => {
 // expose helpers for unit testing without changing router export behavior
 router.populateOrderItemProducts = populateOrderItemProducts;
 router.populateOrdersItemProducts = populateOrdersItemProducts;
+router.populateOrderCustomer = populateOrderCustomer;
 
 const parseLocalDateString = (dateString) => {
   if (!dateString || typeof dateString !== 'string') return null;
@@ -424,6 +449,11 @@ router.post('/', protect, async (req, res) => {
 
     // Process each item
     for (const item of items) {
+      const quantity = Number(item?.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        return res.status(400).json({ message: 'Each order item must have a valid positive quantity' });
+      }
+
       const product = await Product.findById(item.product, req);
       
       if (!product) {
@@ -431,23 +461,24 @@ router.post('/', protect, async (req, res) => {
       }
 
       // Check if enough stock
-      if (product.currentStock < item.quantity) {
+      if (product.currentStock < quantity) {
         return res.status(400).json({ 
           message: `Insufficient stock for ${product.name}. Available: ${product.currentStock}`
         });
       }
 
       // Deduct from inventory
-      product.currentStock -= item.quantity;
+      product.currentStock -= quantity;
       await product.save();
 
-      const subtotal = product.sellingPrice * item.quantity;
+      const subtotal = product.sellingPrice * quantity;
       totalAmount += subtotal;
-      totalCost += product.costPrice * item.quantity;
+      totalCost += product.costPrice * quantity;
 
       orderItems.push({
         product: product._id,
-        quantity: item.quantity,
+        quantity,
+        unit: product.unit || 'piece',
         priceAtSale: product.sellingPrice,
         subtotal
       });
@@ -534,9 +565,9 @@ router.post('/', protect, async (req, res) => {
     }
     const savedOrder = await Order.findById(order._id, req)
       .populate('customer', 'name phone')
-      .populate('items.product', 'name');
+      .populate('items.product', 'name unit');
     const populatedOrder = await populateOrderItemProducts(savedOrder, req);
-    res.status(201).json(populatedOrder);
+    res.status(201).json(await populateOrderCustomer(populatedOrder, req));
 
   } catch (error) {
     console.error('Error creating order:', error);
@@ -549,14 +580,14 @@ router.get('/:id', protect, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id, req)
       .populate('customer', 'name phone')
-      .populate('items.product', 'name');
+      .populate('items.product', 'name unit');
     
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
     }
 
     const populatedOrder = await populateOrderItemProducts(order, req);
-    res.json(populatedOrder);
+    res.json(await populateOrderCustomer(populatedOrder, req));
   } catch (error) {
     console.error('Error fetching order:', error);
     res.status(500).json({ message: error.message });

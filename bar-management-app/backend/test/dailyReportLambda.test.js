@@ -16,20 +16,20 @@ const {
 } = require('../dailyReportLambda');
 const { buildReportSummary } = require('../lib/orderMetrics');
 
-test('builds report windows from the previous Malawi 19:00 through report-date 19:00', () => {
+test('builds report windows from the previous Malawi 06:00 through report-date 06:00', () => {
   const window = getReportWindow(new Date('2026-10-12T12:00:00.000Z'), '2026-10-12');
 
-  assert.equal(window.startDate, '2026-10-11T17:00:00.000Z');
-  assert.equal(window.endDate, '2026-10-12T16:59:59.999Z');
-  assert.equal(window.endExclusive, '2026-10-12T17:00:00.000Z');
+  assert.equal(window.startDate, '2026-10-11T04:00:00.000Z');
+  assert.equal(window.endDate, '2026-10-12T03:59:59.999Z');
+  assert.equal(window.endExclusive, '2026-10-12T04:00:00.000Z');
 });
 
 test('selects the report date using Malawi time when UTC has crossed midnight', () => {
   const window = getReportWindow(new Date('2026-10-11T22:05:00.000Z'));
 
   assert.equal(window.reportDate, '2026-10-12');
-  assert.equal(window.startDate, '2026-10-11T17:00:00.000Z');
-  assert.equal(window.endExclusive, '2026-10-12T17:00:00.000Z');
+  assert.equal(window.startDate, '2026-10-11T04:00:00.000Z');
+  assert.equal(window.endExclusive, '2026-10-12T04:00:00.000Z');
 });
 
 test('rejects malformed and impossible report dates', () => {

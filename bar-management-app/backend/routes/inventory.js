@@ -8,7 +8,7 @@ const { protect } = require('../middleware/auth');
 router.get('/', protect, async (req, res) => {
   try {
     const adjustments = await InventoryAdjustment.find({}, req)
-      .populate('product', 'name')
+      .populate('product', 'name unit')
       .sort({ createdAt: -1 });
     res.json(adjustments);
   } catch (error) {
@@ -20,7 +20,13 @@ router.get('/', protect, async (req, res) => {
 // Create adjustment
 router.post('/', protect, async (req, res) => {
   try {
-    const { product, type, quantity, reason } = req.body;
+    const { product, type, reason } = req.body;
+    const quantity = Number(req.body?.quantity);
+    const isCountCorrection = type === 'count_correction';
+    const validTypes = ['wastage', 'damage', 'return', 'restock', 'count_correction'];
+    if (!validTypes.includes(type) || !Number.isFinite(quantity) || (isCountCorrection ? quantity < 0 : quantity <= 0)) {
+      return res.status(400).json({ message: 'Enter a valid quantity for this adjustment type' });
+    }
 
     // Get current product stock
     const productData = await Product.findById(product, req);

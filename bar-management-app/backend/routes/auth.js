@@ -2,6 +2,8 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const router = express.Router();
+const { PutObjectCommand, S3Client } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const User = require('../models/User');
 const Tenant = require('../models/Tenant');
 const TenantInvite = require('../models/TenantInvite');
@@ -9,12 +11,25 @@ const dynamodb = require('../lib/dynamodb');
 const { protect, isOwner, isOwnerOrHardwareManager, isHardwareManagerOrOwner } = require('../middleware/auth');
 const {
   DEFAULT_GRACE_PERIOD_DAYS,
+  MAX_GRACE_PERIOD_DAYS,
+  MAX_GRACE_PERIOD_MONTHS,
   buildSubscriptionDates,
   getSubscriptionAccess,
+  normalizeTermDays,
   normalizeTermMonths
 } = require('../lib/subscriptions');
 
 const jwtSecret = process.env.JWT_SECRET || 'secret_key';
+const s3Region = process.env.AWS_REGION || 'us-east-1';
+const s3BucketName = 'hardwaresamplefiles3bucket';
+const s3Client = new S3Client({ region: s3Region });
+
+const isDeletedTenant = (tenant) => (
+  String(tenant?.status || '').toLowerCase() === 'deleted'
+  || tenant?.isDeleted === true
+  || tenant?.deleted === true
+  || Boolean(tenant?.deletedAt)
+);
 
 const DEFAULT_BUSINESS_SETTINGS = {
   name: '',
@@ -25,7 +40,9 @@ const DEFAULT_BUSINESS_SETTINGS = {
   taxCompliant: false,
   taxRate: 17.5,
   currency: 'MWK',
-  receiptFooter: 'Thank you for your business!'
+  receiptFooter: 'Thank you for your business!',
+  logo: '',
+  logoKey: ''
 };
 
 function getTenantAccessMessage(status) {
@@ -744,7 +761,12 @@ router.get('/sales-accounts', protect, isHardwareManagerOrOwner, async (req, res
       query.tenantId = req.user.tenantId;
     }
 
-    const salesUsers = await User.find(query);
+    let salesUsers = await User.find(query);
+    if (req.user.role === 'owner') {
+      const tenants = (await Tenant.find()).filter((tenant) => !isDeletedTenant(tenant));
+      const activeTenantIds = new Set(tenants.map((tenant) => String(tenant._id || tenant.id)));
+      salesUsers = salesUsers.filter((sales) => activeTenantIds.has(String(sales.tenantId || '')));
+    }
     const normalized = salesUsers.map((sales) => ({
       id: sales._id || sales.id,
       username: sales.username,
@@ -783,6 +805,45 @@ router.delete('/sales-accounts/:id', protect, isHardwareManagerOrOwner, async (r
   }
 });
 
+router.post('/business-logo-upload-url', protect, isHardwareManagerOrOwner, async (req, res) => {
+  try {
+    const { contentType, fileSize } = req.body || {};
+    if (!['image/png', 'image/jpeg'].includes(contentType)) {
+      return res.status(400).json({ message: 'Business logo must be a PNG or JPEG image.' });
+    }
+    if (!Number.isInteger(fileSize) || fileSize < 1 || fileSize > 200 * 1024) {
+      return res.status(400).json({ message: 'Business logo must be up to 200 KB.' });
+    }
+
+    const accountId = String(req.user?.tenantId || req.user?._id || req.user?.id || '');
+    if (!accountId) {
+      return res.status(400).json({ message: 'Business account is required to upload a logo.' });
+    }
+
+    const extension = contentType === 'image/png' ? '.png' : '.jpg';
+    const key = `business-logos/${accountId}/${Date.now()}-${Math.random().toString(36).slice(2)}${extension}`;
+    const command = new PutObjectCommand({
+      Bucket: s3BucketName,
+      Key: key,
+      ContentType: contentType,
+      ContentLength: fileSize
+    });
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+
+    return res.json({
+      uploadUrl,
+      url: `https://${s3BucketName}.s3.${s3Region}.amazonaws.com/${key}`,
+      key,
+      headers: {
+        'Content-Type': contentType
+      }
+    });
+  } catch (error) {
+    console.error('Business logo upload URL error:', error);
+    return res.status(500).json({ message: 'Failed to prepare business logo upload.' });
+  }
+});
+
 router.get('/business-settings', protect, (req, res) => {
   const savedSettings = req.tenant?.businessSettings || req.user?.businessSettings;
   const defaultSettings = {
@@ -803,6 +864,17 @@ router.put('/business-settings', protect, isHardwareManagerOrOwner, async (req, 
       return res.status(400).json({ message: 'VAT rate must be between 0 and 100.' });
     }
 
+    const existingSettings = req.tenant?.businessSettings || req.user?.businessSettings || {};
+    const logoKey = String(req.body?.logoKey ?? existingSettings.logoKey ?? '');
+    const accountId = String(req.user?.tenantId || req.user?._id || req.user?.id || '');
+    if (logoKey && !logoKey.startsWith(`business-logos/${accountId}/`)) {
+      return res.status(400).json({ message: 'Business logo key is invalid for this account.' });
+    }
+    const region = process.env.AWS_REGION || 'us-east-1';
+    const logo = logoKey
+      ? `https://${s3BucketName}.s3.${region}.amazonaws.com/${logoKey}`
+      : '';
+
     const settings = {
       name: String(req.body?.name || '').trim(),
       address: String(req.body?.address || '').trim(),
@@ -812,7 +884,9 @@ router.put('/business-settings', protect, isHardwareManagerOrOwner, async (req, 
       taxCompliant: req.body?.taxCompliant === true,
       taxRate,
       currency: String(req.body?.currency || 'MWK').trim(),
-      receiptFooter: String(req.body?.receiptFooter || '').trim()
+      receiptFooter: String(req.body?.receiptFooter || '').trim(),
+      logo,
+      logoKey
     };
 
     if (req.user?.tenantId) {
@@ -846,8 +920,9 @@ router.put('/business-settings', protect, isHardwareManagerOrOwner, async (req, 
 router.get('/tenant-summary', protect, async (req, res) => {
   try {
     if (req.user?.role === 'owner') {
-      const tenants = await Tenant.find();
+      const tenants = (await Tenant.find()).filter((tenant) => !isDeletedTenant(tenant));
       const users = await User.find();
+      const activeTenantIds = new Set(tenants.map((tenant) => String(tenant._id || tenant.id)));
       const activeTenants = tenants.filter((tenant) => tenant.status === 'active').length;
       const suspendedTenants = tenants.filter((tenant) => tenant.status === 'suspended').length;
       const summary = {
@@ -855,8 +930,12 @@ router.get('/tenant-summary', protect, async (req, res) => {
         activeTenants,
         suspendedTenants,
         pendingTenants: tenants.filter((tenant) => tenant.status === 'pending').length,
-        hardwareManagers: users.filter((user) => isHardwareManagerUser(user)).length,
-        salesAccounts: users.filter((user) => user.role === 'sales').length
+        hardwareManagers: users.filter((user) => (
+          isHardwareManagerUser(user) && activeTenantIds.has(String(user.tenantId || ''))
+        )).length,
+        salesAccounts: users.filter((user) => (
+          user.role === 'sales' && activeTenantIds.has(String(user.tenantId || ''))
+        )).length
       };
       return res.json(summary);
     }
@@ -878,7 +957,7 @@ router.get('/tenant-summary', protect, async (req, res) => {
 // Global owner can manage tenants/bars
 router.get('/tenants', protect, isOwner, async (req, res) => {
   try {
-    const tenants = await Tenant.find();
+    const tenants = (await Tenant.find()).filter((tenant) => !isDeletedTenant(tenant));
     const users = await User.find();
 
     const usersById = new Map();
@@ -969,16 +1048,26 @@ router.patch('/tenants/:id/subscription', protect, isOwner, async (req, res) => 
       return res.status(404).json({ message: 'Hardware not found' });
     }
 
-    const termMonths = normalizeTermMonths(req.body?.termMonths);
-    if (!termMonths) {
-      return res.status(400).json({ message: 'Subscription term must be between 1 and 12 whole months' });
+    const termUnit = req.body?.termUnit || (req.body?.termDays !== undefined ? 'days' : 'months');
+    const termValue = req.body?.termValue ?? (termUnit === 'days' ? req.body?.termDays : req.body?.termMonths);
+    const termMonths = termUnit === 'months' ? normalizeTermMonths(termValue) : null;
+    const termDays = termUnit === 'days' ? normalizeTermDays(termValue) : null;
+    if ((termUnit !== 'days' && termUnit !== 'months') || (!termMonths && !termDays)) {
+      return res.status(400).json({ message: 'Subscription validity must be 1-12 whole months or 1-365 whole days' });
     }
 
-    const gracePeriodDays = req.body?.gracePeriodDays === undefined
-      ? DEFAULT_GRACE_PERIOD_DAYS
-      : Number(req.body.gracePeriodDays);
-    if (!Number.isInteger(gracePeriodDays) || gracePeriodDays < 0 || gracePeriodDays > 90) {
-      return res.status(400).json({ message: 'Grace period must be a whole number between 0 and 90 days' });
+    const gracePeriodUnit = req.body?.gracePeriodUnit || 'days';
+    const gracePeriodValue = Number(
+      req.body?.gracePeriodValue ?? req.body?.gracePeriodDays ?? DEFAULT_GRACE_PERIOD_DAYS
+    );
+    const maxGracePeriod = gracePeriodUnit === 'months' ? MAX_GRACE_PERIOD_MONTHS : MAX_GRACE_PERIOD_DAYS;
+    if (
+      (gracePeriodUnit !== 'days' && gracePeriodUnit !== 'months')
+      || !Number.isInteger(gracePeriodValue)
+      || gracePeriodValue < 0
+      || gracePeriodValue > maxGracePeriod
+    ) {
+      return res.status(400).json({ message: 'Grace period must be 0-90 whole days or 0-3 whole months' });
     }
 
     const existingExpiry = tenant.subscriptionEnforced && tenant.subscriptionExpiresAt
@@ -987,15 +1076,19 @@ router.patch('/tenants/:id/subscription', protect, isOwner, async (req, res) => 
     const hasFutureExpiry = existingExpiry && !Number.isNaN(existingExpiry.getTime()) && existingExpiry > new Date();
     const dates = buildSubscriptionDates({
       startAt: hasFutureExpiry ? existingExpiry : new Date(),
-      termMonths
+      ...(termUnit === 'days' ? { termDays } : { termMonths })
     });
 
     tenant.subscriptionEnforced = true;
     tenant.subscriptionStatus = 'active';
     tenant.subscriptionStartAt = dates.startAt;
     tenant.subscriptionExpiresAt = dates.expiresAt;
-    tenant.subscriptionTermMonths = dates.termMonths;
-    tenant.gracePeriodDays = gracePeriodDays;
+    tenant.subscriptionTermMonths = dates.termMonths || null;
+    tenant.subscriptionTermDays = dates.termDays || null;
+    tenant.gracePeriodUnit = gracePeriodUnit;
+    tenant.gracePeriodValue = gracePeriodValue;
+    tenant.gracePeriodDays = gracePeriodUnit === 'days' ? gracePeriodValue : null;
+    tenant.gracePeriodMonths = gracePeriodUnit === 'months' ? gracePeriodValue : null;
     tenant.subscriptionPaymentReference = String(req.body?.paymentReference || '').trim() || null;
     tenant.subscriptionPaymentMethod = String(req.body?.paymentMethod || '').trim() || null;
     tenant.subscriptionUpdatedAt = new Date().toISOString();
@@ -1110,7 +1203,11 @@ router.patch('/tenants/:id/delete', protect, isOwner, async (req, res) => {
 // Global owner can list all hardware managers with full details
 router.get('/hardware-managers', protect, isOwner, async (req, res) => {
   try {
-    const managers = await User.find({ role: 'hardware-manager' });
+    const tenants = (await Tenant.find()).filter((tenant) => !isDeletedTenant(tenant));
+    const activeTenantIds = new Set(tenants.map((tenant) => String(tenant._id || tenant.id)));
+    const managers = (await User.find({ role: 'hardware-manager' })).filter((manager) => (
+      activeTenantIds.has(String(manager.tenantId || ''))
+    ));
     const normalized = managers.map((manager) => ({
       id: manager._id || manager.id,
       fullName: manager.fullName,

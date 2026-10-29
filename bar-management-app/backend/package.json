@@ -6,8 +6,8 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "backfill:product-gsi2": "node scripts/backfill-product-gsi2.js",
-    "build:lambda": "node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true});fs.mkdirSync('dist',{recursive:true});\" && npx esbuild index.js --bundle --platform=node --target=node18 --outfile=dist/index.js --external:aws-sdk --external:express --external:multer --external:sharp",
-    "build:daily-report-lambda": "npx esbuild dailyReportLambda.js --bundle --platform=node --target=node18 --outfile=dist/dailyReportLambda.js --external:aws-sdk --external:express --external:multer --external:sharp && node -e \"require('fs').cpSync('node_modules/pdfkit/js/data','dist/data',{recursive:true})\"",
+    "build:lambda": "node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true});fs.mkdirSync('dist',{recursive:true});\" && npx esbuild index.js --bundle --platform=node --target=node20 --outfile=dist/index.js --external:aws-sdk --external:express --external:multer --external:sharp",
+    "build:daily-report-lambda": "npx esbuild dailyReportLambda.js --bundle --platform=node --target=node20 --outfile=dist/dailyReportLambda.js --external:aws-sdk --external:express --external:multer --external:sharp && node -e \"require('fs').cpSync('node_modules/pdfkit/js/data','dist/data',{recursive:true})\"",
     "package:daily-report-lambda": "npm run build:daily-report-lambda && powershell -NoProfile -Command \"Compress-Archive -LiteralPath 'dist/dailyReportLambda.js','dist/data' -DestinationPath 'daily-report-lambda.zip' -Force\"",
     "test": "node --test"
   },
@@ -20,6 +20,7 @@
     "@aws-sdk/client-ses": "^3.7.0",
     "@aws-sdk/client-s3": "^3.7.0",
     "@aws-sdk/lib-dynamodb": "^3.7.0",
+    "@aws-sdk/s3-request-presigner": "3.1159.0",
     "aws-serverless-express": "^3.4.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",

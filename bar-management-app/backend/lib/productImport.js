@@ -41,9 +41,9 @@ function validateProductRows(rows, existingProducts, categories) {
 
     const costPrice = parseNumber(row.costPrice, 'costPrice', rowNumber);
     const sellingPrice = parseNumber(row.sellingPrice, 'sellingPrice', rowNumber);
-    const currentStock = parseNumber(row.currentStock, 'currentStock', rowNumber, { integer: true });
+    const currentStock = parseNumber(row.currentStock, 'currentStock', rowNumber);
     const lowStockThresholdValue = normalizeText(row.lowStockThreshold) === '' ? 5 : row.lowStockThreshold;
-    const lowStockThreshold = parseNumber(lowStockThresholdValue, 'lowStockThreshold', rowNumber, { integer: true });
+    const lowStockThreshold = parseNumber(lowStockThresholdValue, 'lowStockThreshold', rowNumber);
     [costPrice, sellingPrice, currentStock, lowStockThreshold].forEach((result) => {
       if (result.error) rowErrors.push(result.error);
     });

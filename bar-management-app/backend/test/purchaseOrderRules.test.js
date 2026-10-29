@@ -12,10 +12,17 @@ test('normalizes valid purchase order items without dropping zero cost', () => {
   );
 });
 
-test('rejects missing, fractional, negative, and non-finite item values', () => {
+test('accepts fractional purchase quantities', () => {
+  assert.deepEqual(
+    normalizePurchaseOrderItems([{ product: 'p1', quantity: '0.5', costPrice: '12.25' }]),
+    [{ product: 'p1', quantity: 0.5, costPrice: 12.25 }]
+  );
+});
+
+test('rejects missing, non-positive, and non-finite item values', () => {
   for (const item of [
     { product: '', quantity: 1, costPrice: 10 },
-    { product: 'p1', quantity: 1.5, costPrice: 10 },
+    { product: 'p1', quantity: 0, costPrice: 10 },
     { product: 'p1', quantity: 1, costPrice: -1 },
     { product: 'p1', quantity: 1, costPrice: 'not-a-number' }
   ]) {
