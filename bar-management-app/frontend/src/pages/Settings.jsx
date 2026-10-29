@@ -12,9 +12,11 @@ import { useAuth } from '../context/AuthContext';
 const Settings = ({ initialMenu = 'settings' }) => {
   const { user, loading: authLoading } = useAuth();
   const [activeMenu, setActiveMenu] = useState(initialMenu);
-  const [settingsSubTab, setSettingsSubTab] = useState('profile');
   const isOwnerRole = user?.role === 'owner';
   const isHardwareManagerRole = user?.role === 'hardware-manager';
+  const [settingsSubTab, setSettingsSubTab] = useState(
+    user?.role === 'hardware-manager' ? 'password' : 'profile'
+  );
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -58,6 +60,12 @@ const Settings = ({ initialMenu = 'settings' }) => {
   useEffect(() => {
     setActiveMenu(initialMenu);
   }, [initialMenu]);
+
+  useEffect(() => {
+    if (isHardwareManagerRole && settingsSubTab === 'profile') {
+      setSettingsSubTab('password');
+    }
+  }, [isHardwareManagerRole, settingsSubTab]);
 
   const refreshOwnerData = async () => {
     if (user?.role !== 'owner') {
@@ -408,22 +416,61 @@ const Settings = ({ initialMenu = 'settings' }) => {
     }
   };
 
-  const handleSubscriptionRenewal = async (tenantId) => {
-    const termMonths = window.prompt('Subscription term in months (1-12)', '1');
-    if (termMonths === null) return;
+  const handleSubscriptionRenewal = async (tenant) => {
+    const tenantId = tenant._id || tenant.id;
+    const defaultTermUnit = tenant.subscriptionTermDays ? 'days' : 'months';
+    const termUnitInput = window.prompt('Subscription validity unit (days or months)', defaultTermUnit);
+    if (termUnitInput === null) return;
 
-    const parsedTerm = Number(termMonths);
-    if (!Number.isInteger(parsedTerm) || parsedTerm < 1 || parsedTerm > 12) {
-      setError('Subscription term must be a whole number from 1 to 12 months');
+    const termUnit = termUnitInput.trim().toLowerCase();
+    if (termUnit !== 'days' && termUnit !== 'months') {
+      setError('Subscription validity unit must be days or months');
       return;
     }
 
-    const gracePeriodDays = window.prompt('Grace period in days (0-90)', '10');
-    if (gracePeriodDays === null) return;
+    const defaultTermValue = termUnit === 'days'
+      ? tenant.subscriptionTermDays || '30'
+      : tenant.subscriptionTermMonths || '1';
+    const termValueInput = window.prompt(
+      termUnit === 'days' ? 'Subscription validity in days (1-365)' : 'Subscription validity in months (1-12)',
+      String(defaultTermValue)
+    );
+    if (termValueInput === null) return;
 
-    const parsedGracePeriod = Number(gracePeriodDays);
-    if (!Number.isInteger(parsedGracePeriod) || parsedGracePeriod < 0 || parsedGracePeriod > 90) {
-      setError('Grace period must be a whole number from 0 to 90 days');
+    const termValue = Number(termValueInput);
+    const maxTermValue = termUnit === 'days' ? 365 : 12;
+    if (!Number.isInteger(termValue) || termValue < 1 || termValue > maxTermValue) {
+      setError(termUnit === 'days'
+        ? 'Subscription validity must be a whole number from 1 to 365 days'
+        : 'Subscription validity must be a whole number from 1 to 12 months');
+      return;
+    }
+
+    const defaultGraceUnit = tenant.gracePeriodUnit || 'days';
+    const graceUnitInput = window.prompt('Grace period unit (days or months)', defaultGraceUnit);
+    if (graceUnitInput === null) return;
+
+    const gracePeriodUnit = graceUnitInput.trim().toLowerCase();
+    if (gracePeriodUnit !== 'days' && gracePeriodUnit !== 'months') {
+      setError('Grace period unit must be days or months');
+      return;
+    }
+
+    const defaultGraceValue = tenant.gracePeriodValue
+      ?? (gracePeriodUnit === 'months' ? tenant.gracePeriodMonths : tenant.gracePeriodDays)
+      ?? (gracePeriodUnit === 'months' ? '1' : '10');
+    const graceValueInput = window.prompt(
+      gracePeriodUnit === 'days' ? 'Grace period in days (0-90)' : 'Grace period in months (0-3)',
+      String(defaultGraceValue)
+    );
+    if (graceValueInput === null) return;
+
+    const gracePeriodValue = Number(graceValueInput);
+    const maxGraceValue = gracePeriodUnit === 'days' ? 90 : 3;
+    if (!Number.isInteger(gracePeriodValue) || gracePeriodValue < 0 || gracePeriodValue > maxGraceValue) {
+      setError(gracePeriodUnit === 'days'
+        ? 'Grace period must be a whole number from 0 to 90 days'
+        : 'Grace period must be a whole number from 0 to 3 months');
       return;
     }
 
@@ -434,8 +481,10 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
     try {
       await api.patch(`/auth/tenants/${tenantId}/subscription`, {
-        termMonths: parsedTerm,
-        gracePeriodDays: parsedGracePeriod,
+        termUnit,
+        termValue,
+        gracePeriodUnit,
+        gracePeriodValue,
         paymentReference,
         paymentMethod: 'manual'
       });
@@ -502,6 +551,49 @@ const Settings = ({ initialMenu = 'settings' }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleBusinessLogoUpload = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      setError('Business logo must be a PNG or JPEG image.');
+      return;
+    }
+    if (file.size > 200 * 1024) {
+      setError('Business logo must be 200 KB or smaller.');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+    setError('');
+    api.post('/auth/business-logo-upload-url', {
+      contentType: file.type,
+      fileSize: file.size
+    })
+      .then(async (response) => {
+        const uploadResponse = await fetch(response.data.uploadUrl, {
+          method: 'PUT',
+          headers: response.data.headers,
+          body: file
+        });
+        if (!uploadResponse.ok) {
+          throw new Error(`S3 upload failed with status ${uploadResponse.status}.`);
+        }
+        setBusiness((current) => ({
+          ...current,
+          logo: response.data.url,
+          logoKey: response.data.key
+        }));
+        setMessage('Logo uploaded. Save Business Profile to apply it to quotations.');
+      })
+      .catch((err) => {
+        setError(err.response?.data?.message || err.message || 'Failed to upload business logo.');
+      })
+      .finally(() => setLoading(false));
   };
 
   const handleCreateSalesAccount = async (e) => {
@@ -612,7 +704,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
   }, [menuItems, activeMenu]);
 
   const settingsSubTabs = [
-    { id: 'profile', label: '👤 Profile' },
+    ...(isOwnerRole ? [{ id: 'profile', label: '👤 Profile' }] : []),
     { id: 'password', label: '🔒 Password' },
     { id: 'business', label: '🏢 Business' }
   ];
@@ -633,7 +725,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
         <div className="fade-in" style={styles.error}>{error}</div>
       )}
 
-      <div style={styles.menuTabs}>
+      <div className="settings-menu-tabs" style={styles.menuTabs}>
         {menuItems.map((item) => (
           <button
             key={item.id}
@@ -652,7 +744,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
       {activeMenu === 'settings' && (
         <div className="fade-in">
-          <div style={styles.subTabs}>
+          <div className="settings-sub-tabs" style={styles.subTabs}>
             {settingsSubTabs.map((tab) => (
               <button
                 key={tab.id}
@@ -668,9 +760,9 @@ const Settings = ({ initialMenu = 'settings' }) => {
             ))}
           </div>
 
-          {settingsSubTab === 'profile' && (
+          {isOwnerRole && settingsSubTab === 'profile' && (
             <UnifiedCard title="👤 Global Account Profile">
-              <form onSubmit={handleProfileUpdate} style={styles.form}>
+              <form className="settings-form" onSubmit={handleProfileUpdate} style={styles.form}>
                 <div style={{...styles.formGroup, gridColumn: '1 / -1', alignItems: 'center'}}>
                   <label style={styles.label}>Profile Photo</label>
                   <AvatarUpload
@@ -680,7 +772,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
                   />
                 </div>
 
-                <div style={styles.formGrid}>
+                <div className="settings-form-grid" style={styles.formGrid}>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>Full Name *</label>
                     <input type="text" required style={styles.input} value={profile.fullName} onChange={(e) => setProfile({...profile, fullName: e.target.value})} />
@@ -708,8 +800,8 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
           {settingsSubTab === 'password' && (
             <UnifiedCard title="🔒 Password Management">
-              <form onSubmit={handlePasswordChange} style={styles.form}>
-                <div style={styles.formGrid}>
+              <form className="settings-form" onSubmit={handlePasswordChange} style={styles.form}>
+                <div className="settings-form-grid" style={styles.formGrid}>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>Current Password *</label>
                     <input type="password" required style={styles.input} value={passwordData.currentPassword} onChange={(e) => setPasswordData({...passwordData, currentPassword: e.target.value})} placeholder="Enter current password" />
@@ -732,11 +824,22 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
           {settingsSubTab === 'business' && (
             <UnifiedCard title="🏢 Business Profile">
-              <form onSubmit={handleBusinessUpdate} style={styles.form}>
-                <div style={styles.formGrid}>
+              <form className="settings-form" onSubmit={handleBusinessUpdate} style={styles.form}>
+                <div className="settings-form-grid" style={styles.formGrid}>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>Business Name *</label>
                     <input type="text" required style={styles.input} value={business.name} onChange={(e) => setBusiness({...business, name: e.target.value})} />
+                  </div>
+                  <div style={{ ...styles.formGroup, gridColumn: '1 / -1' }}>
+                    <label style={styles.label}>Quotation Logo</label>
+                    <input type="file" accept="image/png,image/jpeg" style={styles.input} onChange={handleBusinessLogoUpload} />
+                    <span style={styles.helperText}>PNG or JPEG, up to 200 KB. This logo appears on quotations only.</span>
+                    {business.logo && (
+                      <div className="settings-logo-preview" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
+                        <img src={business.logo} alt="Quotation logo preview" style={{ maxWidth: '160px', maxHeight: '90px', objectFit: 'contain' }} />
+                        <Button type="button" variant="secondary" onClick={() => setBusiness({ ...business, logo: '', logoKey: '' })}>Remove Logo</Button>
+                      </div>
+                    )}
                   </div>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>Address</label>
@@ -925,6 +1028,17 @@ const Settings = ({ initialMenu = 'settings' }) => {
                       || tenant.hardwareName
                       || tenant.name
                       || 'Shop name not set';
+                    const subscriptionAccess = tenant.subscriptionAccess || {};
+                    const subscriptionValidity = tenant.subscriptionTermDays
+                      ? `${tenant.subscriptionTermDays} ${Number(tenant.subscriptionTermDays) === 1 ? 'day' : 'days'}`
+                      : tenant.subscriptionTermMonths
+                        ? `${tenant.subscriptionTermMonths} ${Number(tenant.subscriptionTermMonths) === 1 ? 'month' : 'months'}`
+                        : 'Not set';
+                    const subscriptionGracePeriod = subscriptionAccess.gracePeriodValue !== undefined
+                      ? `${subscriptionAccess.gracePeriodValue} ${subscriptionAccess.gracePeriodUnit || 'days'}`
+                      : subscriptionAccess.gracePeriodDays !== undefined
+                        ? `${subscriptionAccess.gracePeriodDays} days (default)`
+                        : 'Not set';
 
                     return (
                       <article key={tenantId} style={styles.hardwareCard}>
@@ -956,6 +1070,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
                         <div style={styles.hardwareDetailsGrid}>
                           <div><span style={styles.hardwareDetailLabel}>Manager</span><strong style={styles.hardwareDetailValue}>{manager.fullName || manager.username || 'Not assigned'}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>Hardware username</span><strong style={styles.hardwareDetailValue}>{manager.username || 'Not available'}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Email</span><strong style={styles.hardwareDetailValue}>{manager.email || tenant.ownerInfo?.email || 'Not provided'}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Phone</span><strong style={styles.hardwareDetailValue}>{manager.phone || tenant.ownerInfo?.phone || 'Not provided'}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Owner</span><strong style={styles.hardwareDetailValue}>{tenant.ownerInfo?.fullName || tenant.name || 'Not provided'}</strong></div>
@@ -963,19 +1078,23 @@ const Settings = ({ initialMenu = 'settings' }) => {
                           <div><span style={styles.hardwareDetailLabel}>Trading center</span><strong style={styles.hardwareDetailValue}>{tenant.tradingCenter || 'Not provided'}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Manager accounts</span><strong style={styles.hardwareDetailValue}>{tenantUsers.length}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Sales accounts</span><strong style={styles.hardwareDetailValue}>{Number(tenant.activeSalesAccountCount || 0)}</strong></div>
-                          <div><span style={styles.hardwareDetailLabel}>Subscription</span><strong style={styles.hardwareDetailValue}>{tenant.subscriptionAccess?.status || 'legacy'}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>Subscription status</span><strong style={styles.hardwareDetailValue}>{subscriptionAccess.status || 'legacy'}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>Validity period</span><strong style={styles.hardwareDetailValue}>{subscriptionValidity}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>Grace period</span><strong style={styles.hardwareDetailValue}>{subscriptionGracePeriod}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Created</span><strong style={styles.hardwareDetailValue}>{formatDate(tenant.createdAt || tenant.created_at)}</strong></div>
                         </div>
                         <div style={styles.hardwareShopDescription}>
                           <span style={styles.hardwareDetailLabel}>What the shop sells</span>
                           <strong style={styles.hardwareDetailValue}>{tenant.shopDescription || 'Not provided'}</strong>
                         </div>
-                        {tenant.subscriptionAccess?.expiresAt && (
-                          <div style={styles.hardwareExpiry}>Subscription expires {formatDate(tenant.subscriptionAccess.expiresAt)}</div>
-                        )}
+                        <div style={styles.hardwareExpiry}>
+                          {subscriptionAccess.expiresAt
+                            ? `Subscription started ${formatDate(tenant.subscriptionStartAt)} · expires ${formatDate(subscriptionAccess.expiresAt)}${subscriptionAccess.graceEndsAt ? ` · grace ends ${formatDate(subscriptionAccess.graceEndsAt)}` : ''}`
+                            : 'Subscription dates not set'}
+                        </div>
 
                         <div style={styles.hardwareActions}>
-                          <button type="button" style={styles.secondaryButton} onClick={() => handleSubscriptionRenewal(tenantId)}>Activate / renew</button>
+                          <button type="button" style={styles.secondaryButton} onClick={() => handleSubscriptionRenewal(tenant)}>Edit / renew subscription</button>
                           {tenantUsers.map((linkedManager) => (
                             <button key={linkedManager.id || linkedManager._id} type="button" style={styles.secondaryButton} onClick={() => handleResetManagerPassword(linkedManager.id || linkedManager._id)}>Reset password</button>
                           ))}

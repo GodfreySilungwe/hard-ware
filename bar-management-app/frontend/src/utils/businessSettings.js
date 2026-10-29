@@ -7,5 +7,7 @@ export const DEFAULT_BUSINESS_SETTINGS = {
   taxCompliant: false,
   taxRate: 17.5,
   currency: 'MWK',
-  receiptFooter: 'Thank you for your business!'
+  receiptFooter: 'Thank you for your business!',
+  logo: '',
+  logoKey: ''
 };

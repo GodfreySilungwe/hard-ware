@@ -16,6 +16,13 @@ import PageContainer from './PageContainer';
 import { formatPriceMK } from '../utils/formatPrice';
 import { useAuth } from '../context/AuthContext';
 
+const formatOwnerDate = (value) => {
+  if (!value) return 'Not set';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not set';
+  return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+};
+
 const Dashboard = () => {
   const formatLocalDateString = (date) => {
     const year = date.getFullYear();
@@ -528,6 +535,17 @@ const Dashboard = () => {
                   || tenant.name
                   || 'Shop name not set';
                 const status = String(tenant.status || 'unknown').toLowerCase();
+                const subscriptionAccess = tenant.subscriptionAccess || {};
+                const subscriptionValidity = tenant.subscriptionTermDays
+                  ? `${tenant.subscriptionTermDays} ${Number(tenant.subscriptionTermDays) === 1 ? 'day' : 'days'}`
+                  : tenant.subscriptionTermMonths
+                    ? `${tenant.subscriptionTermMonths} ${Number(tenant.subscriptionTermMonths) === 1 ? 'month' : 'months'}`
+                    : 'Not set';
+                const subscriptionGracePeriod = subscriptionAccess.gracePeriodValue !== undefined
+                  ? `${subscriptionAccess.gracePeriodValue} ${subscriptionAccess.gracePeriodUnit || 'days'}`
+                  : subscriptionAccess.gracePeriodDays !== undefined
+                    ? `${subscriptionAccess.gracePeriodDays} days (default)`
+                    : 'Not set';
                 const statusColors = status === 'active'
                   ? { color: '#147D64', backgroundColor: '#E8F5EF' }
                   : status === 'pending'
@@ -550,6 +568,10 @@ const Dashboard = () => {
                         <strong style={styles.ownerHardwareDetailValue}>{manager.fullName || manager.username || 'Not assigned'}</strong>
                       </div>
                       <div>
+                        <span style={styles.ownerHardwareDetailLabel}>Hardware username</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{manager.username || 'Not available'}</strong>
+                      </div>
+                      <div>
                         <span style={styles.ownerHardwareDetailLabel}>Email</span>
                         <strong style={styles.ownerHardwareDetailValue}>{manager.email || 'Not provided'}</strong>
                       </div>
@@ -568,6 +590,30 @@ const Dashboard = () => {
                       <div>
                         <span style={styles.ownerHardwareDetailLabel}>Trading center</span>
                         <strong style={styles.ownerHardwareDetailValue}>{tenant.tradingCenter || 'Not provided'}</strong>
+                      </div>
+                      <div>
+                        <span style={styles.ownerHardwareDetailLabel}>Subscription status</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{subscriptionAccess.status || 'legacy'}</strong>
+                      </div>
+                      <div>
+                        <span style={styles.ownerHardwareDetailLabel}>Validity period</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{subscriptionValidity}</strong>
+                      </div>
+                      <div>
+                        <span style={styles.ownerHardwareDetailLabel}>Subscription started</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{formatOwnerDate(tenant.subscriptionStartAt)}</strong>
+                      </div>
+                      <div>
+                        <span style={styles.ownerHardwareDetailLabel}>Expires</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{formatOwnerDate(subscriptionAccess.expiresAt)}</strong>
+                      </div>
+                      <div>
+                        <span style={styles.ownerHardwareDetailLabel}>Grace period</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{subscriptionGracePeriod}</strong>
+                      </div>
+                      <div>
+                        <span style={styles.ownerHardwareDetailLabel}>Grace ends</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{formatOwnerDate(subscriptionAccess.graceEndsAt)}</strong>
                       </div>
                     </div>
                     <div style={styles.ownerHardwareDescription}>

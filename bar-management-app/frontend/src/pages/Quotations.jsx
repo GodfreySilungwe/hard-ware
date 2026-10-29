@@ -4,13 +4,16 @@ import PageContainer from './PageContainer';
 import UnifiedCard from '../components/common/UnifiedCard';
 import { formatPriceMK } from '../utils/formatPrice';
 
+const QUOTATION_REQUEST_TIMEOUT = 25000;
+
 const defaultBusinessSettings = {
   name: 'Smart Inventory App',
   address: '',
   phone: '',
   email: '',
   hardwareManagerName: '',
-  taxCompliant: false
+  taxCompliant: false,
+  logo: ''
 };
 
 const buildQuoteNumber = () => {
@@ -243,7 +246,7 @@ const Quotations = () => {
     };
 
     try {
-      const response = await api.post('/quotations', payload);
+      const response = await api.post('/quotations', payload, { timeout: QUOTATION_REQUEST_TIMEOUT });
       const saved = response.data || payload;
       const existing = JSON.parse(localStorage.getItem('savedQuotes') || '[]');
       const next = [saved, ...existing.filter((item) => item.quoteNumber !== saved.quoteNumber)].slice(0, 20);
@@ -277,7 +280,7 @@ const Quotations = () => {
           taxRate: Number(quote.taxRate || 0),
           items: quote.items.filter((item) => item.name || item.productId)
         };
-        const response = await api.post('/quotations', payload);
+        const response = await api.post('/quotations', payload, { timeout: QUOTATION_REQUEST_TIMEOUT });
         const saved = response.data || payload;
         quoteId = saved._id || saved.id;
         setQuote({ ...saved, items: saved.items?.length ? saved.items : payload.items });
@@ -285,7 +288,10 @@ const Quotations = () => {
 
       if (!quoteId) throw new Error('Quotation was not assigned an ID');
 
-      const response = await api.get(`/quotations/${quoteId}/pdf`, { responseType: 'blob' });
+      const response = await api.get(`/quotations/${quoteId}/pdf`, {
+        responseType: 'blob',
+        timeout: QUOTATION_REQUEST_TIMEOUT
+      });
       const blob = response.data instanceof Blob
         ? response.data
         : new Blob([response.data], { type: 'application/pdf' });
@@ -323,7 +329,7 @@ const Quotations = () => {
         taxRate: Number(quote.taxRate || 0),
         items: quote.items.filter((item) => item.name || item.productId)
       };
-      const response = await api.post('/quotations', payload);
+      const response = await api.post('/quotations', payload, { timeout: QUOTATION_REQUEST_TIMEOUT });
       currentQuote = response.data || payload;
       quoteId = currentQuote._id || currentQuote.id;
       setQuote({ ...currentQuote, items: currentQuote.items?.length ? currentQuote.items : payload.items });
@@ -331,7 +337,10 @@ const Quotations = () => {
 
     if (!quoteId) throw new Error('Quotation was not assigned an ID');
 
-    const response = await api.get(`/quotations/${quoteId}/pdf`, { responseType: 'blob' });
+    const response = await api.get(`/quotations/${quoteId}/pdf`, {
+      responseType: 'blob',
+      timeout: QUOTATION_REQUEST_TIMEOUT
+    });
     const blob = response.data instanceof Blob
       ? response.data
       : new Blob([response.data], { type: 'application/pdf' });
@@ -605,6 +614,7 @@ const Quotations = () => {
 
             <div className="quotation-preview-grid" style={styles.previewGrid}>
               <div><strong>Shop:</strong> {businessSettings.name || 'Smart Inventory App'}</div>
+              {businessSettings.logo && <div><strong>Shop logo:</strong><img src={businessSettings.logo} alt="Quotation logo" style={{ display: 'block', maxWidth: '140px', maxHeight: '80px', objectFit: 'contain', marginTop: '6px' }} /></div>}
               {businessSettings.address && <div><strong>Shop address:</strong> {businessSettings.address}</div>}
               {businessSettings.phone && <div><strong>Shop phone:</strong> {businessSettings.phone}</div>}
               {businessSettings.email && <div><strong>Shop email:</strong> {businessSettings.email}</div>}
@@ -643,6 +653,7 @@ const Quotations = () => {
           <div id="quotation-print-area" className="quotation-print-area" style={styles.printArea}>
             <div className="quotation-company-header" style={styles.companyHeader}>
               <div>
+                {businessSettings.logo && <img src={businessSettings.logo} alt="Business logo" style={{ display: 'block', maxWidth: '72px', maxHeight: '72px', objectFit: 'contain', marginBottom: '8px' }} />}
                 <h2 className="companyName" style={styles.companyName}>{businessSettings.name || 'Smart Inventory App'}</h2>
                 {businessSettings.address && <div>{businessSettings.address}</div>}
                 {businessSettings.phone && <div>{businessSettings.phone}</div>}
