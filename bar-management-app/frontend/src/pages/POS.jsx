@@ -8,6 +8,10 @@ import { formatPriceMK } from '../utils/formatPrice';
 import { formatQuantity } from '../utils/formatQuantity';
 import { DEFAULT_BUSINESS_SETTINGS } from '../utils/businessSettings';
 
+const PRODUCT_PAGE_SIZE = 100;
+const PRODUCT_DISPLAY_INCREMENT = 50;
+const PRODUCT_SEARCH_LIMIT = 10;
+
 const POS = () => {
   const [loadedProducts, setLoadedProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -30,7 +34,7 @@ const POS = () => {
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [highlightedProductId, setHighlightedProductId] = useState(null);
   const [nextProductCursor, setNextProductCursor] = useState(null);
-  const [visibleProductCount, setVisibleProductCount] = useState(20);
+  const [visibleProductCount, setVisibleProductCount] = useState(PRODUCT_DISPLAY_INCREMENT);
   const [hasMoreProducts, setHasMoreProducts] = useState(true);
   const [backendSearchResults, setBackendSearchResults] = useState([]);
   const [backendSearchLoading, setBackendSearchLoading] = useState(false);
@@ -62,7 +66,7 @@ const POS = () => {
     setLoadingProducts(true);
     try {
       const params = new URLSearchParams();
-      params.append('limit', '20');
+      params.append('limit', String(PRODUCT_PAGE_SIZE));
       params.append('pagination', 'cursor');
       if (cursor) params.append('cursor', cursor);
       if (category && category !== 'all') {
@@ -74,7 +78,7 @@ const POS = () => {
       setNextProductCursor(response.data?.nextCursor || null);
       setHasMoreProducts(Boolean(response.data?.nextCursor));
       if (!cursor) {
-        setVisibleProductCount(20);
+        setVisibleProductCount(PRODUCT_DISPLAY_INCREMENT);
       }
     } catch (err) {
       console.error('Error loading products:', err);
@@ -87,7 +91,7 @@ const POS = () => {
   const resetProducts = async (category = selectedCategory) => {
     setLoadedProducts([]);
     setNextProductCursor(null);
-    setVisibleProductCount(20);
+    setVisibleProductCount(PRODUCT_DISPLAY_INCREMENT);
     setHasMoreProducts(true);
     setBackendSearchResults([]);
     setSearchTerm('');
@@ -122,9 +126,9 @@ const POS = () => {
     if (!nearBottom) return;
 
     if (visibleProductCount < loadedProducts.length) {
-      setVisibleProductCount((prev) => Math.min(prev + 10, loadedProducts.length));
+      setVisibleProductCount((prev) => Math.min(prev + PRODUCT_DISPLAY_INCREMENT, loadedProducts.length));
     }
-    if (loadedProducts.length - visibleProductCount <= 10 && hasMoreProducts && !loadingProducts) {
+    if (loadedProducts.length - visibleProductCount <= PRODUCT_DISPLAY_INCREMENT && hasMoreProducts && !loadingProducts) {
       loadProducts(nextProductCursor, selectedCategory);
     }
   };
@@ -340,7 +344,7 @@ const POS = () => {
       try {
         const params = new URLSearchParams();
         params.append('search', query);
-        params.append('limit', '3');
+        params.append('limit', String(PRODUCT_SEARCH_LIMIT));
         if (selectedCategory && selectedCategory !== 'all') {
           params.append('category', selectedCategory);
         }
