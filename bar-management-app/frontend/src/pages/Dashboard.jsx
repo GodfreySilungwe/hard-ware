@@ -584,12 +584,16 @@ const Dashboard = () => {
                         <strong style={styles.ownerHardwareDetailValue}>{Number(tenant.activeSalesAccountCount || 0)}</strong>
                       </div>
                       <div>
+                        <span style={styles.ownerHardwareDetailLabel}>Country</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{tenant.country || 'Not provided'}</strong>
+                      </div>
+                      <div>
                         <span style={styles.ownerHardwareDetailLabel}>District</span>
                         <strong style={styles.ownerHardwareDetailValue}>{tenant.district || 'Not provided'}</strong>
                       </div>
                       <div>
-                        <span style={styles.ownerHardwareDetailLabel}>Trading center</span>
-                        <strong style={styles.ownerHardwareDetailValue}>{tenant.tradingCenter || 'Not provided'}</strong>
+                        <span style={styles.ownerHardwareDetailLabel}>Town</span>
+                        <strong style={styles.ownerHardwareDetailValue}>{tenant.town || tenant.tradingCenter || 'Not provided'}</strong>
                       </div>
                       <div>
                         <span style={styles.ownerHardwareDetailLabel}>Subscription status</span>
@@ -810,7 +814,9 @@ const Dashboard = () => {
                     }} />
                     <div>
                       <div style={styles.summaryTitle}>
-                        {String(method.method || '').toLowerCase() === 'card' ? 'Bank' : method.label || method.method}
+                        {String(method.method || '').toLowerCase() === 'card' && method.label === 'Card'
+                          ? 'Bank'
+                          : method.label || method.method}
                       </div>
                       <div style={styles.summaryMeta}>{method.count} transaction{method.count === 1 ? '' : 's'}</div>
                     </div>

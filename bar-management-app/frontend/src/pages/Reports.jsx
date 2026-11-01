@@ -3,7 +3,7 @@ import api from '../api/api';
 import PageContainer from './PageContainer';
 import UnifiedCard from '../components/common/UnifiedCard';
 import ExportButton from '../components/common/ExportButton';
-import { formatPriceMK } from '../utils/formatPrice';
+import { formatPriceMK, getCurrencySymbol } from '../utils/formatPrice';
 
 const toNumber = (value) => {
   if (value === undefined || value === null) return 0;
@@ -293,6 +293,7 @@ const Reports = () => {
   const safeCategorySales = Array.isArray(reportData.categorySales) ? reportData.categorySales : [];
   const safeTopProfitProducts = Array.isArray(reportData.topProfitProducts) ? reportData.topProfitProducts : [];
   const safePaymentMethods = Array.isArray(reportData.paymentMethods) ? reportData.paymentMethods : [];
+  const currencySymbol = getCurrencySymbol();
 
   // Ensure numeric values for charting and surface mismatches between summed daily profit and totalProfit
   const numericDailySales = safeDailySales.map(d => ({ date: d.date, sales: Number(d.sales || 0), profit: Number(d.profit || 0) }));
@@ -305,7 +306,7 @@ const Reports = () => {
     labels: numericDailySales.map(d => d.date),
     datasets: [
       {
-        label: 'Sales (MK)',
+        label: `Sales (${currencySymbol})`,
         data: numericDailySales.map(d => d.sales),
         backgroundColor: 'rgba(233, 69, 96, 0.6)',
         borderColor: '#e94560',
@@ -314,7 +315,7 @@ const Reports = () => {
         fill: true
       },
       {
-        label: 'Profit (MK)',
+        label: `Profit (${currencySymbol})`,
         data: numericDailySales.map(d => d.profit),
         backgroundColor: 'rgba(46, 204, 113, 0.6)',
         borderColor: '#2ecc71',
@@ -329,7 +330,7 @@ const Reports = () => {
     labels: safeTopProducts.map(p => p.name),
     datasets: [
       {
-        label: 'Revenue (MK)',
+        label: `Revenue (${currencySymbol})`,
         data: safeTopProducts.map(p => p.revenue),
         backgroundColor: [
           '#e94560', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
@@ -345,7 +346,7 @@ const Reports = () => {
     labels: safeCategorySales.map(c => c.name),
     datasets: [
       {
-        label: 'Revenue (MK)',
+        label: `Revenue (${currencySymbol})`,
         data: safeCategorySales.map(c => c.revenue),
         backgroundColor: [
           '#e94560', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
@@ -360,7 +361,7 @@ const Reports = () => {
     labels: safeTopProfitProducts.map(p => p.name),
     datasets: [
       {
-        label: 'Profit (MK)',
+        label: `Profit (${currencySymbol})`,
         data: safeTopProfitProducts.map(p => Number(p.profit ?? 0)),
         backgroundColor: [
           '#2ecc71', '#16a085', '#3498db', '#f39c12', '#9b59b6',
@@ -376,7 +377,7 @@ const Reports = () => {
     labels: safePaymentMethods.map(p => p.label || p.method),
     datasets: [
       {
-        label: 'Sales (MK)',
+        label: `Sales (${currencySymbol})`,
         data: safePaymentMethods.map(p => p.amount),
         backgroundColor: ['#2ecc71', '#3498db', '#f39c12', '#9b59b6', '#1abc9c'],
         borderWidth: 1,
@@ -411,7 +412,7 @@ const Reports = () => {
         beginAtZero: true,
         ticks: {
           callback: function(value) {
-            return 'MK ' + value.toLocaleString();
+            return formatPriceMK(value);
           }
         }
       }
@@ -737,7 +738,7 @@ const Reports = () => {
                         ...chartOptions.scales.y,
                         ticks: {
                           callback: function(value) {
-                            return 'MK ' + Number(value).toLocaleString();
+                            return formatPriceMK(value);
                           }
                         }
                       }

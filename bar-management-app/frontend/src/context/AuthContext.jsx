@@ -1,5 +1,9 @@
 import { createContext, useState, useContext, useEffect } from 'react';
 import api from '../api/api';
+import {
+  activateBusinessSettingsAccount,
+  saveBusinessSettingsCache
+} from '../utils/businessSettings';
 
 const AuthContext = createContext();
 
@@ -46,6 +50,7 @@ export const AuthProvider = ({ children }) => {
             role: authUser?.role?.toString().toLowerCase() || 'user',
             tenantId: authUser?.tenantId || null
           };
+          activateBusinessSettingsAccount(normalizedUser);
           setUser(normalizedUser);
           setSuspensionNotice(authUser?.suspensionMessage || getSubscriptionNotice(authUser?.subscription));
         } catch (err) {
@@ -65,6 +70,26 @@ export const AuthProvider = ({ children }) => {
     loadUser();
   }, [token]);
 
+  useEffect(() => {
+    if (!user) return undefined;
+
+    let active = true;
+    api.get('/auth/business-settings')
+      .then((response) => {
+        if (!active) return;
+        if (response.data.configured) {
+          saveBusinessSettingsCache(response.data.settings || {}, user);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load business settings for the active account:', err);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
   // Login
   const login = async (username, password) => {
     try {
@@ -76,6 +101,7 @@ export const AuthProvider = ({ children }) => {
         role: authUser?.role?.toString().toLowerCase() || 'user',
         tenantId: authUser?.tenantId || null
       };
+      activateBusinessSettingsAccount(normalizedUser);
       setToken(authToken);
       setUser(normalizedUser);
       setSuspensionNotice(authUser?.suspensionMessage || getSubscriptionNotice(authUser?.subscription));
@@ -102,6 +128,7 @@ export const AuthProvider = ({ children }) => {
       } : null;
 
       if (authToken && normalizedUser) {
+        activateBusinessSettingsAccount(normalizedUser);
         setToken(authToken);
         setUser(normalizedUser);
       } else {

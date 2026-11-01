@@ -4,15 +4,21 @@ import PageContainer from './PageContainer';
 import UnifiedCard from '../components/common/UnifiedCard';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
 import ReceiptModal from '../components/common/ReceiptModal';
-import { formatPriceMK } from '../utils/formatPrice';
+import { formatPriceMK, normalizeCurrencyCode } from '../utils/formatPrice';
 import { formatQuantity } from '../utils/formatQuantity';
-import { DEFAULT_BUSINESS_SETTINGS } from '../utils/businessSettings';
+import {
+  DEFAULT_BUSINESS_SETTINGS,
+  normalizePaymentMethods,
+  saveBusinessSettingsCache
+} from '../utils/businessSettings';
+import { useAuth } from '../context/AuthContext';
 
 const PRODUCT_PAGE_SIZE = 100;
 const PRODUCT_DISPLAY_INCREMENT = 50;
 const PRODUCT_SEARCH_LIMIT = 10;
 
 const POS = () => {
+  const { user } = useAuth();
   const [loadedProducts, setLoadedProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [cart, setCart] = useState([]);
@@ -43,23 +49,36 @@ const POS = () => {
   const audioContextRef = useRef(null);
 
   useEffect(() => {
+    let active = true;
     loadData();
     api.get('/auth/business-settings')
       .then((response) => {
-        setBusinessSettings({ ...DEFAULT_BUSINESS_SETTINGS, ...response.data.settings });
+        if (!active) return;
+        const settings = { ...DEFAULT_BUSINESS_SETTINGS, ...response.data.settings };
+        settings.currency = normalizeCurrencyCode(settings.currency);
+        settings.paymentMethods = normalizePaymentMethods(settings.paymentMethods);
+        setBusinessSettings(settings);
+        if (response.data.configured) saveBusinessSettingsCache(settings, user);
+        setPaymentMethod((current) => (
+          settings.paymentMethods.some((method) => method.enabled && method.id === current)
+            ? current
+            : settings.paymentMethods.find((method) => method.enabled && method.id !== 'credit')?.id || ''
+        ));
         setBusinessSettingsLoaded(true);
       })
       .catch((err) => {
+        if (!active) return;
         console.error('Failed to load business settings:', err);
         setError(err.response?.data?.message || 'Failed to load business settings');
       });
 
     return () => {
+      active = false;
       if (feedbackTimerRef.current) {
         clearTimeout(feedbackTimerRef.current);
       }
     };
-  }, []);
+  }, [user]);
 
   const loadProducts = async (cursor = null, category = selectedCategory) => {
     if (loadingProducts) return;
@@ -236,10 +255,22 @@ const POS = () => {
   const discountedTotal = Math.max(0, subtotal - cappedDiscount);
   const taxAmount = businessSettings.taxCompliant ? discountedTotal - discountedTotal / (1 + taxRate) : 0;
   const netAmount = businessSettings.taxCompliant ? discountedTotal - taxAmount : discountedTotal;
+  const enabledPaymentMethods = normalizePaymentMethods(businessSettings.paymentMethods)
+    .filter((method) => method.enabled);
   const totalItems = cart.length;
   const checkout = async () => {
     if (!businessSettingsLoaded) {
       setError('Business settings are not loaded. Please try again.');
+      return;
+    }
+
+    if (!enabledPaymentMethods.some((method) => method.id === paymentMethod)) {
+      setError('Select an enabled payment method before checkout.');
+      return;
+    }
+
+    if (paymentMethod === 'credit' && !selectedCustomer) {
+      setError('Select a saved customer before using Credit.');
       return;
     }
 
@@ -288,7 +319,7 @@ const POS = () => {
       setSuccess(`✅ Order ${createdOrder.orderNumber} completed!`);
       setCart([]);
       setSelectedCustomer('');
-      setPaymentMethod('cash');
+      setPaymentMethod(enabledPaymentMethods.find((method) => method.id !== 'credit')?.id || '');
       setDiscountAmount('');
       setPaidAmount('');
 
@@ -589,8 +620,14 @@ const POS = () => {
                   const newCustomer = e.target.value;
                   setSelectedCustomer(newCustomer);
                   if (!newCustomer && paymentMethod === 'credit') {
-                    setPaymentMethod('cash');
+                    setPaymentMethod(enabledPaymentMethods.find((method) => method.id !== 'credit')?.id || '');
                     setPaidAmount('');
+                  } else if (newCustomer && !enabledPaymentMethods.some((method) => method.id === paymentMethod)) {
+                    setPaymentMethod(
+                      enabledPaymentMethods.find((method) => method.id !== 'credit')?.id
+                      || enabledPaymentMethods.find((method) => method.id === 'credit')?.id
+                      || ''
+                    );
                   }
                 }}
               >
@@ -709,117 +746,32 @@ const POS = () => {
             <div style={styles.paymentSection}>
               <label style={styles.paymentLabel}>Payment Method:</label>
               <div style={styles.paymentOptions} className="pos-mobile-payment-options">
-                <button
-                  className="payment-btn pos-mobile-payment-btn"
-                  style={{
-                    ...styles.paymentBtn,
-                    ...(paymentMethod === 'cash' ? styles.paymentBtnActive : {})
-                  }}
-                  onClick={() => { setPaymentMethod('cash'); setPaidAmount(''); }}
-                  onMouseEnter={(e) => {
-                    if (paymentMethod !== 'cash') {
-                      e.currentTarget.style.backgroundColor = '#f0f0f0';
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (paymentMethod !== 'cash') {
-                      e.currentTarget.style.backgroundColor = 'white';
-                      e.currentTarget.style.transform = 'translateY(0)';
-                    }
-                  }}
-                >
-                  💵 Cash
-                </button>
-                <button
-                  className="payment-btn pos-mobile-payment-btn"
-                  style={{
-                    ...styles.paymentBtn,
-                    ...(paymentMethod === 'card' ? styles.paymentBtnActive : {})
-                  }}
-                  onClick={() => { setPaymentMethod('card'); setPaidAmount(''); }}
-                  onMouseEnter={(e) => {
-                    if (paymentMethod !== 'card') {
-                      e.currentTarget.style.backgroundColor = '#f0f0f0';
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (paymentMethod !== 'card') {
-                      e.currentTarget.style.backgroundColor = 'white';
-                      e.currentTarget.style.transform = 'translateY(0)';
-                    }
-                  }}
-                >
-                  💳 Bank
-                </button>
-                <button
-                  className="payment-btn pos-mobile-payment-btn"
-                  style={{
-                    ...styles.paymentBtn,
-                    ...(paymentMethod === 'airtel_money' ? styles.paymentBtnActive : {})
-                  }}
-                  onClick={() => { setPaymentMethod('airtel_money'); setPaidAmount(''); }}
-                  onMouseEnter={(e) => {
-                    if (paymentMethod !== 'airtel_money') {
-                      e.currentTarget.style.backgroundColor = '#f0f0f0';
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (paymentMethod !== 'airtel_money') {
-                      e.currentTarget.style.backgroundColor = 'white';
-                      e.currentTarget.style.transform = 'translateY(0)';
-                    }
-                  }}
-                >
-                  📱 Airtel Money
-                </button>
-                <button
-                  className="payment-btn pos-mobile-payment-btn"
-                  style={{
-                    ...styles.paymentBtn,
-                    ...(paymentMethod === 'mpamba' ? styles.paymentBtnActive : {})
-                  }}
-                  onClick={() => { setPaymentMethod('mpamba'); setPaidAmount(''); }}
-                  onMouseEnter={(e) => {
-                    if (paymentMethod !== 'mpamba') {
-                      e.currentTarget.style.backgroundColor = '#f0f0f0';
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (paymentMethod !== 'mpamba') {
-                      e.currentTarget.style.backgroundColor = 'white';
-                      e.currentTarget.style.transform = 'translateY(0)';
-                    }
-                  }}
-                >
-                  📱 Mpamba
-                </button>
-              <button
-                className="payment-btn pos-mobile-payment-btn"
-                style={{
-                  ...styles.paymentBtn,
-                  ...(paymentMethod === 'credit' ? styles.paymentBtnActive : {})
-                }}
-                onClick={() => { setPaymentMethod('credit'); setPaidAmount(''); }}
-                disabled={!selectedCustomer}
-                onMouseEnter={(e) => {
-                  if (paymentMethod !== 'credit' && selectedCustomer) {
-                    e.currentTarget.style.backgroundColor = '#f0f0f0';
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (paymentMethod !== 'credit') {
-                    e.currentTarget.style.backgroundColor = 'white';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                  }
-                }}
-              >
-                🧾 Credit
-              </button>
+                {enabledPaymentMethods.map((method) => {
+                  const icon = {
+                    cash: '💵',
+                    card: '💳',
+                    airtel_money: '📱',
+                    mpamba: '📱',
+                    credit: '🧾'
+                  }[method.id] || '💳';
+                  const isCredit = method.id === 'credit';
+                  return (
+                    <button
+                      key={method.id}
+                      type="button"
+                      className="payment-btn pos-mobile-payment-btn"
+                      style={{
+                        ...styles.paymentBtn,
+                        ...(paymentMethod === method.id ? styles.paymentBtnActive : {})
+                      }}
+                      onClick={() => { setPaymentMethod(method.id); setPaidAmount(''); }}
+                      disabled={isCredit && !selectedCustomer}
+                      aria-pressed={paymentMethod === method.id}
+                    >
+                      {icon} {method.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

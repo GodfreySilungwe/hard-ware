@@ -20,6 +20,47 @@ body {
   min-height: 100vh;
 }
 
+.settings-payment-method-list {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-payment-method-row,
+.settings-add-payment-method {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(150px, 1fr) minmax(170px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-payment-method-enabled {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  text-transform: capitalize;
+}
+
+.settings-payment-method-enabled input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  flex: 0 0 auto;
+}
+
+.settings-payment-method-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.settings-add-payment-method {
+  grid-template-columns: minmax(150px, 1fr) minmax(170px, 1fr) auto;
+}
+
 /* Modern Card Styles */
 .card-modern {
   background: white;
@@ -343,14 +384,16 @@ body {
   .settings-sub-tabs > button {
     width: 100%;
     min-width: 0;
+    min-height: 44px;
     padding: 10px 8px !important;
-    font-size: 13px !important;
+    font-size: 14px !important;
     line-height: 1.3;
     white-space: normal;
+    border-radius: 12px !important;
   }
 
   .settings-form {
-    gap: 16px !important;
+    gap: 18px !important;
     min-width: 0;
   }
 
@@ -370,11 +413,81 @@ body {
   .settings-form textarea {
     width: 100%;
     min-width: 0;
+    min-height: 44px;
+    font-size: 16px !important;
+    scroll-margin-top: 16px;
+  }
+
+  .settings-form input[type="checkbox"] {
+    width: 20px !important;
+    min-height: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+  }
+
+  .settings-form input[type="file"] {
+    padding: 9px;
   }
 
   .settings-logo-preview {
     align-items: flex-start !important;
     flex-direction: column;
+  }
+
+  .settings-logo-preview img {
+    max-width: min(100%, 240px) !important;
+  }
+
+  .settings-payment-methods {
+    gap: 12px !important;
+  }
+
+  .settings-payment-method-list {
+    gap: 12px;
+  }
+
+  .settings-payment-method-row,
+  .settings-add-payment-method {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #f9fafb;
+  }
+
+  .settings-payment-method-enabled {
+    min-height: 40px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .settings-payment-method-field {
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .settings-payment-method-row > button,
+  .settings-add-payment-method > button,
+  .settings-form-actions > button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .settings-form-actions {
+    position: sticky;
+    bottom: 8px;
+    z-index: 2;
+    margin: 0 -4px -4px !important;
+    padding: 8px 4px max(8px, env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.96);
+    border-top: 1px solid #e5e7eb;
+    justify-content: stretch !important;
+  }
+
+  .settings-form-actions > button {
+    flex: 1;
   }
 
   .card-modern {

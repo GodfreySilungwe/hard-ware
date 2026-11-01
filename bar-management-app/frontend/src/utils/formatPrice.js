@@ -1,35 +1,66 @@
-const numberFormatter = new Intl.NumberFormat('en-US', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2
-});
+const LEGACY_CURRENCY_CODES = {
+  '$': 'USD',
+  '€': 'EUR',
+  '£': 'GBP',
+  R: 'ZAR'
+};
 
-// Format price in Malawi Kwacha
+export const normalizeCurrencyCode = (currency) => {
+  const configuredCurrency = String(currency || '').trim();
+  return LEGACY_CURRENCY_CODES[configuredCurrency] || configuredCurrency || 'MWK';
+};
+
+export const getConfiguredCurrency = () => {
+  if (typeof localStorage === 'undefined') return 'MWK';
+  try {
+    const savedSettings = localStorage.getItem('businessSettings');
+    if (savedSettings) {
+      return normalizeCurrencyCode(JSON.parse(savedSettings).currency);
+    }
+    return normalizeCurrencyCode(localStorage.getItem('businessCurrency'));
+  } catch (error) {
+    console.error('Failed to read configured currency:', error);
+    return 'MWK';
+  }
+};
+
+const formatNumber = (amount) => {
+  const num = Number(amount);
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(Number.isFinite(num) ? num : 0);
+};
+
+export const getCurrencySymbol = (currency) => {
+  const currencyCode = normalizeCurrencyCode(currency);
+  if (currencyCode === 'MWK') return 'MK';
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode })
+      .formatToParts(0)
+      .find((part) => part.type === 'currency')?.value || currencyCode;
+  } catch {
+    return currencyCode;
+  }
+};
+
 export const formatPrice = (amount) => {
-  const num = Number(amount);
-  if (amount === undefined || amount === null || Number.isNaN(num)) {
-    return '0.00';
-  }
-  return numberFormatter.format(num);
+  return formatNumber(amount);
 };
 
-// Format price with MK symbol
-export const formatPriceMK = (amount) => {
-  const num = Number(amount);
-  if (amount === undefined || amount === null || Number.isNaN(num)) return 'MK 0.00';
-  return `MK ${numberFormatter.format(num)}`;
+export const formatPriceMK = (amount, currency = getConfiguredCurrency()) => {
+  return `${getCurrencySymbol(currency)} ${formatNumber(amount)}`;
 };
 
-// Format large numbers
-export const formatCurrency = (amount) => {
+export const formatCurrency = (amount, currency = getConfiguredCurrency()) => {
   const num = Number(amount);
-  if (amount === undefined || amount === null || Number.isNaN(num)) {
-    return 'MK 0.00';
+  const symbol = getCurrencySymbol(currency);
+  const safeNumber = Number.isFinite(num) ? num : 0;
+  if (safeNumber >= 1000000) {
+    return `${symbol} ${formatNumber(safeNumber / 1000000)}M`;
   }
-  if (num >= 1000000) {
-    return `MK ${numberFormatter.format(num / 1000000)}M`;
+  if (safeNumber >= 1000) {
+    return `${symbol} ${formatNumber(safeNumber / 1000)}K`;
   }
-  if (num >= 1000) {
-    return `MK ${numberFormatter.format(num / 1000)}K`;
-  }
-  return `MK ${numberFormatter.format(num)}`;
+  return `${symbol} ${formatNumber(safeNumber)}`;
 };

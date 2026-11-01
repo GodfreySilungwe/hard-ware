@@ -13,8 +13,9 @@ const Applications = () => {
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
     shopName: '',
+    country: '',
     district: '',
-    tradingCenter: '',
+    town: '',
     shopDescription: '',
     tenantName: '',
     hardwareName: '',
@@ -43,7 +44,9 @@ const Applications = () => {
       registration.hardwareName,
       registration.shopName,
       registration.email,
+      registration.country,
       registration.district,
+      registration.town,
       registration.tradingCenter,
       registration.shopDescription
     ].filter(Boolean).join(' ').toLowerCase();
@@ -90,8 +93,9 @@ const Applications = () => {
     setSelectedRegistration({
       ...registration,
       shopName: registration.shopName || '',
+      country: registration.country || '',
       district: registration.district || '',
-      tradingCenter: registration.tradingCenter || '',
+      town: registration.town || registration.tradingCenter || '',
       shopDescription: registration.shopDescription || ''
     });
     setFormError('');
@@ -110,15 +114,16 @@ const Applications = () => {
     setFormError('');
     setFormSuccess('');
     const shopName = String(selectedRegistration.shopName || '').trim();
+    const country = String(selectedRegistration.country || '').trim();
     const district = String(selectedRegistration.district || '').trim();
-    const tradingCenter = String(selectedRegistration.tradingCenter || '').trim();
+    const town = String(selectedRegistration.town || selectedRegistration.tradingCenter || '').trim();
     const shopDescription = String(selectedRegistration.shopDescription || '').trim();
     if (!shopName) {
       setFormError('Shop name is required to approve this registration.');
       return;
     }
-    if (!district || !tradingCenter || !shopDescription) {
-      setFormError('District, trading center, and a description of what the shop sells are required.');
+    if (!country || !district || !town || !shopDescription) {
+      setFormError('Country, district, town, and a description of what the shop sells are required.');
       return;
     }
     if (shopName.length > 120) {
@@ -132,8 +137,9 @@ const Applications = () => {
         tenantName: selectedRegistration.tenantName || selectedRegistration.hardwareName || selectedRegistration.fullName || 'Hardware',
         hardwareName: selectedRegistration.hardwareName || selectedRegistration.tenantName || selectedRegistration.fullName || 'Hardware',
         shopName,
+        country,
         district,
-        tradingCenter,
+        town,
         shopDescription,
         temporaryPassword: selectedRegistration.password || 'temporary-password'
       });
@@ -177,9 +183,9 @@ const Applications = () => {
     setShowConfirmationModal(false);
     setFormLoading(true);
 
-    const { shopName, district, tradingCenter, shopDescription, tenantName, hardwareName, fullName, username, email, phone, password, confirmPassword } = formData;
+    const { shopName, country, district, town, shopDescription, tenantName, hardwareName, fullName, username, email, phone, password, confirmPassword } = formData;
 
-    if (!shopName.trim() || !district.trim() || !tradingCenter.trim() || !shopDescription.trim() || !tenantName || !hardwareName || !fullName || !username || !email || !phone || !password || !confirmPassword) {
+    if (!shopName.trim() || !country.trim() || !district.trim() || !town.trim() || !shopDescription.trim() || !tenantName || !hardwareName || !fullName || !username || !email || !phone || !password || !confirmPassword) {
       setFormError('Please fill in all fields.');
       setFormLoading(false);
       return;
@@ -200,8 +206,9 @@ const Applications = () => {
     try {
       const response = await api.post('/auth/create-hardware-manager', {
         shopName,
+        country,
         district,
-        tradingCenter,
+        town,
         shopDescription,
         tenantName,
         hardwareName,
@@ -216,8 +223,9 @@ const Applications = () => {
       setShowConfirmationModal(true);
       setFormData({
         shopName: '',
+        country: '',
         district: '',
-        tradingCenter: '',
+        town: '',
         shopDescription: '',
         tenantName: '',
         hardwareName: '',
@@ -326,12 +334,16 @@ const Applications = () => {
               />
             </div>
             <div style={styles.formGroup}>
+              <label style={styles.label}>Country *</label>
+              <input name="country" value={formData.country} onChange={handleFormChange} style={styles.input} placeholder="Enter country" maxLength={100} required />
+            </div>
+            <div style={styles.formGroup}>
               <label style={styles.label}>District *</label>
               <input name="district" value={formData.district} onChange={handleFormChange} style={styles.input} placeholder="Enter district" maxLength={100} required />
             </div>
             <div style={styles.formGroup}>
-              <label style={styles.label}>Trading center *</label>
-              <input name="tradingCenter" value={formData.tradingCenter} onChange={handleFormChange} style={styles.input} placeholder="Enter trading center" maxLength={120} required />
+              <label style={styles.label}>Town *</label>
+              <input name="town" value={formData.town} onChange={handleFormChange} style={styles.input} placeholder="Enter town" maxLength={120} required />
             </div>
             <div style={styles.formGroup}>
               <label style={styles.label}>What the shop sells *</label>
@@ -474,12 +486,16 @@ const Applications = () => {
                 />
               </div>
               <div style={styles.formGroup}>
+                <label style={styles.label}>Country *</label>
+                <input value={selectedRegistration.country || ''} onChange={(event) => setSelectedRegistration((current) => ({ ...current, country: event.target.value }))} style={styles.input} placeholder="Enter country" maxLength={100} required />
+              </div>
+              <div style={styles.formGroup}>
                 <label style={styles.label}>District *</label>
                 <input value={selectedRegistration.district || ''} onChange={(event) => setSelectedRegistration((current) => ({ ...current, district: event.target.value }))} style={styles.input} placeholder="Enter district" maxLength={100} required />
               </div>
               <div style={styles.formGroup}>
-                <label style={styles.label}>Trading center *</label>
-                <input value={selectedRegistration.tradingCenter || ''} onChange={(event) => setSelectedRegistration((current) => ({ ...current, tradingCenter: event.target.value }))} style={styles.input} placeholder="Enter trading center" maxLength={120} required />
+                <label style={styles.label}>Town *</label>
+                <input value={selectedRegistration.town || ''} onChange={(event) => setSelectedRegistration((current) => ({ ...current, town: event.target.value }))} style={styles.input} placeholder="Enter town" maxLength={120} required />
               </div>
               <div style={styles.formGroup}>
                 <label style={styles.label}>What the shop sells *</label>

@@ -377,7 +377,7 @@ const Orders = () => {
                                 order.paymentMethod === 'card' ? styles.card : 
                                 styles.mobile)
                           }}>
-                            {getPaymentMethodLabel(order.paymentMethod)}
+                            {order.paymentMethodLabel || getPaymentMethodLabel(order.paymentMethod)}
                           </span>
                         </td>
                         <td style={styles.date}>{new Date(order.createdAt).toLocaleString()}</td>

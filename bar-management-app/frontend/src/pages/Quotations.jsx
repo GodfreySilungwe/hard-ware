@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import api from '../api/api';
 import PageContainer from './PageContainer';
 import UnifiedCard from '../components/common/UnifiedCard';
-import { formatPriceMK } from '../utils/formatPrice';
+import { formatPriceMK, normalizeCurrencyCode } from '../utils/formatPrice';
+import { getCachedBusinessSettings, saveBusinessSettingsCache } from '../utils/businessSettings';
+import { useAuth } from '../context/AuthContext';
 
 const QUOTATION_REQUEST_TIMEOUT = 25000;
 
@@ -31,20 +33,10 @@ const makeLineItem = (product = null) => ({
   unitPrice: Number(product?.sellingPrice || product?.costPrice || 0)
 });
 
-const getBusinessSettings = () => {
-  if (typeof window === 'undefined') return defaultBusinessSettings;
-  try {
-    const saved = localStorage.getItem('businessSettings');
-    return saved ? { ...defaultBusinessSettings, ...JSON.parse(saved) } : defaultBusinessSettings;
-  } catch (error) {
-    console.error('Failed to read business settings', error);
-    return defaultBusinessSettings;
-  }
-};
-
 const formatCurrency = (value) => formatPriceMK(Number(value || 0));
 
 const Quotations = () => {
+  const { user } = useAuth();
   const today = new Date().toISOString().slice(0, 10);
   const [businessSettings, setBusinessSettings] = useState(defaultBusinessSettings);
   const [businessSettingsLoaded, setBusinessSettingsLoaded] = useState(false);
@@ -69,7 +61,11 @@ const Quotations = () => {
   const [previewQuote, setPreviewQuote] = useState(null);
 
   useEffect(() => {
-    const localSettings = getBusinessSettings();
+    let active = true;
+    const localSettings = {
+      ...defaultBusinessSettings,
+      ...(getCachedBusinessSettings(user) || {})
+    };
     setBusinessSettings(localSettings);
     Promise.allSettled([
       api.get('/auth/business-settings'),
@@ -87,11 +83,13 @@ const Quotations = () => {
       if (userResult.status === 'rejected') {
         console.error('Failed to load hardware details for quotation', userResult.reason);
       }
+      if (!active) return;
 
-      setBusinessSettings({
+      const mergedSettings = {
         ...defaultBusinessSettings,
         ...localSettings,
         ...(isConfigured ? savedSettings : {}),
+        currency: normalizeCurrencyCode(isConfigured ? savedSettings.currency : localSettings.currency),
         name: isConfigured
           ? savedSettings.name || user.shopName || localSettings.name || defaultBusinessSettings.name
           : user.shopName || localSettings.name || defaultBusinessSettings.name,
@@ -105,7 +103,9 @@ const Quotations = () => {
           ? savedSettings.email || ''
           : localSettings.email || user.hardwareManagerEmail || user.email || '',
         hardwareManagerName: user.hardwareManagerName || user.fullName || localSettings.hardwareManagerName || ''
-      });
+      };
+      setBusinessSettings(mergedSettings);
+      if (isConfigured) saveBusinessSettingsCache(mergedSettings, user);
       setBusinessSettingsLoaded(true);
     });
     const saved = localStorage.getItem('savedQuotes');
@@ -116,7 +116,10 @@ const Quotations = () => {
         console.error('Failed to parse saved quotes', error);
       }
     }
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
   const getQuoteBusinessDetails = () => ({
     businessName: businessSettings.name || 'Smart Inventory App',

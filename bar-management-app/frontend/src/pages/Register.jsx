@@ -5,8 +5,9 @@ import { useAuth } from '../context/AuthContext';
 const Register = () => {
   const [formData, setFormData] = useState({
     shopName: '',
+    country: '',
     district: '',
-    tradingCenter: '',
+    town: '',
     shopDescription: '',
     username: '',
     email: '',
@@ -45,8 +46,8 @@ const Register = () => {
       setLoading(false);
       return;
     }
-    if (!formData.district.trim() || !formData.tradingCenter.trim() || !formData.shopDescription.trim()) {
-      setError('District, trading center, and a description of what the shop sells are required.');
+    if (!formData.country.trim() || !formData.district.trim() || !formData.town.trim() || !formData.shopDescription.trim()) {
+      setError('Country, district, town, and a description of what the shop sells are required.');
       setLoading(false);
       return;
     }
@@ -73,7 +74,8 @@ const Register = () => {
     }
 
     try {
-      const { confirmPassword, ...registerData } = formData;
+      const registerData = { ...formData };
+      delete registerData.confirmPassword;
       const result = await register({
         ...registerData,
         role: 'hardware-manager'
@@ -82,8 +84,9 @@ const Register = () => {
         setSuccess(result.message || 'Registration submitted for owner approval.');
         setFormData({
           shopName: '',
+          country: '',
           district: '',
-          tradingCenter: '',
+          town: '',
           shopDescription: '',
           username: '',
           email: '',
@@ -120,10 +123,21 @@ const Register = () => {
           <p style={styles.subtitle}>Register a new Smart Inventory App account for approval</p>
         </div>
 
-        {error && <div style={styles.error}>{error}</div>}
-        {success && <div style={styles.success}>{success}</div>}
-
-        <form onSubmit={handleSubmit} style={styles.form}>
+        {success ? (
+          <div>
+            <div style={styles.success} role="status" aria-live="polite">
+              <strong>Registration submitted successfully</strong>
+              <p style={styles.successMessage}>{success}</p>
+            </div>
+            <p style={styles.confirmationText}>
+              Your account is waiting for owner approval. Once it is approved, return here to sign in.
+            </p>
+            <Link to="/login" style={styles.loginButton}>Go back to login</Link>
+          </div>
+        ) : (
+          <>
+            {error && <div style={styles.error} role="alert">{error}</div>}
+            <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.formGroup}>
             <label style={styles.label}>Shop Name *</label>
             <input
@@ -134,6 +148,20 @@ const Register = () => {
               onChange={handleChange}
               placeholder="Enter your shop name"
               maxLength={120}
+              required
+            />
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Country *</label>
+            <input
+              type="text"
+              name="country"
+              style={styles.input}
+              value={formData.country}
+              onChange={handleChange}
+              placeholder="Enter country"
+              maxLength={100}
               required
             />
           </div>
@@ -153,14 +181,14 @@ const Register = () => {
           </div>
 
           <div style={styles.formGroup}>
-            <label style={styles.label}>Trading Center *</label>
+            <label style={styles.label}>Town *</label>
             <input
               type="text"
-              name="tradingCenter"
+              name="town"
               style={styles.input}
-              value={formData.tradingCenter}
+              value={formData.town}
               onChange={handleChange}
-              placeholder="Enter trading center"
+              placeholder="Enter town"
               maxLength={120}
               required
             />
@@ -305,11 +333,13 @@ const Register = () => {
           >
             {loading ? 'Creating Account...' : 'Create Account'}
           </button>
-        </form>
+            </form>
 
-        <p style={styles.footer}>
-          Already have an account? <Link to="/login" style={styles.link}>Sign in here</Link>
-        </p>
+            <p style={styles.footer}>
+              Already have an account? <Link to="/login" style={styles.link}>Sign in here</Link>
+            </p>
+          </>
+        )}
       </div>
     </div>
   );
@@ -368,6 +398,16 @@ const styles = {
     marginBottom: '20px',
     fontSize: '14px',
     border: '1px solid #c8e6c9'
+  },
+  successMessage: {
+    margin: '8px 0 0',
+    lineHeight: 1.5
+  },
+  confirmationText: {
+    color: '#555',
+    fontSize: '14px',
+    lineHeight: 1.6,
+    margin: '0 0 20px'
   },
   form: {
     display: 'flex',
@@ -429,6 +469,17 @@ const styles = {
     cursor: 'pointer',
     transition: 'all 0.3s ease',
     marginTop: '10px'
+  },
+  loginButton: {
+    display: 'block',
+    padding: '12px',
+    borderRadius: '8px',
+    backgroundColor: '#e94560',
+    color: 'white',
+    fontSize: '16px',
+    fontWeight: '600',
+    textAlign: 'center',
+    textDecoration: 'none'
   },
   footer: {
     textAlign: 'center',

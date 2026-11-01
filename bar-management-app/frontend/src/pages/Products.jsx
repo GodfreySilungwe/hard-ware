@@ -5,7 +5,7 @@ import PageContainer from './PageContainer';
 import Button from '../components/common/Button';
 import UnifiedCard from '../components/common/UnifiedCard';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
-import { formatPriceMK } from '../utils/formatPrice';
+import { formatPriceMK, getConfiguredCurrency, getCurrencySymbol } from '../utils/formatPrice';
 import { formatQuantity } from '../utils/formatQuantity';
 import { filterAndSortProducts } from '../utils/productFilters';
 import { saveAs } from 'file-saver';
@@ -265,7 +265,7 @@ const Products = () => {
                 </select>
               </div>
               <div style={styles.formGroup}>
-                <label style={styles.label}>Cost Price (MK per {formData.unit || 'unit'}) *</label>
+                <label style={styles.label}>Cost Price ({getCurrencySymbol(getConfiguredCurrency())} per {formData.unit || 'unit'}) *</label>
                 <input
                   type="number"
                   required
@@ -277,7 +277,7 @@ const Products = () => {
                 />
               </div>
               <div style={styles.formGroup}>
-                <label style={styles.label}>Selling Price (MK per {formData.unit || 'unit'}) *</label>
+                <label style={styles.label}>Selling Price ({getCurrencySymbol(getConfiguredCurrency())} per {formData.unit || 'unit'}) *</label>
                 <input
                   type="number"
                   required

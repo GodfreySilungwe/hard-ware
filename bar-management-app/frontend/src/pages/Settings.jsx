@@ -5,8 +5,13 @@ import UnifiedCard from '../components/common/UnifiedCard';
 import Button from '../components/common/Button';
 import AvatarUpload from '../components/common/AvatarUpload';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
-import { formatPriceMK } from '../utils/formatPrice';
-import { DEFAULT_BUSINESS_SETTINGS } from '../utils/businessSettings';
+import { normalizeCurrencyCode } from '../utils/formatPrice';
+import {
+  DEFAULT_BUSINESS_SETTINGS,
+  getCachedBusinessSettings,
+  normalizePaymentMethods,
+  saveBusinessSettingsCache
+} from '../utils/businessSettings';
 import { useAuth } from '../context/AuthContext';
 
 const Settings = ({ initialMenu = 'settings' }) => {
@@ -51,6 +56,8 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
   // Business settings state
   const [business, setBusiness] = useState({ ...DEFAULT_BUSINESS_SETTINGS });
+  const [newPaymentMethodLabel, setNewPaymentMethodLabel] = useState('');
+  const [newPaymentMethodAccount, setNewPaymentMethodAccount] = useState('cash');
 
   // Load user profile from localStorage on mount
   useEffect(() => {
@@ -542,7 +549,9 @@ const Settings = ({ initialMenu = 'settings' }) => {
 
     try {
       const response = await api.put('/auth/business-settings', business);
-      setBusiness({ ...DEFAULT_BUSINESS_SETTINGS, ...response.data.settings });
+      const savedSettings = { ...DEFAULT_BUSINESS_SETTINGS, ...response.data.settings };
+      setBusiness(savedSettings);
+      saveBusinessSettingsCache(savedSettings, user);
       setMessage('✅ Business settings saved successfully!');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
@@ -659,21 +668,28 @@ const Settings = ({ initialMenu = 'settings' }) => {
     const loadBusinessSettings = async () => {
       try {
         const response = await api.get('/auth/business-settings');
+        const savedBusinessSettings = getCachedBusinessSettings(user);
         let settings = { ...DEFAULT_BUSINESS_SETTINGS, ...response.data.settings };
+        settings.currency = normalizeCurrencyCode(settings.currency);
+        settings.paymentMethods = normalizePaymentMethods(settings.paymentMethods);
+        let settingsConfigured = Boolean(response.data.configured);
 
-        if (!response.data.configured && ['hardware-manager', 'owner'].includes(user?.role)) {
+        if (!settingsConfigured && ['hardware-manager', 'owner'].includes(user?.role)) {
           try {
-            const saved = localStorage.getItem('businessSettings');
-            if (saved) {
-              const legacySettings = { ...DEFAULT_BUSINESS_SETTINGS, ...JSON.parse(saved) };
+            if (savedBusinessSettings) {
+              const legacySettings = { ...DEFAULT_BUSINESS_SETTINGS, ...savedBusinessSettings };
               const savedResponse = await api.put('/auth/business-settings', legacySettings);
               settings = { ...DEFAULT_BUSINESS_SETTINGS, ...savedResponse.data.settings };
+              settings.currency = normalizeCurrencyCode(settings.currency);
+              settings.paymentMethods = normalizePaymentMethods(settings.paymentMethods);
+              settingsConfigured = Boolean(savedResponse.data.configured);
             }
           } catch (migrationError) {
             console.warn('Could not migrate locally saved business settings:', migrationError);
           }
         }
 
+        if (settingsConfigured) saveBusinessSettingsCache(settings, user);
         if (!cancelled) setBusiness(settings);
       } catch (err) {
         if (!cancelled) {
@@ -686,7 +702,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, user?.role, user?.tenantId]);
+  }, [authLoading, user]);
 
   const menuItems = isOwnerRole
     ? [
@@ -709,6 +725,46 @@ const Settings = ({ initialMenu = 'settings' }) => {
     { id: 'business', label: '🏢 Business' }
   ];
 
+  const updatePaymentMethod = (methodId, updates) => {
+    setBusiness((current) => ({
+      ...current,
+      paymentMethods: normalizePaymentMethods(current.paymentMethods).map((method) => (
+        method.id === methodId ? { ...method, ...updates } : method
+      ))
+    }));
+  };
+
+  const addPaymentMethod = () => {
+    const label = newPaymentMethodLabel.trim();
+    if (!label) return;
+    const baseId = `custom_${label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')}`.slice(0, 40);
+    const existingIds = new Set(normalizePaymentMethods(business.paymentMethods).map((method) => method.id));
+    let id = baseId;
+    let suffix = 2;
+    while (existingIds.has(id)) {
+      const suffixText = `_${suffix}`;
+      id = `${baseId.slice(0, 40 - suffixText.length)}${suffixText}`;
+      suffix += 1;
+    }
+    setBusiness((current) => ({
+      ...current,
+      paymentMethods: [
+        ...normalizePaymentMethods(current.paymentMethods),
+        { id, label, account: newPaymentMethodAccount, enabled: true }
+      ]
+    }));
+    setNewPaymentMethodLabel('');
+    setNewPaymentMethodAccount('cash');
+  };
+
+  const removePaymentMethod = (methodId) => {
+    setBusiness((current) => ({
+      ...current,
+      paymentMethods: normalizePaymentMethods(current.paymentMethods)
+        .filter((method) => !method.id.startsWith('custom_') || method.id !== methodId)
+    }));
+  };
+
   const formatDate = (value) => {
     if (!value) return 'Not available';
     const date = new Date(value);
@@ -725,21 +781,24 @@ const Settings = ({ initialMenu = 'settings' }) => {
         <div className="fade-in" style={styles.error}>{error}</div>
       )}
 
-      <div className="settings-menu-tabs" style={styles.menuTabs}>
-        {menuItems.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            style={{
-              ...styles.menuTab,
-              ...(activeMenu === item.id ? styles.menuTabActive : {})
-            }}
-            onClick={() => setActiveMenu(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      {menuItems.length > 1 && (
+        <div className="settings-menu-tabs" style={styles.menuTabs}>
+          {menuItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              style={{
+                ...styles.menuTab,
+                ...(activeMenu === item.id ? styles.menuTabActive : {})
+              }}
+              onClick={() => setActiveMenu(item.id)}
+              aria-pressed={activeMenu === item.id}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
 
 
       {activeMenu === 'settings' && (
@@ -754,6 +813,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
                   ...(settingsSubTab === tab.id ? styles.subTabActive : {})
                 }}
                 onClick={() => setSettingsSubTab(tab.id)}
+                aria-pressed={settingsSubTab === tab.id}
               >
                 {tab.label}
               </button>
@@ -791,7 +851,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
                     <span style={styles.helperText}>Role cannot be changed</span>
                   </div>
                 </div>
-                <div style={styles.formActions}>
+                <div className="settings-form-actions" style={styles.formActions}>
                   <Button type="submit" disabled={loading}>{loading ? 'Saving...' : 'Update Profile'}</Button>
                 </div>
               </form>
@@ -815,7 +875,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
                     <input type="password" required style={styles.input} value={passwordData.confirmPassword} onChange={(e) => setPasswordData({...passwordData, confirmPassword: e.target.value})} placeholder="Confirm new password" />
                   </div>
                 </div>
-                <div style={styles.formActions}>
+                <div className="settings-form-actions" style={styles.formActions}>
                   <Button type="submit" disabled={loading}>{loading ? 'Changing...' : 'Change Password'}</Button>
                 </div>
               </form>
@@ -861,10 +921,24 @@ const Settings = ({ initialMenu = 'settings' }) => {
                     <label style={styles.label}>Currency</label>
                     <select style={styles.input} value={business.currency} onChange={(e) => setBusiness({...business, currency: e.target.value})}>
                       <option value="MWK">MWK - Malawi Kwacha</option>
-                      <option value="$">$ - US Dollar</option>
-                      <option value="€">€ - Euro</option>
-                      <option value="£">£ - British Pound</option>
-                      <option value="R">R - South African Rand</option>
+                      <option value="USD">USD - US Dollar</option>
+                      <option value="EUR">EUR - Euro</option>
+                      <option value="GBP">GBP - British Pound</option>
+                      <option value="ZAR">ZAR - South African Rand</option>
+                      <option value="KES">KES - Kenyan Shilling</option>
+                      <option value="TZS">TZS - Tanzanian Shilling</option>
+                      <option value="UGX">UGX - Ugandan Shilling</option>
+                      <option value="ZMW">ZMW - Zambian Kwacha</option>
+                      <option value="BWP">BWP - Botswana Pula</option>
+                      <option value="NGN">NGN - Nigerian Naira</option>
+                      <option value="GHS">GHS - Ghanaian Cedi</option>
+                      <option value="RWF">RWF - Rwandan Franc</option>
+                      <option value="XOF">XOF - West African CFA Franc</option>
+                      <option value="XAF">XAF - Central African CFA Franc</option>
+                      <option value="CAD">CAD - Canadian Dollar</option>
+                      <option value="AUD">AUD - Australian Dollar</option>
+                      <option value="INR">INR - Indian Rupee</option>
+                      <option value="JPY">JPY - Japanese Yen</option>
                     </select>
                   </div>
                   <div style={styles.formGroup}>
@@ -896,8 +970,89 @@ const Settings = ({ initialMenu = 'settings' }) => {
                     </label>
                     <span style={styles.helperText}>If enabled, receipts will include a tax breakdown for inclusive pricing.</span>
                   </div>
+                  <div className="settings-payment-methods" style={{ ...styles.formGroup, gridColumn: '1 / -1' }}>
+                    <div>
+                      <label style={styles.label}>Payment Methods</label>
+                      <span style={styles.helperText}>Choose which methods appear at checkout. Custom methods are recorded against the selected cash-ledger account.</span>
+                    </div>
+                    <div className="settings-payment-method-list">
+                      {normalizePaymentMethods(business.paymentMethods).map((method) => (
+                        <div className="settings-payment-method-row" key={method.id}>
+                          <label className="settings-payment-method-enabled">
+                            <input
+                              type="checkbox"
+                              checked={method.enabled}
+                              onChange={(event) => updatePaymentMethod(method.id, { enabled: event.target.checked })}
+                            />
+                            <span>{method.id.startsWith('custom_') ? 'Custom method' : method.id.replace(/_/g, ' ')}</span>
+                          </label>
+                          <label className="settings-payment-method-field">
+                            <span>Checkout label</span>
+                            <input
+                              aria-label={`${method.label} display name`}
+                              type="text"
+                              maxLength="40"
+                              value={method.label}
+                              onChange={(event) => updatePaymentMethod(method.id, { label: event.target.value })}
+                              style={styles.input}
+                            />
+                          </label>
+                          <label className="settings-payment-method-field">
+                            <span>Record payments in</span>
+                            <select
+                              aria-label={`${method.label} cash ledger account`}
+                              value={method.account}
+                              onChange={(event) => updatePaymentMethod(method.id, { account: event.target.value })}
+                              style={styles.input}
+                              disabled={method.id === 'credit'}
+                            >
+                              <option value="cash">Cash</option>
+                              <option value="card">Bank / Card</option>
+                              <option value="airtel_money">Airtel Money</option>
+                              <option value="mpamba">Mpamba</option>
+                              <option value="mobile_money">Other mobile money</option>
+                            </select>
+                          </label>
+                          {method.id.startsWith('custom_') && (
+                            <Button type="button" variant="secondary" onClick={() => removePaymentMethod(method.id)}>Remove</Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="settings-add-payment-method">
+                      <label className="settings-payment-method-field">
+                        <span>New checkout method</span>
+                        <input
+                          type="text"
+                          maxLength="40"
+                          value={newPaymentMethodLabel}
+                          onChange={(event) => setNewPaymentMethodLabel(event.target.value)}
+                          placeholder="Method name"
+                          style={styles.input}
+                        />
+                      </label>
+                      <label className="settings-payment-method-field">
+                        <span>Record payments in</span>
+                        <select
+                          value={newPaymentMethodAccount}
+                          onChange={(event) => setNewPaymentMethodAccount(event.target.value)}
+                          style={styles.input}
+                          aria-label="New method cash ledger account"
+                        >
+                          <option value="cash">Cash</option>
+                          <option value="card">Bank / Card</option>
+                          <option value="airtel_money">Airtel Money</option>
+                          <option value="mpamba">Mpamba</option>
+                          <option value="mobile_money">Other mobile money</option>
+                        </select>
+                      </label>
+                      <Button type="button" variant="secondary" onClick={addPaymentMethod} disabled={!newPaymentMethodLabel.trim()}>
+                        Add method
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-                <div style={styles.formActions}>
+                <div className="settings-form-actions" style={styles.formActions}>
                   <Button type="submit" disabled={loading}>{loading ? 'Saving...' : 'Save Settings'}</Button>
                 </div>
               </form>
@@ -1074,8 +1229,9 @@ const Settings = ({ initialMenu = 'settings' }) => {
                           <div><span style={styles.hardwareDetailLabel}>Email</span><strong style={styles.hardwareDetailValue}>{manager.email || tenant.ownerInfo?.email || 'Not provided'}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Phone</span><strong style={styles.hardwareDetailValue}>{manager.phone || tenant.ownerInfo?.phone || 'Not provided'}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Owner</span><strong style={styles.hardwareDetailValue}>{tenant.ownerInfo?.fullName || tenant.name || 'Not provided'}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>Country</span><strong style={styles.hardwareDetailValue}>{tenant.country || 'Not provided'}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>District</span><strong style={styles.hardwareDetailValue}>{tenant.district || 'Not provided'}</strong></div>
-                          <div><span style={styles.hardwareDetailLabel}>Trading center</span><strong style={styles.hardwareDetailValue}>{tenant.tradingCenter || 'Not provided'}</strong></div>
+                          <div><span style={styles.hardwareDetailLabel}>Town</span><strong style={styles.hardwareDetailValue}>{tenant.town || tenant.tradingCenter || 'Not provided'}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Manager accounts</span><strong style={styles.hardwareDetailValue}>{tenantUsers.length}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Sales accounts</span><strong style={styles.hardwareDetailValue}>{Number(tenant.activeSalesAccountCount || 0)}</strong></div>
                           <div><span style={styles.hardwareDetailLabel}>Subscription status</span><strong style={styles.hardwareDetailValue}>{subscriptionAccess.status || 'legacy'}</strong></div>

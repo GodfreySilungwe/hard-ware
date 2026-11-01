@@ -1,4 +1,4 @@
-import { formatPrice } from '../../utils/formatPrice';
+import { formatPriceMK } from '../../utils/formatPrice';
 import { formatQuantity } from '../../utils/formatQuantity';
 import { DEFAULT_BUSINESS_SETTINGS } from '../../utils/businessSettings';
 import { useAuth } from '../../context/AuthContext';
@@ -38,7 +38,7 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
   const businessPhone = settings.phone || '';
   const businessEmail = settings.email || '';
   const taxRate = Number(order.taxRate ?? settings.taxRate);
-  const formatReceiptPrice = (amount) => `${settings.currency === 'MWK' ? 'MK' : settings.currency} ${formatPrice(amount)}`;
+  const formatReceiptPrice = (amount) => formatPriceMK(amount, settings.currency);
 
   const handlePrint = () => {
     window.print();
