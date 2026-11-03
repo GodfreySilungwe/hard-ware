@@ -2,6 +2,8 @@ const { SESClient, SendRawEmailCommand } = require('@aws-sdk/client-ses');
 const PDFDocument = require('pdfkit');
 const dynamodb = require('./lib/dynamodb');
 const { buildReportSummary } = require('./lib/orderMetrics');
+const { formatCurrencyAmount } = require('./lib/currency');
+const { normalizePaymentMethods } = require('./lib/paymentMethods');
 
 const REPORT_TIME_ZONE = 'Africa/Blantyre';
 const MALAWI_OFFSET_MINUTES = 120;
@@ -88,9 +90,28 @@ const getShopDisplayName = (tenant, users = []) => {
   ).trim();
 };
 
-const getReportPaymentLabel = (payment) => (
-  String(payment?.method || '').toLowerCase() === 'card' ? 'Bank' : payment?.label
-);
+const getReportPaymentLabel = (payment) => {
+  const isCard = String(payment?.method || '').toLowerCase() === 'card';
+  if (isCard && payment?.label === 'Card') return 'Bank';
+  return payment?.label || (isCard ? 'Bank' : payment?.method);
+};
+
+const reconcileReportPaymentLabels = (orders, paymentMethods) => {
+  let configuredMethods = [];
+  try {
+    configuredMethods = normalizePaymentMethods(paymentMethods);
+  } catch (error) {
+    configuredMethods = [];
+  }
+  const labelsById = new Map(configuredMethods.map((method) => [method.id, method.label]));
+
+  return (orders || []).map((order) => {
+    const method = String(order?.paymentMethod || '').trim().toLowerCase();
+    const configuredLabel = labelsById.get(method);
+    if (!configuredLabel) return order;
+    return { ...order, paymentMethodLabel: configuredLabel };
+  });
+};
 
 const buildReportEmailText = ({ shopName, window }) => (
   `Shop name: ${shopName}\n`
@@ -241,7 +262,7 @@ const collectTenantOrders = async (tenantId, window, legacyOrders = null) => {
   const allLegacyOrders = legacyOrders || await dynamodb.listEntities('order', {
     projection: [
       '_id', 'id', 'tenantId', 'orderNumber', 'customerName', 'items', 'totalAmount',
-      'taxAmount', 'netAmount', 'profit', 'paymentMethod', 'createdAt', 'status',
+      'taxAmount', 'netAmount', 'profit', 'paymentMethod', 'paymentMethodLabel', 'createdAt', 'status',
       'taxCompliant', 'paidAmount', 'customer'
     ]
   });
@@ -257,20 +278,29 @@ const collectTenantOrders = async (tenantId, window, legacyOrders = null) => {
       && Number(order.totalAmount || 0) > 0;
   };
   const ordersById = new Map();
-  [...indexedOrders, ...allLegacyOrders].filter(inWindow).forEach((order, index) => {
+  [...allLegacyOrders, ...indexedOrders].filter(inWindow).forEach((order, index) => {
     ordersById.set(getOrderId(order) || `row-${index}`, order);
   });
   return [...ordersById.values()];
 };
 
-const createSalesPdf = async ({ shopName, orders, window, productMap = new Map(), categoryMap = new Map() }) => new Promise((resolve, reject) => {
+const createSalesPdf = async ({
+  shopName,
+  orders,
+  window,
+  currency = 'MWK',
+  paymentMethods,
+  productMap = new Map(),
+  categoryMap = new Map()
+}) => new Promise((resolve, reject) => {
   const document = new PDFDocument({ size: 'A4', margin: 42 });
   const chunks = [];
   document.on('data', (chunk) => chunks.push(chunk));
   document.on('end', () => resolve(Buffer.concat(chunks)));
   document.on('error', reject);
 
-  const summary = buildReportSummary(orders, { includeReversed: false, productMap, categoryMap });
+  const reconciledOrders = reconcileReportPaymentLabels(orders, paymentMethods);
+  const summary = buildReportSummary(reconciledOrders, { includeReversed: false, productMap, categoryMap });
   const activity = buildReportActivityMetrics(orders);
   const contentX = 42;
   const contentWidth = document.page.width - contentX * 2;
@@ -292,14 +322,14 @@ const createSalesPdf = async ({ shopName, orders, window, productMap = new Map()
   const gap = 9;
   const cardWidth = (contentWidth - gap * 3) / 4;
   const cards = [
-    ['Gross sales', `MK ${formatMoney(summary.totalSales)}`],
-    ['Net sales', `MK ${formatMoney(summary.totalSalesNet)}`],
-    ['Gross profit', `MK ${formatMoney(summary.totalProfit)}`],
+    ['Gross sales', formatCurrencyAmount(summary.totalSales, currency)],
+    ['Net sales', formatCurrencyAmount(summary.totalSalesNet, currency)],
+    ['Gross profit', formatCurrencyAmount(summary.totalProfit, currency)],
     ['Gross margin', `${formatMoney(summary.grossMarginPercentage)}%`],
     ['Orders', String(summary.totalOrders)],
-    ['Average sale', `MK ${formatMoney(summary.averageOrderValue)}`],
+    ['Average sale', formatCurrencyAmount(summary.averageOrderValue, currency)],
     ['Units sold', formatMoney(summary.totalItems)],
-    ['Tax collected', `MK ${formatMoney(summary.totalTax)}`]
+    ['Tax collected', formatCurrencyAmount(summary.totalTax, currency)]
   ];
   cards.forEach(([label, value], index) => {
     const x = contentX + (index % 4) * (cardWidth + gap);
@@ -320,7 +350,7 @@ const createSalesPdf = async ({ shopName, orders, window, productMap = new Map()
     {
       label: 'PEAK SALES HOUR',
       value: activity.busiestHour
-        ? `${activity.busiestHour.hour}  |  MK ${formatMoney(activity.busiestHour.amount)}`
+        ? `${activity.busiestHour.hour}  |  ${formatCurrencyAmount(activity.busiestHour.amount, currency)}`
         : 'No timed sales'
     }
   ];
@@ -365,14 +395,14 @@ const createSalesPdf = async ({ shopName, orders, window, productMap = new Map()
   const columnWidth = (contentWidth - columnGap) / 2;
   const rightX = contentX + columnWidth + columnGap;
   const totalPaymentAmount = summary.paymentMethods.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const paymentRows = summary.paymentMethods.slice(0, 5).map((payment) => ({
+  const paymentRows = summary.paymentMethods.map((payment) => ({
     label: getReportPaymentLabel(payment),
-    detail: `MK ${formatMoney(payment.amount)}`,
+    detail: formatCurrencyAmount(payment.amount, currency),
     share: totalPaymentAmount > 0 ? payment.amount / totalPaymentAmount : 0
   }));
   const productRows = summary.topProducts.slice(0, 5).map((product) => ({
     label: product.name,
-    detail: `${formatMoney(product.quantity)} sold  |  MK ${formatMoney(product.revenue)}`,
+    detail: `${formatMoney(product.quantity)} sold  |  ${formatCurrencyAmount(product.revenue, currency)}`,
     share: summary.totalSales > 0 ? product.revenue / summary.totalSales : 0
   }));
   const paymentEndY = drawContributionRows({
@@ -393,7 +423,7 @@ const createSalesPdf = async ({ shopName, orders, window, productMap = new Map()
   });
   const categoryRows = summary.categorySales.slice(0, 4).map((category) => ({
     label: category.name,
-    detail: `MK ${formatMoney(category.revenue)}`,
+    detail: formatCurrencyAmount(category.revenue, currency),
     share: summary.totalSales > 0 ? category.revenue / summary.totalSales : 0
   }));
   drawContributionRows({
@@ -535,7 +565,7 @@ const handler = async (event = {}) => {
         legacyOrders = await dynamodb.listEntities('order', {
           projection: [
             '_id', 'id', 'tenantId', 'orderNumber', 'customerName', 'items', 'totalAmount',
-            'taxAmount', 'netAmount', 'profit', 'paymentMethod', 'createdAt', 'status',
+            'taxAmount', 'netAmount', 'profit', 'paymentMethod', 'paymentMethodLabel', 'createdAt', 'status',
             'taxCompliant', 'paidAmount', 'customer'
           ]
         });
@@ -571,7 +601,14 @@ const handler = async (event = {}) => {
       });
       const lookups = buildReportLookupMaps(tenantId, orders, products, categoryRecords);
       const shopName = getShopDisplayName(tenant, users);
-      const pdf = await createSalesPdf({ shopName, orders, window, ...lookups });
+      const pdf = await createSalesPdf({
+        shopName,
+        orders,
+        window,
+        currency: tenant.businessSettings?.currency || 'MWK',
+        paymentMethods: tenant.businessSettings?.paymentMethods,
+        ...lookups
+      });
       await sendReport({ recipients, from, shopName, pdf, window });
       results.sent += 1;
       console.info('Daily sales report sent', { tenantId, reportDate: window.reportDate });
@@ -598,6 +635,7 @@ module.exports = {
   buildRawTextEmail,
   sendNoSalesReminderForTenant,
   collectTenantOrders,
+  reconcileReportPaymentLabels,
   createSalesPdf,
   buildRawEmail,
   isValidEmail

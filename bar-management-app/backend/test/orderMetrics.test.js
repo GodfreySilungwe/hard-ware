@@ -45,6 +45,21 @@ test('groups sales totals by payment method', () => {
   ]);
 });
 
+test('uses saved labels for configured payment methods in summaries', () => {
+  const summary = summarizeOrders([
+    {
+      status: 'completed',
+      paymentMethod: 'custom_mobile_wallet',
+      paymentMethodLabel: 'Local Wallet',
+      totalAmount: 125
+    }
+  ], { includeReversed: false });
+
+  assert.deepEqual(summary.paymentMethods, [
+    { method: 'custom_mobile_wallet', label: 'Local Wallet', count: 1, amount: 125 }
+  ]);
+});
+
 test('buildReportSummary aggregates top products and payment totals without full order payloads', () => {
   const summary = buildReportSummary([
     {

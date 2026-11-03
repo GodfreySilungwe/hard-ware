@@ -5,14 +5,12 @@ const { GetObjectCommand, S3Client } = require('@aws-sdk/client-s3');
 const dynamodb = require('../lib/dynamodb');
 const Customer = require('../models/Customer');
 const { protect } = require('../middleware/auth');
+const { formatCurrencyAmount } = require('../lib/currency');
 const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
 const bucketName = 'hardwaresamplefiles3bucket';
 
 const toMoney = (value) => Number(value || 0);
-const formatPdfMoney = (value) => `MK ${toMoney(value).toLocaleString('en-US', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2
-})}`;
+const formatPdfMoney = (value, currency) => formatCurrencyAmount(toMoney(value), currency);
 const formatDigitalSignature = (name) => {
   const nameParts = String(name || '').trim().split(/\s+/).filter(Boolean);
   if (nameParts.length < 2) return nameParts[0] || '';
@@ -326,9 +324,9 @@ const buildPdf = (quote) => new Promise((resolve, reject) => {
     const amount = qty * unitPrice;
     doc.fontSize(9).fillColor(colors.muted);
     doc.text(String(qty), qtyX, y + 9, { width: qtyWidth, align: 'center' });
-    doc.text(formatPdfMoney(unitPrice), rateX, y + 9, { width: rateWidth, align: 'right' });
+    doc.text(formatPdfMoney(unitPrice, quote.currency), rateX, y + 9, { width: rateWidth, align: 'right' });
     doc.font('Helvetica-Bold').fillColor(colors.ink)
-      .text(formatPdfMoney(amount), amountX, y + 9, { width: amountWidth, align: 'right' });
+      .text(formatPdfMoney(amount, quote.currency), amountX, y + 9, { width: amountWidth, align: 'right' });
     doc.strokeColor(colors.line).lineWidth(0.5)
       .moveTo(leftMargin, y + rowHeight).lineTo(rightEdge, y + rowHeight).stroke();
     doc.restore();
@@ -349,15 +347,15 @@ const buildPdf = (quote) => new Promise((resolve, reject) => {
     .fillAndStroke(colors.panel, colors.line);
   doc.font('Helvetica').fontSize(9).fillColor(colors.muted)
     .text('Subtotal', summaryX + 14, y + 14, { width: 110 });
-  doc.text(formatPdfMoney(subtotal), summaryX + 125, y + 14, { width: 106, align: 'right' });
+  doc.text(formatPdfMoney(subtotal, quote.currency), summaryX + 125, y + 14, { width: 106, align: 'right' });
   doc.text(`Tax (${quote.taxRate || 0}%)`, summaryX + 14, y + 34, { width: 110 });
-  doc.text(formatPdfMoney(taxAmount), summaryX + 125, y + 34, { width: 106, align: 'right' });
+  doc.text(formatPdfMoney(taxAmount, quote.currency), summaryX + 125, y + 34, { width: 106, align: 'right' });
   doc.strokeColor(colors.line).lineWidth(0.7)
     .moveTo(summaryX + 14, y + 58).lineTo(summaryX + summaryWidth - 14, y + 58).stroke();
   doc.roundedRect(summaryX + 10, y + 66, summaryWidth - 20, 29, 5).fill(colors.navy);
   doc.font('Helvetica-Bold').fontSize(10).fillColor(colors.white)
     .text('TOTAL', summaryX + 20, y + 75, { width: 85 });
-  doc.text(formatPdfMoney(total), summaryX + 105, y + 75, { width: summaryWidth - 40, align: 'right' });
+  doc.text(formatPdfMoney(total, quote.currency), summaryX + 105, y + 75, { width: summaryWidth - 40, align: 'right' });
   doc.restore();
   y += summaryHeight + 20;
 
@@ -465,6 +463,7 @@ router.get('/:id/pdf', protect, async (req, res) => {
       : null;
     const pdfBuffer = await buildPdf(finalizeQuoteTotals({
       ...quote,
+      currency: savedSettings?.currency || 'MWK',
       businessName: savedSettings
         ? savedSettings.name || req.tenant?.shopName || req.user?.shopName || 'Smart Inventory App'
         : req.tenant?.shopName || quote.businessName || 'Smart Inventory App',

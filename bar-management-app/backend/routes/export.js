@@ -7,6 +7,7 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
 const dynamodb = require('../lib/dynamodb');
+const { formatCurrencyAmount, normalizeCurrencyCode } = require('../lib/currency');
 
 const MAX_EXPORT_ROWS = Math.max(1, Number(process.env.MAX_EXPORT_ROWS || 10000));
 
@@ -21,12 +22,12 @@ const formatDate = (date) => {
   });
 };
 
-const formatMoney = (value, includeCurrency = false) => {
+const formatMoney = (value, includeCurrency = false, currency = 'MWK') => {
   const amount = Number(value || 0);
   const formatted = Number.isFinite(amount)
     ? amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : '0.00';
-  return includeCurrency ? `MK ${formatted}` : formatted;
+  return includeCurrency ? formatCurrencyAmount(value, currency) : formatted;
 };
 
 const formatPdfDate = (date) => {
@@ -76,7 +77,7 @@ const getOrdersForExport = async (req) => {
   const projection = [
     '_id', 'id', 'tenantId', 'orderNumber', 'customer', 'customerName',
     'taxCompliant', 'items', 'totalAmount', 'taxAmount', 'netAmount',
-    'profit', 'paymentMethod', 'createdAt', 'status'
+    'profit', 'paymentMethod', 'paymentMethodLabel', 'createdAt', 'status'
   ];
   let orders;
 
@@ -156,6 +157,9 @@ router.get('/test', protect, (req, res) => {
 router.get('/sales/excel', protect, async (req, res) => {
   try {
     const { orders, customerMap, filters } = await getOrdersForExport(req);
+    const currency = normalizeCurrencyCode(
+      req.tenant?.businessSettings?.currency || req.user?.businessSettings?.currency || 'MWK'
+    );
     orders.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=sales_report.xlsx');
@@ -169,10 +173,10 @@ router.get('/sales/excel', protect, async (req, res) => {
       { header: 'Customer', key: 'customer', width: 25 },
       { header: 'Tax Compliant', key: 'taxCompliant', width: 15 },
       { header: 'Items', key: 'items', width: 15 },
-      { header: 'Total Amount (MK)', key: 'totalAmount', width: 18 },
-      { header: 'Tax (MK)', key: 'taxAmount', width: 14 },
-      { header: 'Net Amount (MK)', key: 'netAmount', width: 18 },
-      { header: 'Profit (MK)', key: 'profit', width: 16 },
+      { header: `Total Amount (${currency})`, key: 'totalAmount', width: 18 },
+      { header: `Tax (${currency})`, key: 'taxAmount', width: 14 },
+      { header: `Net Amount (${currency})`, key: 'netAmount', width: 18 },
+      { header: `Profit (${currency})`, key: 'profit', width: 16 },
       { header: 'Payment Method', key: 'paymentMethod', width: 16 },
       { header: 'Date', key: 'date', width: 25 }
     ];
@@ -199,7 +203,7 @@ router.get('/sales/excel', protect, async (req, res) => {
         taxAmount: formatMoney(order.taxAmount || 0),
         netAmount: formatMoney(Number.isFinite(Number(order.netAmount)) ? order.netAmount : order.totalAmount),
         profit: formatMoney(order.profit),
-        paymentMethod: (order.paymentMethod || '').replace('_', ' '),
+        paymentMethod: order.paymentMethodLabel || (order.paymentMethod || '').replace('_', ' '),
         date: formatDate(order.createdAt)
       }).commit();
     });
@@ -246,6 +250,9 @@ router.get('/sales/excel', protect, async (req, res) => {
 // Export Inventory Report as Excel
 router.get('/inventory/excel', protect, async (req, res) => {
   try {
+    const currency = normalizeCurrencyCode(
+      req.tenant?.businessSettings?.currency || req.user?.businessSettings?.currency || 'MWK'
+    );
     const products = req.user?.tenantId
       ? await dynamodb.listProductsByTenantGsi2(req.user.tenantId, {
         projection: ['_id', 'id', 'tenantId', 'name', 'category', 'costPrice', 'sellingPrice', 'currentStock', 'lowStockThreshold']
@@ -271,8 +278,8 @@ router.get('/inventory/excel', protect, async (req, res) => {
     worksheet.columns = [
       { header: 'Product Name', key: 'name', width: 30 },
       { header: 'Category', key: 'category', width: 20 },
-      { header: 'Cost Price (MK)', key: 'costPrice', width: 18 },
-      { header: 'Selling Price (MK)', key: 'sellingPrice', width: 18 },
+      { header: `Cost Price (${currency})`, key: 'costPrice', width: 18 },
+      { header: `Selling Price (${currency})`, key: 'sellingPrice', width: 18 },
       { header: 'Current Stock', key: 'currentStock', width: 15 },
       { header: 'Low Stock Threshold', key: 'threshold', width: 20 },
       { header: 'Status', key: 'status', width: 18 }
@@ -312,6 +319,9 @@ router.get('/inventory/excel', protect, async (req, res) => {
 // Export Customers Report as Excel
 router.get('/customers/excel', protect, async (req, res) => {
   try {
+    const currency = normalizeCurrencyCode(
+      req.tenant?.businessSettings?.currency || req.user?.businessSettings?.currency || 'MWK'
+    );
     const customers = await dynamodb.listEntities('customer', { projection: ['_id', 'id', 'tenantId', 'name', 'phone', 'gender', 'totalSpent', 'loyaltyPoints', 'createdAt'] });
     const scopedCustomers = customers
       .filter((customer) => !req.user?.tenantId || customer.tenantId === req.user.tenantId)
@@ -327,7 +337,7 @@ router.get('/customers/excel', protect, async (req, res) => {
       { header: 'Name', key: 'name', width: 25 },
       { header: 'Phone', key: 'phone', width: 18 },
       { header: 'Gender', key: 'gender', width: 12 },
-      { header: 'Total Spent (MK)', key: 'totalSpent', width: 20 },
+      { header: `Total Spent (${currency})`, key: 'totalSpent', width: 20 },
       { header: 'Loyalty Points', key: 'points', width: 18 },
       { header: 'Joined', key: 'joined', width: 25 }
     ];
@@ -388,10 +398,10 @@ router.get('/sales/pdf', protect, async (req, res) => {
     const summaryTop = doc.y;
     const summaryRows = [
       ['Total Orders', orders.length.toLocaleString()],
-      ['Total Sales (Gross)', formatMoney(totalSales, true)],
-      ['Total Tax', formatMoney(totalTax, true)],
-      ['Total Sales (Net)', formatMoney(totalNet, true)],
-      ['Total Profit', formatMoney(totalProfit, true)]
+      ['Total Sales (Gross)', formatMoney(totalSales, true, currency)],
+      ['Total Tax', formatMoney(totalTax, true, currency)],
+      ['Total Sales (Net)', formatMoney(totalNet, true, currency)],
+      ['Total Profit', formatMoney(totalProfit, true, currency)]
     ];
     doc.fontSize(12).font('Helvetica-Bold').fillColor('#111827');
     summaryRows.forEach(([label, value], index) => {
@@ -453,11 +463,11 @@ router.get('/sales/pdf', protect, async (req, res) => {
       doc.fontSize(8).font('Helvetica');
       doc.text(order.orderNumber || 'N/A', columns.order.x, y, { width: columns.order.width });
       doc.text(customerMap.get(getReferenceId(order.customer))?.name || order.customer?.name || order.customerName || 'Walk-in', columns.customer.x, y, { width: columns.customer.width, ellipsis: true });
-      doc.text(formatMoney(order.taxAmount, true), columns.tax.x, y, { width: columns.tax.width, align: 'right' });
+      doc.text(formatMoney(order.taxAmount, true, currency), columns.tax.x, y, { width: columns.tax.width, align: 'right' });
       const netValue = Number.isFinite(Number(order.netAmount)) ? Number(order.netAmount) : Number(order.totalAmount);
-      doc.text(formatMoney(netValue, true), columns.net.x, y, { width: columns.net.width, align: 'right' });
-      doc.text(formatMoney(order.totalAmount, true), columns.gross.x, y, { width: columns.gross.width, align: 'right' });
-      doc.text(String(order.paymentMethod || 'Unknown').replace('_', ' '), columns.payment.x, y, { width: columns.payment.width, ellipsis: true });
+      doc.text(formatMoney(netValue, true, currency), columns.net.x, y, { width: columns.net.width, align: 'right' });
+      doc.text(formatMoney(order.totalAmount, true, currency), columns.gross.x, y, { width: columns.gross.width, align: 'right' });
+      doc.text(order.paymentMethodLabel || String(order.paymentMethod || 'Unknown').replace('_', ' '), columns.payment.x, y, { width: columns.payment.width, ellipsis: true });
       doc.text(formattedDate, columns.date.x, y, { width: columns.date.width, ellipsis: true });
       y += 20;
     });

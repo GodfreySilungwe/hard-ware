@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
 const { protect } = require('../middleware/auth');
-const { normalizeNumber } = require('../lib/orderMetrics');
+const { normalizeNumber, getPaymentMethodLabel } = require('../lib/orderMetrics');
 const dynamodb = require('../lib/dynamodb');
 const legacyGSIStatusByTenant = new Map();
 
@@ -256,11 +256,16 @@ router.get('/summary', protect, async (req, res) => {
 
       // payment method breakdown (sales proceeds per method)
       const method = String(o.paymentMethod || 'unknown');
-      const prev = paymentMap.get(method) || { amount: 0, count: 0 };
+      const prev = paymentMap.get(method) || {
+        amount: 0,
+        count: 0,
+        label: o.paymentMethodLabel || getPaymentMethodLabel(method)
+      };
       const addAmount = normalizedPaymentMethod === 'credit' ? paid : orderTotal;
       paymentMap.set(method, {
         amount: prev.amount + addAmount,
-        count: prev.count + 1
+        count: prev.count + 1,
+        label: o.paymentMethodLabel || prev.label
       });
 
       // product aggregation
@@ -339,6 +344,7 @@ router.get('/summary', protect, async (req, res) => {
     // format payment methods
     const paymentMethods = Array.from(paymentMap.entries()).map(([method, meta]) => ({
       method,
+      label: meta.label,
       amount: meta.amount,
       count: meta.count
     }));

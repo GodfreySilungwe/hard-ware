@@ -9,6 +9,8 @@ const Tenant = require('../models/Tenant');
 const TenantInvite = require('../models/TenantInvite');
 const dynamodb = require('../lib/dynamodb');
 const { protect, isOwner, isOwnerOrHardwareManager, isHardwareManagerOrOwner } = require('../middleware/auth');
+const { DEFAULT_PAYMENT_METHODS, normalizePaymentMethods } = require('../lib/paymentMethods');
+const { normalizeCurrencyCode, isValidCurrencyCode } = require('../lib/currency');
 const {
   DEFAULT_GRACE_PERIOD_DAYS,
   MAX_GRACE_PERIOD_DAYS,
@@ -23,6 +25,7 @@ const jwtSecret = process.env.JWT_SECRET || 'secret_key';
 const s3Region = process.env.AWS_REGION || 'us-east-1';
 const s3BucketName = 'hardwaresamplefiles3bucket';
 const s3Client = new S3Client({ region: s3Region });
+const WHATSAPP_REQUEST_TIMEOUT_MS = 3000;
 
 const isDeletedTenant = (tenant) => (
   String(tenant?.status || '').toLowerCase() === 'deleted'
@@ -40,6 +43,7 @@ const DEFAULT_BUSINESS_SETTINGS = {
   taxCompliant: false,
   taxRate: 17.5,
   currency: 'MWK',
+  paymentMethods: DEFAULT_PAYMENT_METHODS,
   receiptFooter: 'Thank you for your business!',
   logo: '',
   logoKey: ''
@@ -93,19 +97,24 @@ function getShopNameValidationError(value) {
 }
 
 function normalizeShopProfile(data = {}) {
+  const town = String(data.town || data.tradingCenter || '').trim();
   return {
+    country: String(data.country || '').trim(),
     district: String(data.district || '').trim(),
-    tradingCenter: String(data.tradingCenter || '').trim(),
+    town,
+    tradingCenter: town,
     shopDescription: String(data.shopDescription || '').trim()
   };
 }
 
 function getShopProfileValidationError(profile) {
+  if (!profile.country) return 'Country is required.';
   if (!profile.district) return 'District is required.';
-  if (!profile.tradingCenter) return 'Trading center is required.';
+  if (!profile.town) return 'Town is required.';
   if (!profile.shopDescription) return 'Please briefly describe what the shop sells.';
+  if (profile.country.length > 100) return 'Country must be 100 characters or fewer.';
   if (profile.district.length > 100) return 'District must be 100 characters or fewer.';
-  if (profile.tradingCenter.length > 120) return 'Trading center must be 120 characters or fewer.';
+  if (profile.town.length > 120) return 'Town must be 120 characters or fewer.';
   if (profile.shopDescription.length > 300) return 'Shop description must be 300 characters or fewer.';
   return null;
 }
@@ -182,6 +191,7 @@ async function sendWhatsAppApprovalMessage(user = {}, customMessage = null) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
+        signal: AbortSignal.timeout(WHATSAPP_REQUEST_TIMEOUT_MS),
         body: JSON.stringify({
           to: phone,
           message
@@ -202,7 +212,10 @@ async function sendWhatsAppApprovalMessage(user = {}, customMessage = null) {
 
   try {
     const fallbackUrl = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(message)}`;
-    const response = await fetch(fallbackUrl, { method: 'GET' });
+    const response = await fetch(fallbackUrl, {
+      method: 'GET',
+      signal: AbortSignal.timeout(WHATSAPP_REQUEST_TIMEOUT_MS)
+    });
     if (!response.ok) {
       throw new Error('Fallback WhatsApp provider rejected the request');
     }
@@ -594,9 +607,10 @@ router.post('/approve-registration/:id', protect, isOwner, async (req, res) => {
       return res.status(400).json({ message: shopNameError });
     }
     const shopProfile = normalizeShopProfile({
-      district: tenant?.district || req.body?.district || user.district,
-      tradingCenter: tenant?.tradingCenter || req.body?.tradingCenter || user.tradingCenter,
-      shopDescription: tenant?.shopDescription || req.body?.shopDescription || user.shopDescription
+      country: req.body?.country || tenant?.country || user.country,
+      district: req.body?.district || tenant?.district || user.district,
+      town: req.body?.town || req.body?.tradingCenter || tenant?.town || tenant?.tradingCenter || user.town || user.tradingCenter,
+      shopDescription: req.body?.shopDescription || tenant?.shopDescription || user.shopDescription
     });
     const shopProfileError = getShopProfileValidationError(shopProfile);
     if (shopProfileError) {
@@ -631,6 +645,7 @@ router.post('/approve-registration/:id', protect, isOwner, async (req, res) => {
     user.isActive = true;
     user.role = 'hardware-manager';
     user.registrationStatus = 'approved';
+    Object.assign(user, { shopName: approvedShopName, ...shopProfile });
     await user.save();
 
     const approvalMessage = buildApprovalMessage({
@@ -865,6 +880,12 @@ router.put('/business-settings', protect, isHardwareManagerOrOwner, async (req, 
     }
 
     const existingSettings = req.tenant?.businessSettings || req.user?.businessSettings || {};
+    const currency = normalizeCurrencyCode(
+      req.body?.currency ?? existingSettings.currency ?? 'MWK'
+    );
+    if (!isValidCurrencyCode(currency)) {
+      return res.status(400).json({ message: 'Select a supported ISO currency code.' });
+    }
     const logoKey = String(req.body?.logoKey ?? existingSettings.logoKey ?? '');
     const accountId = String(req.user?.tenantId || req.user?._id || req.user?.id || '');
     if (logoKey && !logoKey.startsWith(`business-logos/${accountId}/`)) {
@@ -874,6 +895,17 @@ router.put('/business-settings', protect, isHardwareManagerOrOwner, async (req, 
     const logo = logoKey
       ? `https://${s3BucketName}.s3.${region}.amazonaws.com/${logoKey}`
       : '';
+    let paymentMethods;
+    try {
+      paymentMethods = normalizePaymentMethods(
+        req.body?.paymentMethods ?? existingSettings.paymentMethods
+      );
+    } catch (validationError) {
+      return res.status(400).json({ message: validationError.message });
+    }
+    if (!paymentMethods.some((method) => method.enabled)) {
+      return res.status(400).json({ message: 'Enable at least one payment method.' });
+    }
 
     const settings = {
       name: String(req.body?.name || '').trim(),
@@ -883,7 +915,8 @@ router.put('/business-settings', protect, isHardwareManagerOrOwner, async (req, 
       taxId: String(req.body?.taxId || '').trim(),
       taxCompliant: req.body?.taxCompliant === true,
       taxRate,
-      currency: String(req.body?.currency || 'MWK').trim(),
+      currency,
+      paymentMethods,
       receiptFooter: String(req.body?.receiptFooter || '').trim(),
       logo,
       logoKey
@@ -1420,7 +1453,11 @@ router.get('/me', protect, async (req, res) => {
       ...req.user,
       shopName: req.tenant?.shopName || null,
       hardwareName: req.tenant?.hardwareName || req.tenant?.name || null,
-      hardwareAddress: req.tenant?.address || [req.tenant?.district, req.tenant?.tradingCenter].filter(Boolean).join(', ') || null,
+      hardwareAddress: req.tenant?.address || [
+        req.tenant?.town || req.tenant?.tradingCenter,
+        req.tenant?.district,
+        req.tenant?.country
+      ].filter(Boolean).join(', ') || null,
       hardwareManagerName: hardwareManager?.fullName || null,
       hardwareManagerEmail: hardwareManager?.email || null,
       hardwareManagerPhone: hardwareManager?.phone || null,
@@ -1441,6 +1478,7 @@ module.exports.ensureDefaultOwnerUser = ensureDefaultOwnerUser;
 module.exports.getTenantAccessMessage = getTenantAccessMessage;
 module.exports.shouldPromoteToOwner = shouldPromoteToOwner;
 module.exports.buildApprovalMessage = buildApprovalMessage;
+module.exports.sendWhatsAppApprovalMessage = sendWhatsAppApprovalMessage;
 module.exports.getRegistrationConflicts = getRegistrationConflicts;
 module.exports.resolveLoginIdentity = resolveLoginIdentity;
 module.exports.normalizeShopName = normalizeShopName;

@@ -12,6 +12,7 @@ const {
   createSalesPdf,
   buildRawEmail,
   buildRawTextEmail,
+  reconcileReportPaymentLabels,
   sendNoSalesReminderForTenant
 } = require('../dailyReportLambda');
 const { buildReportSummary } = require('../lib/orderMetrics');
@@ -99,8 +100,49 @@ test('uses Bank for card tender and includes shop name in email body', () => {
   const window = getReportWindow(new Date(), '2026-10-12');
 
   assert.equal(getReportPaymentLabel({ method: 'card', label: 'Card' }), 'Bank');
+  assert.equal(getReportPaymentLabel({ method: 'card', label: 'Wire Transfer' }), 'Wire Transfer');
   assert.equal(getReportPaymentLabel({ method: 'cash', label: 'Cash' }), 'Cash');
   assert.match(buildReportEmailText({ shopName: 'Central Hardware', window }), /Shop name: Central Hardware/);
+});
+
+test('reconciles report labels with current manager payment settings', () => {
+  const reconciled = reconcileReportPaymentLabels([
+    { id: 'order-1', paymentMethod: 'cash', paymentMethodLabel: 'Old Cash' },
+    { id: 'order-2', paymentMethod: 'wallet', paymentMethodLabel: 'Wallet' }
+  ], [
+    { id: 'cash', label: 'Petty Cash', account: 'cash', enabled: true },
+    { id: 'wallet', label: 'Local Wallet', account: 'mobile_money', enabled: true }
+  ]);
+
+  assert.equal(reconciled[0].paymentMethodLabel, 'Petty Cash');
+  assert.equal(reconciled[1].paymentMethodLabel, 'Local Wallet');
+});
+
+test('creates a PDF with more than five used payment methods', async () => {
+  const window = getReportWindow(new Date(), '2026-10-12');
+  const orders = Array.from({ length: 7 }, (_, index) => ({
+    id: `order-${index + 1}`,
+    createdAt: window.startDate,
+    status: 'completed',
+    totalAmount: 100,
+    netAmount: 100,
+    profit: 10,
+    paymentMethod: `method_${index + 1}`,
+    items: [{ name: 'Hammer', quantity: 1, subtotal: 100, priceAtSale: 100 }]
+  }));
+  const pdf = await createSalesPdf({
+    shopName: 'Test Hardware',
+    window,
+    orders,
+    paymentMethods: orders.map((order, index) => ({
+      id: order.paymentMethod,
+      label: `Method ${index + 1}`,
+      account: index % 2 ? 'card' : 'cash',
+      enabled: true
+    }))
+  });
+
+  assert.ok(pdf.subarray(0, 4).equals(Buffer.from('%PDF')));
 });
 
 test('uses the manager name when a tenant has no shop name', () => {

@@ -10,6 +10,11 @@ const { summarizeOrders, getPaymentMethodLabel, buildReportSummary, normalizeNum
 const { applyOrderToCustomerAccount, calculateDiscountedOrderTotal } = require('../lib/customerAccountSync');
 const { recordCashEntry } = require('../lib/cashLedger');
 const dynamodb = require('../lib/dynamodb');
+const {
+  DEFAULT_PAYMENT_METHODS,
+  getEnabledPaymentMethod,
+  getCreditCustomerError
+} = require('../lib/paymentMethods');
 
 const getPaymentAccount = (paymentMethod) => {
   const normalized = String(paymentMethod || 'cash').toLowerCase().replace(/[ -]/g, '_');
@@ -443,6 +448,28 @@ router.post('/', protect, async (req, res) => {
       return res.status(400).json({ message: 'No items in order' });
     }
 
+    const businessSettings = req.tenant?.businessSettings || req.user?.businessSettings || {};
+    const configuredPaymentMethods = businessSettings.paymentMethods || DEFAULT_PAYMENT_METHODS;
+    const selectedPaymentMethod = getEnabledPaymentMethod(
+      configuredPaymentMethods,
+      paymentMethod ?? 'cash'
+    );
+    if (!selectedPaymentMethod) {
+      return res.status(400).json({ message: 'This payment method is not enabled for this business.' });
+    }
+    const normalizedPaymentMethod = selectedPaymentMethod.id;
+    const creditCustomerError = getCreditCustomerError(normalizedPaymentMethod, customer);
+    if (creditCustomerError) {
+      return res.status(400).json({ message: creditCustomerError });
+    }
+    let creditCustomer = null;
+    if (normalizedPaymentMethod === 'credit') {
+      creditCustomer = await Customer.findById(customer, req);
+      if (!creditCustomer) {
+        return res.status(400).json({ message: 'The selected customer could not be found.' });
+      }
+    }
+
     let totalAmount = 0;
     let totalCost = 0;
     const orderItems = [];
@@ -494,10 +521,11 @@ router.post('/', protect, async (req, res) => {
     // For credit payments, only add the outstanding (total - paid) to the customer's account.
     const paidAmount = Number(req.body?.paidAmount || 0) || 0;
     let dueAmount = 0;
-    const normalizedPaymentMethod = String(paymentMethod || '').toLowerCase();
 
     if (customer) {
-      const customerDoc = await Customer.findById(customer, req);
+      const customerDoc = normalizedPaymentMethod === 'credit'
+        ? creditCustomer
+        : await Customer.findById(customer, req);
       if (customerDoc) {
         if (normalizedPaymentMethod === 'credit') {
           dueAmount = Math.max(0, totalAmount - paidAmount);
@@ -514,7 +542,6 @@ router.post('/', protect, async (req, res) => {
     }
 
     // Create order - NO createdBy field
-    const businessSettings = req.tenant?.businessSettings || req.user?.businessSettings || {};
     const taxCompliant = typeof businessSettings.taxCompliant === 'boolean'
       ? businessSettings.taxCompliant
       : Boolean(req.body?.taxCompliant);
@@ -535,8 +562,9 @@ router.post('/', protect, async (req, res) => {
       totalAmount,
       discountAmount: finalDiscountAmount,
       profit: profitBase,
-      paymentMethod: paymentMethod || 'cash',
-      paymentMethodLabel: getPaymentMethodLabel(paymentMethod || 'cash'),
+      paymentMethod: selectedPaymentMethod.id,
+      paymentMethodLabel: selectedPaymentMethod.label || getPaymentMethodLabel(selectedPaymentMethod.id),
+      paymentAccount: selectedPaymentMethod.account,
       paidAmount: paidAmount,
       dueAmount: dueAmount,
       status: 'completed',
@@ -548,7 +576,7 @@ router.post('/', protect, async (req, res) => {
     });
 
     await order.save();
-    const paymentAccount = getPaymentAccount(paymentMethod);
+    const paymentAccount = selectedPaymentMethod.account || getPaymentAccount(selectedPaymentMethod.id);
     const collectedAmount = normalizedPaymentMethod === 'credit' ? paidAmount : totalAmount;
     if (collectedAmount > 0) {
       await recordCashEntry({
@@ -629,7 +657,7 @@ router.patch('/:id/reverse', protect, isHardwareManagerOrOwner, async (req, res)
         direction: 'out',
         account: String(order.paymentMethod || '').toLowerCase() === 'credit'
           ? 'cash'
-          : getPaymentAccount(order.paymentMethod),
+          : order.paymentAccount || getPaymentAccount(order.paymentMethod),
         type: 'sale_reversal',
         description: `Reversal of order ${order.orderNumber}`,
         orderId: order._id,

@@ -11,6 +11,13 @@ This manual covers day-to-day operations for **Sales accounts** and **Hardware M
 
 Your menu depends on your account role. If you need a page that is not shown, ask the Hardware Manager to confirm your role and access.
 
+### Public account registration
+
+1. On the sign-in page, choose the public registration option.
+2. Enter the shop name, country, district, town, a short description of what the shop sells, and the requested manager account details.
+3. Submit the form. A success message confirms that the registration request was sent and is waiting for owner approval.
+4. Select **Go back to login** to return to the sign-in page. You can sign in after the owner approves the request.
+
 ### Sales account menu
 
 - Dashboard
@@ -47,7 +54,7 @@ Your menu depends on your account role. If you need a page that is not shown, as
 3. Check the cart. Use **+** and **−** for whole-unit changes, or type the desired quantity directly into the quantity field. Decimal quantities are supported to three decimal places, such as `0.5 kg`.
 4. For a weighed or measured product, confirm the product's unit and price basis with the manager. For example, if the price is per kg, enter the quantity in kg. The app does not convert between units automatically.
 5. Optionally select a saved customer. Leave **Walk-in Customer** selected for an unregistered customer.
-6. Choose the payment method: Cash, Bank, Airtel Money, Mpamba, or Credit. Credit is available only after selecting a saved customer.
+6. Choose a payment method enabled by the Hardware Manager in Business settings. New businesses default to Cash, Bank, Airtel Money, Mpamba, and Credit. Credit is available only after selecting a saved customer.
 7. For a credit sale, enter any amount paid now; leave it at zero if no payment is received.
 8. Review the subtotal and total, then select **Checkout**.
 9. Review the receipt. Use **Print Receipt** to open the device/browser print flow. Select an installed printer or print service supported by your device.
@@ -104,11 +111,12 @@ Use **Dashboard** for the operational overview available to your role. The exact
 ### 3.1 Set up business details and preferences
 
 1. Open **Settings** and choose the **Business** tab.
-2. Enter the business name, address, phone, email, tax ID, currency, VAT rate, and receipt footer as needed.
+2. Enter the business name, address, phone, email, tax ID, currency, VAT rate, and receipt footer as needed. Currency changes the displayed currency; it does not convert existing prices or balances.
 3. Enable **Tax compliant (prices include VAT)** only if the business's pricing and tax process require inclusive VAT.
-4. Under **Quotation Logo**, select a PNG or JPEG image up to 200 KB. Preview it, then select **Save Settings** to apply it to quotations. Select **Remove Logo** to remove it, then save.
-5. Select **Save Settings** to save business details. The details are used on receipts and quotations; the logo appears on quotations only.
-6. Use the **Profile** tab to update your own profile. Use **Password** to change your password.
+4. Under **Payment Methods**, enable the checkout methods the business accepts, edit their display names, and select each method's ledger account. You can add custom methods; keep at least one enabled.
+5. Under **Quotation Logo**, select a PNG or JPEG image up to 200 KB. Preview it, then select **Save Settings** to apply it to quotations. Select **Remove Logo** to remove it, then save.
+6. Select **Save Settings** to save business details. The details are used on receipts and quotations; the logo appears on quotations only.
+7. Use the **Profile** tab to update your own profile. Use **Password** to change your password.
 
 Review the business phone and name carefully; they appear on customer-facing documents.
 

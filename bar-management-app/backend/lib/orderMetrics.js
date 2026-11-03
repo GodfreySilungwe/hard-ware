@@ -84,7 +84,11 @@ function summarizeOrders(orders = [], options = {}) {
     }
 
     if (!paymentMethodsMap[method]) {
-      paymentMethodsMap[method] = { count: 0, amount: 0 };
+      paymentMethodsMap[method] = {
+        count: 0,
+        amount: 0,
+        label: order?.paymentMethodLabel || getPaymentMethodLabel(method)
+      };
     }
     paymentMethodsMap[method].count += 1;
     paymentMethodsMap[method].amount += getOrderTotalAmount(order);
@@ -93,7 +97,7 @@ function summarizeOrders(orders = [], options = {}) {
   const paymentMethods = Object.entries(paymentMethodsMap)
     .map(([method, meta]) => ({
       method,
-      label: getPaymentMethodLabel(method),
+      label: meta.label,
       count: meta.count,
       amount: meta.amount
     }));
@@ -192,7 +196,11 @@ function buildReportSummary(orders = [], options = {}) {
     runningTotalProfit += orderProfit;
 
     const method = String(order?.paymentMethod || 'unknown');
-    const paymentEntry = paymentMethodsMap.get(method) || { count: 0, amount: 0 };
+    const paymentEntry = paymentMethodsMap.get(method) || {
+      count: 0,
+      amount: 0,
+      label: order?.paymentMethodLabel || getPaymentMethodLabel(method)
+    };
     paymentEntry.count += 1;
     paymentEntry.amount += orderTotal;
     paymentMethodsMap.set(method, paymentEntry);
@@ -260,7 +268,7 @@ function buildReportSummary(orders = [], options = {}) {
   const paymentMethods = [...paymentMethodsMap.entries()]
     .map(([method, meta]) => ({
       method,
-      label: getPaymentMethodLabel(method),
+      label: meta.label,
       count: meta.count,
       amount: meta.amount
     }))

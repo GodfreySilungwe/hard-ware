@@ -75,21 +75,27 @@ test('requires a trimmed shop name with a maximum of 120 characters', () => {
   assert.equal(getShopNameValidationError('Lakeside Store'), null);
 });
 
-test('requires district, trading center, and a short shop description', () => {
+test('requires country, district, town, and a short shop description', () => {
   assert.deepEqual(normalizeShopProfile({
+    country: '  Malawi  ',
     district: '  Lilongwe  ',
-    tradingCenter: '  Area 25  ',
+    town: '  Area 25  ',
     shopDescription: '  Groceries and household goods  '
   }), {
+    country: 'Malawi',
     district: 'Lilongwe',
+    town: 'Area 25',
     tradingCenter: 'Area 25',
     shopDescription: 'Groceries and household goods'
   });
-  assert.equal(getShopProfileValidationError({ district: '', tradingCenter: 'Area 25', shopDescription: 'Groceries' }), 'District is required.');
-  assert.equal(getShopProfileValidationError({ district: 'Lilongwe', tradingCenter: '', shopDescription: 'Groceries' }), 'Trading center is required.');
-  assert.equal(getShopProfileValidationError({ district: 'Lilongwe', tradingCenter: 'Area 25', shopDescription: '' }), 'Please briefly describe what the shop sells.');
-  assert.equal(getShopProfileValidationError({ district: 'Lilongwe', tradingCenter: 'Area 25', shopDescription: 'Groceries' }), null);
-  assert.match(getShopProfileValidationError({ district: 'D'.repeat(101), tradingCenter: 'Area 25', shopDescription: 'Groceries' }), /District/);
-  assert.match(getShopProfileValidationError({ district: 'Lilongwe', tradingCenter: 'T'.repeat(121), shopDescription: 'Groceries' }), /Trading center/);
-  assert.match(getShopProfileValidationError({ district: 'Lilongwe', tradingCenter: 'Area 25', shopDescription: 'S'.repeat(301) }), /description/);
+  assert.equal(getShopProfileValidationError({ country: '', district: 'Lilongwe', town: 'Area 25', shopDescription: 'Groceries' }), 'Country is required.');
+  assert.equal(getShopProfileValidationError({ country: 'Malawi', district: '', town: 'Area 25', shopDescription: 'Groceries' }), 'District is required.');
+  assert.equal(getShopProfileValidationError({ country: 'Malawi', district: 'Lilongwe', town: '', shopDescription: 'Groceries' }), 'Town is required.');
+  assert.equal(getShopProfileValidationError({ country: 'Malawi', district: 'Lilongwe', town: 'Area 25', shopDescription: '' }), 'Please briefly describe what the shop sells.');
+  assert.equal(getShopProfileValidationError({ country: 'Malawi', district: 'Lilongwe', town: 'Area 25', shopDescription: 'Groceries' }), null);
+  assert.match(getShopProfileValidationError({ country: 'C'.repeat(101), district: 'Lilongwe', town: 'Area 25', shopDescription: 'Groceries' }), /Country/);
+  assert.match(getShopProfileValidationError({ country: 'Malawi', district: 'D'.repeat(101), town: 'Area 25', shopDescription: 'Groceries' }), /District/);
+  assert.match(getShopProfileValidationError({ country: 'Malawi', district: 'Lilongwe', town: 'T'.repeat(121), shopDescription: 'Groceries' }), /Town/);
+  assert.match(getShopProfileValidationError({ country: 'Malawi', district: 'Lilongwe', town: 'Area 25', shopDescription: 'S'.repeat(301) }), /description/);
+  assert.equal(normalizeShopProfile({ district: 'Lilongwe', tradingCenter: 'Area 25' }).town, 'Area 25');
 });
