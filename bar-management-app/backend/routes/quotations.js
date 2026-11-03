@@ -355,7 +355,7 @@ const buildPdf = (quote) => new Promise((resolve, reject) => {
   doc.roundedRect(summaryX + 10, y + 66, summaryWidth - 20, 29, 5).fill(colors.navy);
   doc.font('Helvetica-Bold').fontSize(10).fillColor(colors.white)
     .text('TOTAL', summaryX + 20, y + 75, { width: 85 });
-  doc.text(formatPdfMoney(total, quote.currency), summaryX + 105, y + 75, { width: summaryWidth - 40, align: 'right' });
+  doc.text(formatPdfMoney(total, quote.currency), summaryX + 105, y + 75, { width: 106, align: 'right' });
   doc.restore();
   y += summaryHeight + 20;
 
