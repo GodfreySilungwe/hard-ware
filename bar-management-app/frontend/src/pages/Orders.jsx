@@ -3,8 +3,10 @@ import api from '../api/api';
 import PageContainer from './PageContainer';
 import UnifiedCard from '../components/common/UnifiedCard';
 import DeleteConfirmModal from '../components/common/DeleteConfirmModal';
+import ReceiptModal from '../components/common/ReceiptModal';
 import { formatPriceMK } from '../utils/formatPrice';
 import { formatQuantity } from '../utils/formatQuantity';
+import { DEFAULT_BUSINESS_SETTINGS, getCachedBusinessSettings, normalizePaymentMethods } from '../utils/businessSettings';
 import { useAuth } from '../context/AuthContext';
 
 const getPaymentMethodLabel = (method) => {
@@ -32,6 +34,8 @@ const Orders = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [reverseTarget, setReverseTarget] = useState(null);
+  const [receiptOrder, setReceiptOrder] = useState(null);
+  const [businessSettings, setBusinessSettings] = useState({ ...DEFAULT_BUSINESS_SETTINGS });
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const { user } = useAuth();
@@ -39,6 +43,32 @@ const Orders = () => {
   useEffect(() => {
     loadOrders();
   }, [page, filter]);
+
+  useEffect(() => {
+    let active = true;
+    const cached = getCachedBusinessSettings(user);
+    if (cached) {
+      setBusinessSettings({
+        ...DEFAULT_BUSINESS_SETTINGS,
+        ...cached,
+        paymentMethods: normalizePaymentMethods(cached.paymentMethods)
+      });
+    }
+    api.get('/auth/business-settings')
+      .then((response) => {
+        if (!active) return;
+        const settings = {
+          ...DEFAULT_BUSINESS_SETTINGS,
+          ...response.data.settings,
+          paymentMethods: normalizePaymentMethods(response.data.settings?.paymentMethods)
+        };
+        setBusinessSettings(settings);
+      })
+      .catch((err) => console.warn('Unable to load receipt business settings:', err));
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
   const formatLocalDateString = (date) => {
     const year = date.getFullYear();
@@ -214,6 +244,14 @@ const Orders = () => {
         onCancel={() => setReverseTarget(null)}
         onConfirm={handleReverseOrder}
       />
+      {receiptOrder && (
+        <ReceiptModal
+          order={receiptOrder}
+          isReprint
+          onClose={() => setReceiptOrder(null)}
+          businessSettings={businessSettings}
+        />
+      )}
       {message && <div style={styles.success}>{message}</div>}
       {error && <div style={styles.error}>{error}</div>}
       <div style={styles.header}>
@@ -448,6 +486,16 @@ const Orders = () => {
                               ))}
                               <div style={styles.orderTotal}>
                                 <span>Total: {formatPriceMK(order.totalAmount)}</span>
+                              </div>
+                              <div style={styles.expandedActions}>
+                                <button
+                                  type="button"
+                                  style={styles.printBtn}
+                                  onClick={() => setReceiptOrder(order)}
+                                  aria-label={`Reprint copy of receipt ${order.orderNumber}`}
+                                >
+                                  🖨️ Reprint Receipt
+                                </button>
                               </div>
                             </div>
                           </td>
@@ -700,6 +748,21 @@ const styles = {
     cursor: 'pointer',
     fontSize: '12px',
     transition: 'all 0.3s ease'
+  },
+  printBtn: {
+    padding: '4px 12px',
+    borderRadius: '6px',
+    border: '1px solid #b8d4f1',
+    backgroundColor: '#eff6ff',
+    color: '#1d4ed8',
+    cursor: 'pointer',
+    fontSize: '12px',
+    transition: 'all 0.3s ease'
+  },
+  expandedActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    marginTop: '12px'
   },
   reverseBtn: {
     padding: '4px 12px',

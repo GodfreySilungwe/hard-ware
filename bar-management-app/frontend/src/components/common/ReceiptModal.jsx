@@ -28,7 +28,7 @@ const getItemName = (item) => {
   return 'Unknown';
 };
 
-const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
+const ReceiptModal = ({ order, onClose, businessSettings = {}, isReprint = false }) => {
   const { user } = useAuth();
   if (!order) return null;
 
@@ -57,6 +57,7 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
             {businessPhone && <p style={styles.phone}>{businessPhone}</p>}
             {businessEmail && <p style={styles.phone}>{businessEmail}</p>}
             {settings.taxId && <p style={styles.phone}>Tax ID: {settings.taxId}</p>}
+            {isReprint && <p style={styles.reprintMark}>*** REPRINT / COPY ***</p>}
             <div style={styles.divider} />
           </div>
 
@@ -158,7 +159,7 @@ const ReceiptModal = ({ order, onClose, businessSettings = {} }) => {
         {/* Buttons */}
         <div style={styles.actions}>
           <button style={styles.printBtn} onClick={handlePrint}>
-            🖨️ Print Receipt
+            {isReprint ? '🖨️ Print Reprint Copy' : '🖨️ Print Receipt'}
           </button>
           <button style={styles.closeBtnModal} onClick={onClose}>
             Close
@@ -241,6 +242,13 @@ const styles = {
     margin: '2px 0',
     fontSize: '12px',
     color: '#666'
+  },
+  reprintMark: {
+    margin: '8px 0 0',
+    fontSize: '12px',
+    fontWeight: '800',
+    letterSpacing: '1px',
+    color: '#111'
   },
   receiptInfo: {
     marginBottom: '10px',
