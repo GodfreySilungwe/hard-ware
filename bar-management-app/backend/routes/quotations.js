@@ -40,6 +40,11 @@ const sanitizeQuotePayload = (payload = {}) => {
     businessAddress: String(payload.businessAddress || '').trim(),
     businessPhone: String(payload.businessPhone || '').trim(),
     businessEmail: String(payload.businessEmail || '').trim(),
+    businessTaxId: String(payload.businessTaxId || '').trim(),
+    businessBankName: String(payload.businessBankName || '').trim(),
+    businessBankBranch: String(payload.businessBankBranch || '').trim(),
+    businessBankAccountName: String(payload.businessBankAccountName || '').trim(),
+    businessBankAccountNumber: String(payload.businessBankAccountNumber || '').trim(),
     hardwareManagerName: String(payload.hardwareManagerName || '').trim(),
     status: String(payload.status || 'draft').trim(),
     items,
@@ -78,6 +83,21 @@ const getBusinessLogoBuffer = async (settings, user, tenant) => {
     Key: settings.logoKey
   }));
   if (!response.Body) throw new Error('Saved business logo could not be loaded.');
+  return Buffer.from(await response.Body.transformToByteArray());
+};
+
+const getBusinessSignatureBuffer = async (settings, user, tenant) => {
+  if (!settings?.signatureKey) return null;
+  const accountId = String(tenant?._id || tenant?.id || user?._id || user?.id || '');
+  if (!accountId || !settings.signatureKey.startsWith(`business-signatures/${accountId}/`)) {
+    throw new Error('Saved business signature key is invalid for this account.');
+  }
+
+  const response = await s3Client.send(new GetObjectCommand({
+    Bucket: bucketName,
+    Key: settings.signatureKey
+  }));
+  if (!response.Body) throw new Error('Saved business signature could not be loaded.');
   return Buffer.from(await response.Body.transformToByteArray());
 };
 
@@ -139,7 +159,11 @@ const buildQuoteMessage = (quote, channel = 'email') => {
       quote.businessName || 'Smart Inventory App',
       quote.businessAddress || '',
       quote.businessPhone || '',
-      quote.businessEmail || ''
+      quote.businessEmail || '',
+      quote.businessBankName ? `Bank: ${quote.businessBankName}` : '',
+      quote.businessBankBranch ? `Branch: ${quote.businessBankBranch}` : '',
+      quote.businessBankAccountName ? `Account Name: ${quote.businessBankAccountName}` : '',
+      quote.businessBankAccountNumber ? `Account Number: ${quote.businessBankAccountNumber}` : ''
     ].filter((line) => line !== '').join('\n')
   };
 };
@@ -228,25 +252,30 @@ const buildPdf = (quote) => new Promise((resolve, reject) => {
     if (!hasPngSignature && !hasJpegSignature) {
       throw new Error('The saved business logo image is invalid.');
     }
-    doc.image(logoBuffer, leftMargin + (businessColumnWidth - 76) / 2, headerCardY, { fit: [76, 56] });
+    doc.image(logoBuffer, leftMargin + 5, headerCardY, { fit: [76, 56] });
   }
 
   doc.save();
   doc.roundedRect(leftMargin, 32, contentWidth, 4, 2).fill(colors.teal);
   doc.roundedRect(headerCardX, headerCardY, headerCardWidth, headerCardHeight, 10).fill(colors.navy);
   doc.font('Helvetica-Bold').fontSize(16).fillColor(colors.ink)
-    .text(businessName, leftMargin, quote.businessLogo ? 110 : 58, {
+    .text(businessName, leftMargin + 5, quote.businessLogo ? 110 : 58, {
       width: businessColumnWidth,
-      align: 'center'
+      align: 'left'
     });
   let businessY = doc.y + 5;
   doc.font('Helvetica').fontSize(8.5).fillColor(colors.muted);
-  [quote.businessAddress, quote.businessPhone, quote.businessEmail]
+  [quote.businessAddress, quote.businessPhone, quote.businessEmail,
+    quote.businessTaxId && `Tax/TIN: ${quote.businessTaxId}`,
+    quote.businessBankName && `Bank: ${quote.businessBankName}`,
+    quote.businessBankBranch && `Branch: ${quote.businessBankBranch}`,
+    quote.businessBankAccountName && `Account name: ${quote.businessBankAccountName}`,
+    quote.businessBankAccountNumber && `Account number: ${quote.businessBankAccountNumber}`]
     .filter(Boolean)
     .forEach((detail) => {
       doc.text(String(detail), leftMargin + 5, businessY, {
         width: businessColumnWidth - 10,
-        align: 'center'
+        align: 'left'
       });
       businessY = doc.y + 2;
     });
@@ -375,18 +404,24 @@ const buildPdf = (quote) => new Promise((resolve, reject) => {
     y += notesHeight + 20;
   }
 
-  if (y + 80 > footerY - 10) startContinuationPage();
+  if (y + (quote.businessSignature ? 140 : 80) > footerY - 10) startContinuationPage();
   doc.save();
   doc.font('Helvetica-Bold').fontSize(8).fillColor(colors.muted)
     .text('AUTHORIZED BY', leftMargin, y + 4, { width: 180 });
+  if (quote.businessSignature) {
+    doc.image(quote.businessSignature, leftMargin, y + 18, { fit: [180, 42] });
+  }
   if (quote.hardwareManagerName) {
     doc.font('Helvetica').fontSize(9).fillColor(colors.ink)
-      .text(formatDigitalSignature(quote.hardwareManagerName), leftMargin, y + 20, { width: 180 });
+      .text(formatDigitalSignature(quote.hardwareManagerName), leftMargin, y + (quote.businessSignature ? 68 : 20), { width: 180 });
   }
   doc.strokeColor(colors.muted).lineWidth(0.7)
-    .moveTo(leftMargin, y + 54).lineTo(leftMargin + 180, y + 54).stroke();
-  doc.font('Helvetica').fontSize(8).fillColor(colors.muted)
-    .text('Signature', leftMargin, y + 60, { width: 180 });
+    .moveTo(leftMargin, y + (quote.businessSignature ? 102 : 54))
+    .lineTo(leftMargin + 180, y + (quote.businessSignature ? 102 : 54)).stroke();
+  if (!quote.businessSignature) {
+    doc.font('Helvetica').fontSize(8).fillColor(colors.muted)
+      .text('Signature', leftMargin, y + 60, { width: 180 });
+  }
   doc.restore();
   drawFooter();
   doc.end();
@@ -461,6 +496,9 @@ router.get('/:id/pdf', protect, async (req, res) => {
     const businessLogo = savedSettings
       ? await getBusinessLogoBuffer(savedSettings, req.user, req.tenant)
       : null;
+    const businessSignature = savedSettings
+      ? await getBusinessSignatureBuffer(savedSettings, req.user, req.tenant)
+      : null;
     const pdfBuffer = await buildPdf(finalizeQuoteTotals({
       ...quote,
       currency: savedSettings?.currency || 'MWK',
@@ -470,7 +508,13 @@ router.get('/:id/pdf', protect, async (req, res) => {
       businessAddress: savedSettings ? savedSettings.address || '' : quote.businessAddress || '',
       businessPhone: savedSettings ? savedSettings.phone || '' : quote.businessPhone || '',
       businessEmail: savedSettings ? savedSettings.email || '' : quote.businessEmail || '',
+      businessTaxId: savedSettings ? savedSettings.taxId || '' : quote.businessTaxId || '',
+      businessBankName: savedSettings ? savedSettings.bankName || '' : quote.businessBankName || '',
+      businessBankBranch: savedSettings ? savedSettings.bankBranch || '' : quote.businessBankBranch || '',
+      businessBankAccountName: savedSettings ? savedSettings.bankAccountName || '' : quote.businessBankAccountName || '',
+      businessBankAccountNumber: savedSettings ? savedSettings.bankAccountNumber || '' : quote.businessBankAccountNumber || '',
       businessLogo,
+      businessSignature,
       hardwareManagerName: quote.hardwareManagerName || req.user?.fullName || ''
     }));
     const filename = `quotation-${quote.quoteNumber || 'draft'}.pdf`;

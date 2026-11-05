@@ -44,9 +44,15 @@ const DEFAULT_BUSINESS_SETTINGS = {
   taxRate: 17.5,
   currency: 'MWK',
   paymentMethods: DEFAULT_PAYMENT_METHODS,
+  bankName: '',
+  bankBranch: '',
+  bankAccountName: '',
+  bankAccountNumber: '',
   receiptFooter: 'Thank you for your business!',
   logo: '',
-  logoKey: ''
+  logoKey: '',
+  signature: '',
+  signatureKey: ''
 };
 
 function getTenantAccessMessage(status) {
@@ -859,6 +865,45 @@ router.post('/business-logo-upload-url', protect, isHardwareManagerOrOwner, asyn
   }
 });
 
+router.post('/business-signature-upload-url', protect, isHardwareManagerOrOwner, async (req, res) => {
+  try {
+    const { contentType, fileSize } = req.body || {};
+    if (!['image/png', 'image/jpeg'].includes(contentType)) {
+      return res.status(400).json({ message: 'Signature must be a PNG or JPEG image.' });
+    }
+    if (!Number.isInteger(fileSize) || fileSize < 1 || fileSize > 200 * 1024) {
+      return res.status(400).json({ message: 'Signature must be up to 200 KB.' });
+    }
+
+    const accountId = String(req.user?.tenantId || req.user?._id || req.user?.id || '');
+    if (!accountId) {
+      return res.status(400).json({ message: 'Business account is required to upload a signature.' });
+    }
+
+    const extension = contentType === 'image/png' ? '.png' : '.jpg';
+    const key = `business-signatures/${accountId}/${Date.now()}-${Math.random().toString(36).slice(2)}${extension}`;
+    const command = new PutObjectCommand({
+      Bucket: s3BucketName,
+      Key: key,
+      ContentType: contentType,
+      ContentLength: fileSize
+    });
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+
+    return res.json({
+      uploadUrl,
+      url: `https://${s3BucketName}.s3.${s3Region}.amazonaws.com/${key}`,
+      key,
+      headers: {
+        'Content-Type': contentType
+      }
+    });
+  } catch (error) {
+    console.error('Business signature upload URL error:', error);
+    return res.status(500).json({ message: 'Failed to prepare business signature upload.' });
+  }
+});
+
 router.get('/business-settings', protect, (req, res) => {
   const savedSettings = req.tenant?.businessSettings || req.user?.businessSettings;
   const defaultSettings = {
@@ -895,6 +940,13 @@ router.put('/business-settings', protect, isHardwareManagerOrOwner, async (req, 
     const logo = logoKey
       ? `https://${s3BucketName}.s3.${region}.amazonaws.com/${logoKey}`
       : '';
+    const signatureKey = String(req.body?.signatureKey ?? existingSettings.signatureKey ?? '');
+    if (signatureKey && !signatureKey.startsWith(`business-signatures/${accountId}/`)) {
+      return res.status(400).json({ message: 'Business signature key is invalid for this account.' });
+    }
+    const signature = signatureKey
+      ? `https://${s3BucketName}.s3.${region}.amazonaws.com/${signatureKey}`
+      : '';
     let paymentMethods;
     try {
       paymentMethods = normalizePaymentMethods(
@@ -917,9 +969,15 @@ router.put('/business-settings', protect, isHardwareManagerOrOwner, async (req, 
       taxRate,
       currency,
       paymentMethods,
+      bankName: String(req.body?.bankName ?? existingSettings.bankName ?? '').trim(),
+      bankBranch: String(req.body?.bankBranch ?? existingSettings.bankBranch ?? '').trim(),
+      bankAccountName: String(req.body?.bankAccountName ?? existingSettings.bankAccountName ?? '').trim(),
+      bankAccountNumber: String(req.body?.bankAccountNumber ?? existingSettings.bankAccountNumber ?? '').trim(),
       receiptFooter: String(req.body?.receiptFooter || '').trim(),
       logo,
-      logoKey
+      logoKey,
+      signature,
+      signatureKey
     };
 
     if (req.user?.tenantId) {
