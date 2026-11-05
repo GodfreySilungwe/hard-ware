@@ -130,6 +130,7 @@ const Quotations = () => {
     businessAddress: businessSettings.address || '',
     businessPhone: businessSettings.phone || '',
     businessEmail: businessSettings.email || '',
+    businessTaxId: businessSettings.taxId || '',
     businessBankName: businessSettings.bankName || '',
     businessBankBranch: businessSettings.bankBranch || '',
     businessBankAccountName: businessSettings.bankAccountName || '',
@@ -629,6 +630,7 @@ const Quotations = () => {
               {businessSettings.address && <div><strong>Shop address:</strong> {businessSettings.address}</div>}
               {businessSettings.phone && <div><strong>Shop phone:</strong> {businessSettings.phone}</div>}
               {businessSettings.email && <div><strong>Shop email:</strong> {businessSettings.email}</div>}
+                {businessSettings.taxId && <div><strong>Tax/TIN:</strong> {businessSettings.taxId}</div>}
               {businessSettings.bankName && <div><strong>Bank:</strong> {businessSettings.bankName}</div>}
               {businessSettings.bankBranch && <div><strong>Bank branch:</strong> {businessSettings.bankBranch}</div>}
               {businessSettings.bankAccountName && <div><strong>Account name:</strong> {businessSettings.bankAccountName}</div>}
@@ -673,6 +675,7 @@ const Quotations = () => {
                 {businessSettings.address && <div>{businessSettings.address}</div>}
                 {businessSettings.phone && <div>{businessSettings.phone}</div>}
                 {businessSettings.email && <div>{businessSettings.email}</div>}
+                {businessSettings.taxId && <div><strong>Tax/TIN:</strong> {businessSettings.taxId}</div>}
                 {businessSettings.bankName && <div><strong>Bank:</strong> {businessSettings.bankName}</div>}
                 {businessSettings.bankBranch && <div><strong>Branch:</strong> {businessSettings.bankBranch}</div>}
                 {businessSettings.bankAccountName && <div><strong>Account Name:</strong> {businessSettings.bankAccountName}</div>}

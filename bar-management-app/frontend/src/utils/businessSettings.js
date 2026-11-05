@@ -22,7 +22,9 @@ export const DEFAULT_BUSINESS_SETTINGS = {
   bankAccountNumber: '',
   receiptFooter: 'Thank you for your business!',
   logo: '',
-  logoKey: ''
+  logoKey: '',
+  signature: '',
+  signatureKey: ''
 };
 
 const BUSINESS_SETTINGS_ACCOUNT_KEY = 'businessSettingsAccount';

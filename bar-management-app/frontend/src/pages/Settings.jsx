@@ -605,6 +605,49 @@ const Settings = ({ initialMenu = 'settings' }) => {
       .finally(() => setLoading(false));
   };
 
+  const handleBusinessSignatureUpload = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      setError('Business signature must be a PNG or JPEG image.');
+      return;
+    }
+    if (file.size > 200 * 1024) {
+      setError('Business signature must be 200 KB or smaller.');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+    setError('');
+    api.post('/auth/business-signature-upload-url', {
+      contentType: file.type,
+      fileSize: file.size
+    })
+      .then(async (response) => {
+        const uploadResponse = await fetch(response.data.uploadUrl, {
+          method: 'PUT',
+          headers: response.data.headers,
+          body: file
+        });
+        if (!uploadResponse.ok) {
+          throw new Error(`S3 upload failed with status ${uploadResponse.status}.`);
+        }
+        setBusiness((current) => ({
+          ...current,
+          signature: response.data.url,
+          signatureKey: response.data.key
+        }));
+        setMessage('Signature uploaded. Save Business Profile to apply it to quotations.');
+      })
+      .catch((err) => {
+        setError(err.response?.data?.message || err.message || 'Failed to upload business signature.');
+      })
+      .finally(() => setLoading(false));
+  };
+
   const handleCreateSalesAccount = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -898,6 +941,17 @@ const Settings = ({ initialMenu = 'settings' }) => {
                       <div className="settings-logo-preview" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
                         <img src={business.logo} alt="Quotation logo preview" style={{ maxWidth: '160px', maxHeight: '90px', objectFit: 'contain' }} />
                         <Button type="button" variant="secondary" onClick={() => setBusiness({ ...business, logo: '', logoKey: '' })}>Remove Logo</Button>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ ...styles.formGroup, gridColumn: '1 / -1' }}>
+                    <label style={styles.label}>Quotation Signature</label>
+                    <input type="file" accept="image/png,image/jpeg" style={styles.input} onChange={handleBusinessSignatureUpload} />
+                    <span style={styles.helperText}>PNG or JPEG, up to 200 KB. This signature appears in the authorization area of quotation PDFs.</span>
+                    {business.signature && (
+                      <div className="settings-signature-preview" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
+                        <img src={business.signature} alt="Quotation signature preview" style={{ maxWidth: '220px', maxHeight: '80px', objectFit: 'contain' }} />
+                        <Button type="button" variant="secondary" onClick={() => setBusiness({ ...business, signature: '', signatureKey: '' })}>Remove Signature</Button>
                       </div>
                     )}
                   </div>
