@@ -175,7 +175,7 @@ const buildPdf = (quote) => new Promise((resolve, reject) => {
   const leftMargin = 48;
   const contentWidth = pageWidth - (leftMargin * 2);
   const rightEdge = leftMargin + contentWidth;
-  const footerY = 790;
+  const footerY = 760;
   const colors = {
     navy: '#172554',
     teal: '#0F766E',
