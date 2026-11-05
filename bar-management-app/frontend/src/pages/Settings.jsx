@@ -917,6 +917,26 @@ const Settings = ({ initialMenu = 'settings' }) => {
                     <label style={styles.label}>Tax ID</label>
                     <input type="text" style={styles.input} value={business.taxId} onChange={(e) => setBusiness({...business, taxId: e.target.value})} />
                   </div>
+                  <div style={{ ...styles.formGroup, gridColumn: '1 / -1' }}>
+                    <strong>Bank Details for Quotations</strong>
+                    <span style={styles.helperText}>These details are shared with the business and appear on generated quotation PDFs.</span>
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Bank Name</label>
+                    <input type="text" style={styles.input} value={business.bankName || ''} onChange={(e) => setBusiness({ ...business, bankName: e.target.value })} />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Bank Branch</label>
+                    <input type="text" style={styles.input} value={business.bankBranch || ''} onChange={(e) => setBusiness({ ...business, bankBranch: e.target.value })} />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Account Name</label>
+                    <input type="text" style={styles.input} value={business.bankAccountName || ''} onChange={(e) => setBusiness({ ...business, bankAccountName: e.target.value })} />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Account Number</label>
+                    <input type="text" inputMode="numeric" style={styles.input} value={business.bankAccountNumber || ''} onChange={(e) => setBusiness({ ...business, bankAccountNumber: e.target.value })} />
+                  </div>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>Currency</label>
                     <select style={styles.input} value={business.currency} onChange={(e) => setBusiness({...business, currency: e.target.value})}>

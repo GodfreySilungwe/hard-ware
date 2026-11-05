@@ -14,6 +14,10 @@ const defaultBusinessSettings = {
   phone: '',
   email: '',
   hardwareManagerName: '',
+  bankName: '',
+  bankBranch: '',
+  bankAccountName: '',
+  bankAccountNumber: '',
   taxCompliant: false,
   logo: ''
 };
@@ -126,6 +130,10 @@ const Quotations = () => {
     businessAddress: businessSettings.address || '',
     businessPhone: businessSettings.phone || '',
     businessEmail: businessSettings.email || '',
+    businessBankName: businessSettings.bankName || '',
+    businessBankBranch: businessSettings.bankBranch || '',
+    businessBankAccountName: businessSettings.bankAccountName || '',
+    businessBankAccountNumber: businessSettings.bankAccountNumber || '',
     hardwareManagerName: businessSettings.hardwareManagerName || ''
   });
 
@@ -621,6 +629,10 @@ const Quotations = () => {
               {businessSettings.address && <div><strong>Shop address:</strong> {businessSettings.address}</div>}
               {businessSettings.phone && <div><strong>Shop phone:</strong> {businessSettings.phone}</div>}
               {businessSettings.email && <div><strong>Shop email:</strong> {businessSettings.email}</div>}
+              {businessSettings.bankName && <div><strong>Bank:</strong> {businessSettings.bankName}</div>}
+              {businessSettings.bankBranch && <div><strong>Bank branch:</strong> {businessSettings.bankBranch}</div>}
+              {businessSettings.bankAccountName && <div><strong>Account name:</strong> {businessSettings.bankAccountName}</div>}
+              {businessSettings.bankAccountNumber && <div><strong>Account number:</strong> {businessSettings.bankAccountNumber}</div>}
               <div><strong>Issue date:</strong> {previewQuote.issueDate}</div>
               <div><strong>Valid until:</strong> {previewQuote.validUntil}</div>
               <div><strong>Phone:</strong> {previewQuote.customerPhone || '—'}</div>
@@ -661,6 +673,10 @@ const Quotations = () => {
                 {businessSettings.address && <div>{businessSettings.address}</div>}
                 {businessSettings.phone && <div>{businessSettings.phone}</div>}
                 {businessSettings.email && <div>{businessSettings.email}</div>}
+                {businessSettings.bankName && <div><strong>Bank:</strong> {businessSettings.bankName}</div>}
+                {businessSettings.bankBranch && <div><strong>Branch:</strong> {businessSettings.bankBranch}</div>}
+                {businessSettings.bankAccountName && <div><strong>Account Name:</strong> {businessSettings.bankAccountName}</div>}
+                {businessSettings.bankAccountNumber && <div><strong>Account No:</strong> {businessSettings.bankAccountNumber}</div>}
               </div>
               <div className="quotation-header-card" style={styles.quoteHeaderCard}>
                 <div style={{ fontWeight: 700, fontSize: '22px', marginBottom: '8px' }}>QUOTE/INV</div>

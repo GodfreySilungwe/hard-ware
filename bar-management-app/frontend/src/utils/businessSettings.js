@@ -16,6 +16,10 @@ export const DEFAULT_BUSINESS_SETTINGS = {
   taxRate: 17.5,
   currency: 'MWK',
   paymentMethods: DEFAULT_PAYMENT_METHODS,
+  bankName: '',
+  bankBranch: '',
+  bankAccountName: '',
+  bankAccountNumber: '',
   receiptFooter: 'Thank you for your business!',
   logo: '',
   logoKey: ''
