@@ -1,0 +1,20 @@
+TAC=$(sed -n 's/^terminalActivationCode="\([^"]*\)".*/\1/p' bar-management-app/backend/.env)
+
+curl -i --fail-with-body \
+  -X POST "https://dev-eis-api.mra.mw/api/v1/onboarding/activate-terminal" \
+  -H "accept: text/plain" \
+  -H "Content-Type: application/json" \
+  --data-raw "{\"terminalActivationCode\":\"$TAC\",\"environment\":{\"platform\":{\"osName\":\"Windows 11\",\"osVersion\":\"Windows 11\",\"osBuild\":\"26100\",\"macAddress\":\"AA-BB-CC-DD-EE-FF\"},\"pos\":{\"productID\":\"42000000\",\"productVersion\":\"0.1.0\"}}}"
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Date: Thu, 05 Nov 2026 08:34:43 GMT
+Server: nginx
+x-failure-reason: Missing Authorization header
+X-Cache: Miss from cloudfront
+Via: 1.1 53fd5912708d75e6ec2b16a58625cb1e.cloudfront.net (CloudFront)
+X-Amz-Cf-Pop: FRA50-P2
+X-Amz-Cf-Id: 9QM_MTFXYlMoOaPPnXYgSC98WSxtWFOSd9rrEs_yTdxF7XYcJ-VI0g==
+
+{"statusCode":1,"remark":"Terminal Activated, pending for confirmation request","data":{"activatedTerminal":{"terminalId":"a3f920f3-facf-46a9-b4cf-a7c3123706ab","terminalPosition":1,"taxpayerId":11285,"activationDate":"2026-11-05T10:34:42.9088747+02:00","terminalCredentials":{"jwtToken":"eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1lIjoiNzAzNTY0ODMiLCJodHRwczovL21yYS5tdy9EZXZpY2VJZCI6ImEzZjkyMGYzLWZhY2YtNDZhOS1iNGNmLWE3YzMxMjM3MDZhYiIsImh0dHBzOi8vbXJhLm13L1NlY3JldEtleSI6ImM0NmE3MzZkMTBiMThjMzRiMDI1YTRhZTY1OGE3NDgxMjU4NzlhMCIsImh0dHBzOi8vbXJhLm13L0FQSUtleSI6ImM0NmE3MzZkMTBiMThjMzRiMDI1YTRhZTY1OGE3NDgxMjU4NzlhMCIsImh0dHBzOi8vbXJhLm13L1RJTiI6IjcwMzU2NDgzIiwiaXNzIjoiTVJBIiwiYXVkIjoiRUlTVGVybWluYWxzIn0.qfpzwgMmIKBJLmIYZE_cAt--GddGwYuv9w3O2ELRTHaV3b-nh7QuDYC-PLDZhgi1lSLfGjXeVD1jP5K9a5m6bQ","secretKey":"c46a736d10b18c34b025a4ae658a748125879a0"}},"configuration":{"globalConfiguration":{"id":12622,"versionNo":1,"taxrates":[{"id":"A","name":"Standard Rated","chargeMode":"Item","ordinal":100,"rate":17.500},{"id":"B","name":"Zero Rated","chargeMode":"Item","ordinal":100,"rate":0.000},{"id":"E","name":"Exempt","chargeMode":"Item","ordinal":100,"rate":0.000}]},"terminalConfiguration":{"versionNo":1,"terminalLabel":"Till 1","isActiveTerminal":false,"emailAddress":"silungwegod@gmail.com","phoneNumber":"0995718815","tradingName":"GOSH SOLUTIONS","addressLines":["Dev Branch not real"],"terminalSite":{"siteId":"GO80c64413-db28-466c-89e9-d5dcfecd411b","siteName":"Gosh Branch 1"},"offlineLimit":{"maxTransactionAgeInHours":72,"maxCummulativeAmount":3000000}},"taxpayerConfiguration":{"versionNo":1,"tin":"70356483","isVATRegistered":false,"taxOfficeCode":"LSTO","taxOffice":{"code":"LSTO","name":"Lilongwe STO"},"activatedTaxRateIds":["CGT","NRT","PIT"],"activatedTaxrates":null,"activatedLevies":null}}},"errors":[]}

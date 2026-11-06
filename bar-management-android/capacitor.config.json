@@ -1,0 +1,5 @@
+{
+  "appId": "mw.yourcompany.smartinventory",
+  "appName": "Smart Inventory",
+  "webDir": "../bar-management-app/frontend/dist"
+}
