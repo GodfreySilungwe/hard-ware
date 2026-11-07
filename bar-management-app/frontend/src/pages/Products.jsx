@@ -9,6 +9,7 @@ import { formatPriceMK, getConfiguredCurrency, getCurrencySymbol } from '../util
 import { formatQuantity } from '../utils/formatQuantity';
 import { filterAndSortProducts } from '../utils/productFilters';
 import { saveAs } from 'file-saver';
+import { isNativeAndroidApp, saveBlobToAndroidDocuments } from '../utils/nativeFileDownloads';
 import * as XLSX from 'xlsx';
 
 const Products = () => {
@@ -105,7 +106,15 @@ const Products = () => {
   const downloadImportTemplate = async () => {
     try {
       const response = await api.get('/products/import-template', { responseType: 'blob' });
-      saveAs(response.data, 'product_import_template.xlsx');
+      const blob = response.data instanceof Blob
+        ? response.data
+        : new Blob([response.data], { type: response.headers['content-type'] || 'application/octet-stream' });
+      if (isNativeAndroidApp()) {
+        const savedFile = await saveBlobToAndroidDocuments(blob, 'product_import_template.xlsx');
+        alert(`Template saved to Documents/Smart POS (${savedFile.size} bytes).`);
+      } else {
+        saveAs(blob, 'product_import_template.xlsx');
+      }
     } catch (err) {
       console.error('Error downloading import template:', err);
       alert('Failed to download import template');
