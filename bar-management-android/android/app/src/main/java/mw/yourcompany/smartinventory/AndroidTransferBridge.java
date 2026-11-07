@@ -2,14 +2,18 @@ package mw.yourcompany.smartinventory;
 
 import android.app.Activity;
 import android.content.ContentValues;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
+import android.content.pm.PackageManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.widget.Toast;
+
+import androidx.core.content.ContextCompat;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -52,7 +56,7 @@ public final class AndroidTransferBridge {
         new Thread(() -> {
             JSONObject result;
             try {
-                result = saveToDownloads(fileName, contentType, encodedBody);
+                result = saveToDocuments(fileName, contentType, encodedBody);
             } catch (Exception error) {
                 result = result(500, error.getMessage());
             }
@@ -105,7 +109,7 @@ public final class AndroidTransferBridge {
         }
     }
 
-    private JSONObject saveToDownloads(String fileName, String contentType, String encodedBody) throws Exception {
+    private JSONObject saveToDocuments(String fileName, String contentType, String encodedBody) throws Exception {
         String mimeType = contentType == null ? "application/octet-stream" : contentType.split(";")[0].trim();
         if (!isSupportedDownloadType(mimeType)) {
             return result(400, "This Android download file type is not supported.");
@@ -115,6 +119,7 @@ public final class AndroidTransferBridge {
         if (body.length == 0) return result(400, "The export file is empty.");
         String safeName = fileName == null ? "report" : fileName.replaceAll("[^A-Za-z0-9._-]", "_");
         if (safeName.isEmpty()) safeName = "report";
+        long savedSize;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ContentValues values = new ContentValues();
@@ -125,19 +130,33 @@ public final class AndroidTransferBridge {
 
             Uri fileUri = activity.getContentResolver().insert(MediaStore.Files.getContentUri("external"), values);
             if (fileUri == null) throw new IllegalStateException("Could not create a file in Documents/Smart POS.");
-            try (OutputStream output = activity.getContentResolver().openOutputStream(fileUri)) {
-                if (output == null) throw new IllegalStateException("Could not open the PDF file.");
-                output.write(body);
+            try {
+                try (OutputStream output = activity.getContentResolver().openOutputStream(fileUri)) {
+                    if (output == null) throw new IllegalStateException("Could not open the export file.");
+                    output.write(body);
+                }
+                ContentValues published = new ContentValues();
+                published.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                activity.getContentResolver().update(fileUri, published, null, null);
+                try (Cursor cursor = activity.getContentResolver().query(
+                        fileUri, new String[]{MediaStore.MediaColumns.SIZE}, null, null, null)) {
+                    if (cursor == null || !cursor.moveToFirst()) {
+                        throw new IllegalStateException("Could not verify the saved export.");
+                    }
+                    savedSize = cursor.getLong(0);
+                }
             } catch (Exception error) {
                 activity.getContentResolver().delete(fileUri, null, null);
                 throw error;
             }
-            ContentValues published = new ContentValues();
-            published.put(MediaStore.MediaColumns.IS_PENDING, 0);
-            activity.getContentResolver().update(fileUri, published, null, null);
         } else {
-            File documents = activity.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
-            if (documents == null) throw new IllegalStateException("App Documents storage is unavailable.");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && ContextCompat.checkSelfPermission(activity, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                return result(403, "Allow storage access in Android settings to save reports.");
+            }
+            File documents = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS);
+            if (documents == null) throw new IllegalStateException("Shared Documents storage is unavailable.");
             File appDocuments = new File(documents, "Smart POS");
             if (!appDocuments.exists() && !appDocuments.mkdirs()) {
                 throw new IllegalStateException("Could not create the app Documents folder.");
@@ -146,8 +165,12 @@ public final class AndroidTransferBridge {
             try (FileOutputStream output = new FileOutputStream(exportFile)) {
                 output.write(body);
             }
+            savedSize = exportFile.length();
         }
-        return result(200, "File saved to Documents/Smart POS.");
+        if (savedSize != body.length) {
+            throw new IllegalStateException("Saved export size did not match the downloaded file.");
+        }
+        return result(200, "File saved to Documents/Smart POS.", savedSize);
     }
 
     private boolean isSupportedDownloadType(String mimeType) {
@@ -178,10 +201,15 @@ public final class AndroidTransferBridge {
     }
 
     private JSONObject result(int status, String message) {
+        return result(status, message, -1);
+    }
+
+    private JSONObject result(int status, String message, long size) {
         JSONObject value = new JSONObject();
         try {
             value.put("status", status);
             value.put("message", message == null ? "Android file transfer failed." : message);
+            if (size >= 0) value.put("size", size);
         } catch (JSONException ignored) {
             // The fixed result keys and values are always JSON-compatible.
         }

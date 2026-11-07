@@ -30,6 +30,19 @@
     reader.readAsDataURL(blob);
   });
 
+  window.saveBlobToAndroidDocuments = async (blob, filename) => {
+    if (!(blob instanceof Blob)) throw new TypeError('An export file is required.');
+    const encodedBody = await blobToBase64(blob);
+    const result = await callNative('saveDownload', [filename, blob.type || 'application/octet-stream', encodedBody]);
+    if (result.status !== 200 || !Number.isFinite(result.size) || result.size <= 0) {
+      throw new Error(result.message || 'The export could not be saved to Documents.');
+    }
+    if (result.size !== blob.size) {
+      throw new Error(`Saved file size did not match the export (${result.size} of ${blob.size} bytes).`);
+    }
+    return { size: result.size };
+  };
+
   window.fetch = async (input, init = {}) => {
     const request = input instanceof Request ? input : null;
     const requestUrl = request ? request.url : String(input);
