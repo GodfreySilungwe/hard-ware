@@ -375,6 +375,9 @@ router.get('/customers/excel', protect, async (req, res) => {
 router.get('/sales/pdf', protect, async (req, res) => {
   try {
     const { orders, customerMap, filters } = await getOrdersForExport(req);
+    const currency = normalizeCurrencyCode(
+      req.tenant?.businessSettings?.currency || req.user?.businessSettings?.currency || 'MWK'
+    );
     orders.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
 
     const doc = new PDFDocument({ margin: 50 });

@@ -58,7 +58,7 @@ public final class AndroidTransferBridge {
             }
             completeRequest(requestId, result);
             if (result.optInt("status") == 200) {
-                activity.runOnUiThread(() -> Toast.makeText(activity, "File saved to Downloads", Toast.LENGTH_LONG).show());
+                activity.runOnUiThread(() -> Toast.makeText(activity, "File saved to Documents/Smart POS", Toast.LENGTH_LONG).show());
             }
         }).start();
     }
@@ -120,11 +120,11 @@ public final class AndroidTransferBridge {
             ContentValues values = new ContentValues();
             values.put(MediaStore.MediaColumns.DISPLAY_NAME, safeName);
             values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
-            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + "/Smart POS");
             values.put(MediaStore.MediaColumns.IS_PENDING, 1);
 
-            Uri fileUri = activity.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-            if (fileUri == null) throw new IllegalStateException("Could not create a file in Downloads.");
+            Uri fileUri = activity.getContentResolver().insert(MediaStore.Files.getContentUri("external"), values);
+            if (fileUri == null) throw new IllegalStateException("Could not create a file in Documents/Smart POS.");
             try (OutputStream output = activity.getContentResolver().openOutputStream(fileUri)) {
                 if (output == null) throw new IllegalStateException("Could not open the PDF file.");
                 output.write(body);
@@ -136,14 +136,18 @@ public final class AndroidTransferBridge {
             published.put(MediaStore.MediaColumns.IS_PENDING, 0);
             activity.getContentResolver().update(fileUri, published, null, null);
         } else {
-            File downloads = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
-            if (downloads == null) throw new IllegalStateException("App Downloads storage is unavailable.");
-            File pdf = new File(downloads, safeName);
-            try (FileOutputStream output = new FileOutputStream(pdf)) {
+            File documents = activity.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
+            if (documents == null) throw new IllegalStateException("App Documents storage is unavailable.");
+            File appDocuments = new File(documents, "Smart POS");
+            if (!appDocuments.exists() && !appDocuments.mkdirs()) {
+                throw new IllegalStateException("Could not create the app Documents folder.");
+            }
+            File exportFile = new File(appDocuments, safeName);
+            try (FileOutputStream output = new FileOutputStream(exportFile)) {
                 output.write(body);
             }
         }
-        return result(200, "File saved to Downloads.");
+        return result(200, "File saved to Documents/Smart POS.");
     }
 
     private boolean isSupportedDownloadType(String mimeType) {
