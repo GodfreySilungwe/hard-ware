@@ -25,7 +25,7 @@ import java.nio.charset.StandardCharsets;
 
 public final class AndroidTransferBridge {
     private static final int MAX_IMAGE_BYTES = 1024 * 1024;
-    private static final int MAX_PDF_BYTES = 30 * 1024 * 1024;
+    private static final int MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;
     private final Activity activity;
     private final WebView webView;
 
@@ -48,17 +48,17 @@ public final class AndroidTransferBridge {
     }
 
     @JavascriptInterface
-    public void savePdf(String fileName, String contentType, String encodedBody, String requestId) {
+    public void saveDownload(String fileName, String contentType, String encodedBody, String requestId) {
         new Thread(() -> {
             JSONObject result;
             try {
-                result = savePdfToDownloads(fileName, contentType, encodedBody);
+                result = saveToDownloads(fileName, contentType, encodedBody);
             } catch (Exception error) {
                 result = result(500, error.getMessage());
             }
             completeRequest(requestId, result);
             if (result.optInt("status") == 200) {
-                activity.runOnUiThread(() -> Toast.makeText(activity, "PDF saved to Downloads", Toast.LENGTH_LONG).show());
+                activity.runOnUiThread(() -> Toast.makeText(activity, "File saved to Downloads", Toast.LENGTH_LONG).show());
             }
         }).start();
     }
@@ -105,20 +105,21 @@ public final class AndroidTransferBridge {
         }
     }
 
-    private JSONObject savePdfToDownloads(String fileName, String contentType, String encodedBody) throws Exception {
-        if (!"application/pdf".equalsIgnoreCase(contentType)) {
-            return result(400, "Only PDF downloads are supported.");
+    private JSONObject saveToDownloads(String fileName, String contentType, String encodedBody) throws Exception {
+        String mimeType = contentType == null ? "application/octet-stream" : contentType.split(";")[0].trim();
+        if (!isSupportedDownloadType(mimeType)) {
+            return result(400, "This Android download file type is not supported.");
         }
 
-        byte[] body = decodeBase64(encodedBody, MAX_PDF_BYTES);
-        if (body.length == 0) return result(400, "The PDF is empty.");
-        String safeName = fileName == null ? "sales_report.pdf" : fileName.replaceAll("[^A-Za-z0-9._-]", "_");
-        if (!safeName.toLowerCase().endsWith(".pdf")) safeName += ".pdf";
+        byte[] body = decodeBase64(encodedBody, MAX_DOWNLOAD_BYTES);
+        if (body.length == 0) return result(400, "The export file is empty.");
+        String safeName = fileName == null ? "report" : fileName.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (safeName.isEmpty()) safeName = "report";
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ContentValues values = new ContentValues();
             values.put(MediaStore.MediaColumns.DISPLAY_NAME, safeName);
-            values.put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf");
+            values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
             values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
             values.put(MediaStore.MediaColumns.IS_PENDING, 1);
 
@@ -142,7 +143,14 @@ public final class AndroidTransferBridge {
                 output.write(body);
             }
         }
-        return result(200, "PDF saved to Downloads.");
+        return result(200, "File saved to Downloads.");
+    }
+
+    private boolean isSupportedDownloadType(String mimeType) {
+        return "application/pdf".equalsIgnoreCase(mimeType)
+            || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".equalsIgnoreCase(mimeType)
+            || "application/vnd.ms-excel".equalsIgnoreCase(mimeType)
+            || "application/octet-stream".equalsIgnoreCase(mimeType);
     }
 
     private byte[] decodeBase64(String encodedBody, int maxBytes) {

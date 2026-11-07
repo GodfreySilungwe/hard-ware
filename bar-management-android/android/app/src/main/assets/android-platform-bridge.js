@@ -61,19 +61,19 @@
 
   document.addEventListener('click', async (event) => {
     const anchor = event.target instanceof Element ? event.target.closest('a[download]') : null;
-    if (!anchor || !anchor.href.startsWith('blob:') || !/\.pdf$/i.test(anchor.download || '')) return;
+    if (!anchor || !anchor.href.startsWith('blob:') || !anchor.download) return;
 
     event.preventDefault();
     event.stopImmediatePropagation();
     try {
       const blob = await originalFetch(anchor.href).then((response) => response.blob());
       const encodedBody = await blobToBase64(blob);
-      const result = await callNative('savePdf', [anchor.download, blob.type || 'application/pdf', encodedBody]);
+      const result = await callNative('saveDownload', [anchor.download, blob.type || 'application/octet-stream', encodedBody]);
       if (result.status !== 200) {
-        window.AndroidTransferBridge.showTransferError(String(result.message || 'PDF download failed.'));
+        window.AndroidTransferBridge.showTransferError(String(result.message || 'File download failed.'));
       }
     } catch (error) {
-      window.AndroidTransferBridge.showTransferError(String(error.message || 'PDF download failed.'));
+      window.AndroidTransferBridge.showTransferError(String(error.message || 'File download failed.'));
     }
   }, true);
 })();
