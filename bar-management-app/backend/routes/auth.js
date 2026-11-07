@@ -832,8 +832,8 @@ router.post('/business-logo-upload-url', protect, isHardwareManagerOrOwner, asyn
     if (!['image/png', 'image/jpeg'].includes(contentType)) {
       return res.status(400).json({ message: 'Business logo must be a PNG or JPEG image.' });
     }
-    if (!Number.isInteger(fileSize) || fileSize < 1 || fileSize > 200 * 1024) {
-      return res.status(400).json({ message: 'Business logo must be up to 200 KB.' });
+    if (!Number.isInteger(fileSize) || fileSize < 1 || fileSize > 1024 * 1024) {
+      return res.status(400).json({ message: 'Business logo must be up to 1 MB.' });
     }
 
     const accountId = String(req.user?.tenantId || req.user?._id || req.user?.id || '');
@@ -871,8 +871,8 @@ router.post('/business-signature-upload-url', protect, isHardwareManagerOrOwner,
     if (!['image/png', 'image/jpeg'].includes(contentType)) {
       return res.status(400).json({ message: 'Signature must be a PNG or JPEG image.' });
     }
-    if (!Number.isInteger(fileSize) || fileSize < 1 || fileSize > 200 * 1024) {
-      return res.status(400).json({ message: 'Signature must be up to 200 KB.' });
+    if (!Number.isInteger(fileSize) || fileSize < 1 || fileSize > 1024 * 1024) {
+      return res.status(400).json({ message: 'Signature must be up to 1 MB.' });
     }
 
     const accountId = String(req.user?.tenantId || req.user?._id || req.user?.id || '');

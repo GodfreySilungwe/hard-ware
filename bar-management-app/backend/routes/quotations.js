@@ -246,7 +246,7 @@ const buildPdf = (quote) => new Promise((resolve, reject) => {
       if (!logoMatch) throw new Error('Business logo must be a PNG or JPEG image.');
       logoBuffer = Buffer.from(logoMatch[2], 'base64');
     }
-    if (logoBuffer.length > 200 * 1024) throw new Error('Business logo must be 200 KB or smaller.');
+    if (logoBuffer.length > 1024 * 1024) throw new Error('Business logo must be 1 MB or smaller.');
     const hasPngSignature = logoBuffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     const hasJpegSignature = logoBuffer[0] === 0xff && logoBuffer[1] === 0xd8 && logoBuffer[2] === 0xff;
     if (!hasPngSignature && !hasJpegSignature) {
