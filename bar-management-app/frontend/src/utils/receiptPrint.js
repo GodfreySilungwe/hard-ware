@@ -1,7 +1,3 @@
-export function isAndroidWebView() {
-  return typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
-}
-
 export function resolveReceiptPrintAction({ nativePrinter, isAndroidApp = false, receiptText = '' }) {
   if (!nativePrinter || typeof nativePrinter.printText !== 'function') {
     if (isAndroidApp) {

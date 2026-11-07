@@ -571,8 +571,8 @@ const Settings = ({ initialMenu = 'settings' }) => {
       setError('Business logo must be a PNG or JPEG image.');
       return;
     }
-    if (file.size > 200 * 1024) {
-      setError('Business logo must be 200 KB or smaller.');
+    if (file.size > 1024 * 1024) {
+      setError('Business logo must be 1 MB or smaller.');
       return;
     }
 
@@ -614,8 +614,8 @@ const Settings = ({ initialMenu = 'settings' }) => {
       setError('Business signature must be a PNG or JPEG image.');
       return;
     }
-    if (file.size > 200 * 1024) {
-      setError('Business signature must be 200 KB or smaller.');
+    if (file.size > 1024 * 1024) {
+      setError('Business signature must be 1 MB or smaller.');
       return;
     }
 
@@ -936,7 +936,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
                   <div style={{ ...styles.formGroup, gridColumn: '1 / -1' }}>
                     <label style={styles.label}>Quotation Logo</label>
                     <input type="file" accept="image/png,image/jpeg" style={styles.input} onChange={handleBusinessLogoUpload} />
-                    <span style={styles.helperText}>PNG or JPEG, up to 200 KB. This logo appears on quotations only.</span>
+                    <span style={styles.helperText}>PNG or JPEG, up to 1 MB. This logo appears on quotations only.</span>
                     {business.logo && (
                       <div className="settings-logo-preview" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
                         <img src={business.logo} alt="Quotation logo preview" style={{ maxWidth: '160px', maxHeight: '90px', objectFit: 'contain' }} />
@@ -947,7 +947,7 @@ const Settings = ({ initialMenu = 'settings' }) => {
                   <div style={{ ...styles.formGroup, gridColumn: '1 / -1' }}>
                     <label style={styles.label}>Quotation Signature</label>
                     <input type="file" accept="image/png,image/jpeg" style={styles.input} onChange={handleBusinessSignatureUpload} />
-                    <span style={styles.helperText}>PNG or JPEG, up to 200 KB. This signature appears in the authorization area of quotation PDFs.</span>
+                    <span style={styles.helperText}>PNG or JPEG, up to 1 MB. This signature appears in the authorization area of quotation PDFs.</span>
                     {business.signature && (
                       <div className="settings-signature-preview" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
                         <img src={business.signature} alt="Quotation signature preview" style={{ maxWidth: '220px', maxHeight: '80px', objectFit: 'contain' }} />

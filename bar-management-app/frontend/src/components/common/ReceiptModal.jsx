@@ -1,7 +1,7 @@
 import { formatPriceMK } from '../../utils/formatPrice';
 import { formatQuantity } from '../../utils/formatQuantity';
 import { DEFAULT_BUSINESS_SETTINGS } from '../../utils/businessSettings';
-import { isAndroidWebView, resolveReceiptPrintAction } from '../../utils/receiptPrint';
+import { resolveReceiptPrintAction } from '../../utils/receiptPrint';
 import { useAuth } from '../../context/AuthContext';
 import { createPortal } from 'react-dom';
 
@@ -46,7 +46,7 @@ const ReceiptModal = ({ order, onClose, businessSettings = {}, isReprint = false
     const receiptText = document.getElementById('receipt')?.innerText || '';
     const action = resolveReceiptPrintAction({
       nativePrinter,
-      isAndroidApp: isAndroidWebView(),
+      isAndroidApp: Boolean(nativePrinter),
       receiptText
     });
 

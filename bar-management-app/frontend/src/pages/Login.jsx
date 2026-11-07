@@ -26,7 +26,9 @@ const Login = () => {
 
     try {
       const result = await login(username, password);
-      if (!result.success) {
+      if (result.success) {
+        window.AndroidCredentials?.commitAutofill?.();
+      } else {
         setError(result.error || 'Login failed');
       }
     } catch (err) {
@@ -61,6 +63,8 @@ const Login = () => {
             <label style={styles.label}>Username or email</label>
             <input
               type="text"
+              name="username"
+              autoComplete="username"
               style={styles.input}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -82,6 +86,8 @@ const Login = () => {
             <div style={styles.passwordWrapper}>
               <input
                 type={showPassword ? 'text' : 'password'}
+                name="password"
+                autoComplete="current-password"
                 style={styles.passwordInput}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
