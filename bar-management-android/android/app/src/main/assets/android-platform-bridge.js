@@ -43,6 +43,37 @@
     return { size: result.size };
   };
 
+  const canSharePdf = (data = {}) => Array.isArray(data.files)
+    && data.files.length === 1
+    && (data.files[0].type === 'application/pdf' || /\.pdf$/i.test(data.files[0].name || ''));
+
+  const sharePdf = async (data = {}) => {
+    if (!canSharePdf(data)) throw new Error('Android sharing supports one PDF file at a time.');
+    const file = data.files[0];
+    const encodedBody = await blobToBase64(file);
+    const result = await callNative('sharePdf', [
+      file.name || 'quotation.pdf',
+      encodedBody,
+      data.text || '',
+      data.title || 'Quotation'
+    ]);
+    if (result.status !== 200 || result.size !== file.size) {
+      throw new Error(result.message || 'Could not attach the quotation PDF.');
+    }
+  };
+
+  try {
+    Object.defineProperty(navigator, 'canShare', { configurable: true, value: canSharePdf });
+    Object.defineProperty(navigator, 'share', { configurable: true, value: sharePdf });
+  } catch (error) {
+    try {
+      navigator.canShare = canSharePdf;
+      navigator.share = sharePdf;
+    } catch (ignored) {
+      console.error('Native Android PDF sharing could not be installed.', error);
+    }
+  }
+
   window.fetch = async (input, init = {}) => {
     const request = input instanceof Request ? input : null;
     const requestUrl = request ? request.url : String(input);

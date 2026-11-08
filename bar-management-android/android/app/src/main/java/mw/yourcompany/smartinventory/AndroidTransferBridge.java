@@ -1,8 +1,10 @@
 package mw.yourcompany.smartinventory;
 
 import android.app.Activity;
+import android.content.ClipData;
 import android.content.ContentValues;
 import android.database.Cursor;
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -14,6 +16,7 @@ import android.webkit.WebView;
 import android.widget.Toast;
 
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -63,6 +66,55 @@ public final class AndroidTransferBridge {
             completeRequest(requestId, result);
             if (result.optInt("status") == 200) {
                 activity.runOnUiThread(() -> Toast.makeText(activity, "File saved to Documents/Smart POS", Toast.LENGTH_LONG).show());
+            }
+        }).start();
+    }
+
+    @JavascriptInterface
+    public void sharePdf(String fileName, String encodedBody, String shareText, String title, String requestId) {
+        new Thread(() -> {
+            try {
+                String safeName = fileName == null ? "quotation.pdf" : fileName.replaceAll("[^A-Za-z0-9._-]", "_");
+                if (!safeName.toLowerCase().endsWith(".pdf")) safeName += ".pdf";
+                byte[] pdfBytes = decodeBase64(encodedBody, 30 * 1024 * 1024);
+                if (pdfBytes.length == 0 || !hasPdfSignature(pdfBytes)) {
+                    throw new IllegalArgumentException("The quotation file is not a valid PDF.");
+                }
+
+                File shareDirectory = new File(activity.getCacheDir(), "quotation-shares");
+                if (!shareDirectory.exists() && !shareDirectory.mkdirs()) {
+                    throw new IllegalStateException("Could not prepare the quotation for sharing.");
+                }
+                File pdfFile = new File(shareDirectory, System.currentTimeMillis() + "-" + safeName);
+                try (FileOutputStream output = new FileOutputStream(pdfFile)) {
+                    output.write(pdfBytes);
+                }
+                Uri pdfUri = FileProvider.getUriForFile(
+                    activity,
+                    activity.getPackageName() + ".fileprovider",
+                    pdfFile
+                );
+
+                Intent sendIntent = new Intent(Intent.ACTION_SEND);
+                sendIntent.setType("application/pdf");
+                sendIntent.putExtra(Intent.EXTRA_STREAM, pdfUri);
+                sendIntent.putExtra(Intent.EXTRA_TEXT, shareText == null ? "" : shareText);
+                sendIntent.putExtra(Intent.EXTRA_TITLE, title == null ? "Quotation" : title);
+                sendIntent.setClipData(ClipData.newUri(activity.getContentResolver(), safeName, pdfUri));
+                sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+                Intent chooser = Intent.createChooser(sendIntent, title == null ? "Send quotation" : title);
+                chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                activity.runOnUiThread(() -> {
+                    try {
+                        activity.startActivity(chooser);
+                        completeRequest(requestId, result(200, "Quotation ready to share.", pdfBytes.length));
+                    } catch (Exception error) {
+                        completeRequest(requestId, result(500, error.getMessage()));
+                    }
+                });
+            } catch (Exception error) {
+                completeRequest(requestId, result(500, error.getMessage()));
             }
         }).start();
     }
@@ -187,6 +239,15 @@ public final class AndroidTransferBridge {
         byte[] body = Base64.decode(encodedBody, Base64.DEFAULT);
         if (body.length > maxBytes) throw new IllegalArgumentException("File exceeds the allowed size.");
         return body;
+    }
+
+    private boolean hasPdfSignature(byte[] bytes) {
+        return bytes.length >= 5
+            && bytes[0] == '%'
+            && bytes[1] == 'P'
+            && bytes[2] == 'D'
+            && bytes[3] == 'F'
+            && bytes[4] == '-';
     }
 
     private String readError(HttpURLConnection connection) throws IOException {
