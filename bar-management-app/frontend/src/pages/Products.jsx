@@ -22,6 +22,8 @@ const Products = () => {
   const [editingProduct, setEditingProduct] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [templateDownloadMessage, setTemplateDownloadMessage] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     category: '',
@@ -104,6 +106,8 @@ const Products = () => {
   };
 
   const downloadImportTemplate = async () => {
+    setDownloadingTemplate(true);
+    setTemplateDownloadMessage('Preparing template...');
     try {
       const response = await api.get('/products/import-template', { responseType: 'blob' });
       const blob = response.data instanceof Blob
@@ -111,13 +115,16 @@ const Products = () => {
         : new Blob([response.data], { type: response.headers['content-type'] || 'application/octet-stream' });
       if (isNativeAndroidApp()) {
         const savedFile = await saveBlobToAndroidDocuments(blob, 'product_import_template.xlsx');
-        alert(`Template saved to Documents/Smart POS (${savedFile.size} bytes).`);
+        setTemplateDownloadMessage(`Template saved to Documents/Smart POS (${savedFile.size} bytes).`);
       } else {
         saveAs(blob, 'product_import_template.xlsx');
+        setTemplateDownloadMessage('Template download started.');
       }
     } catch (err) {
       console.error('Error downloading import template:', err);
-      alert('Failed to download import template');
+      setTemplateDownloadMessage(err.message || 'Failed to download import template.');
+    } finally {
+      setDownloadingTemplate(false);
     }
   };
 
@@ -216,7 +223,14 @@ const Products = () => {
       <div style={styles.header}>
         <p style={styles.subtitle}>Manage your Smart Inventory App inventory</p>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <Button variant="secondary" onClick={downloadImportTemplate}>Download Import Template</Button>
+          <Button variant="secondary" disabled={downloadingTemplate} onClick={downloadImportTemplate}>
+            {downloadingTemplate ? 'Preparing Template...' : 'Download Import Template'}
+          </Button>
+          {templateDownloadMessage && (
+            <span role="status" aria-live="polite" style={{ alignSelf: 'center', fontSize: '13px', color: templateDownloadMessage.startsWith('Failed') || templateDownloadMessage.includes('could not') ? '#b42318' : '#16794b' }}>
+              {templateDownloadMessage}
+            </span>
+          )}
           <Button variant="success" disabled={importing} onClick={() => document.getElementById('product-import-input').click()}>
             {importing ? 'Importing...' : 'Import Products'}
           </Button>

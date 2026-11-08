@@ -16,9 +16,13 @@ import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
 
@@ -33,7 +37,12 @@ import java.util.Map;
 
 public final class AndroidPrinterBridge {
     private static final long SCAN_TIMEOUT_MS = 15000;
-    private static final int BLE_CHUNK_SIZE = 20;
+    private static final int DEFAULT_BLE_PAYLOAD_SIZE = 20;
+    private static final int MAX_BLE_PAYLOAD_SIZE = 182;
+    private static final int REQUESTED_MTU = MAX_BLE_PAYLOAD_SIZE + 3;
+    private static final long NO_RESPONSE_WRITE_INTERVAL_MS = 20;
+    private static final long PRINTER_DRAIN_DELAY_MS = 750;
+    private static final int PRINTER_WIDTH_DOTS = 384;
     private final Activity activity;
     private final Context context;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -41,6 +50,9 @@ public final class AndroidPrinterBridge {
     private BluetoothLeScanner scanner;
     private BluetoothGatt gatt;
     private BluetoothGattCharacteristic writeCharacteristic;
+    private int blePayloadSize = DEFAULT_BLE_PAYLOAD_SIZE;
+    private int pendingChunkLength;
+    private boolean writeWithResponse;
     private byte[] printData;
     private int printOffset;
     private boolean printInProgress;
@@ -70,25 +82,95 @@ public final class AndroidPrinterBridge {
             return "error: Turn on Bluetooth, then try again";
         }
 
-        synchronized (this) {
-            if (printInProgress) {
-                return "error: A printer operation is already in progress";
-            }
-            printInProgress = true;
+        byte[] receipt = text.getBytes(StandardCharsets.UTF_8);
+        byte[] textData = new byte[receipt.length + 5];
+        textData[0] = 0x1B;
+        textData[1] = 0x40;
+        System.arraycopy(receipt, 0, textData, 2, receipt.length);
+        textData[receipt.length + 2] = 0x0A;
+        textData[receipt.length + 3] = 0x0A;
+        textData[receipt.length + 4] = 0x0A;
+        return queuePrint(adapter, textData);
+    }
+
+    @JavascriptInterface
+    public String printImage(String encodedPng) {
+        if (!hasBluetoothPermissions()) {
+            return "error: Bluetooth permission is required";
+        }
+        if (encodedPng == null || encodedPng.isEmpty() || encodedPng.length() > 12 * 1024 * 1024) {
+            return "error: Receipt image is empty or too large";
         }
 
-        byte[] receipt = text.getBytes(StandardCharsets.UTF_8);
-        printData = new byte[receipt.length + 5];
-        printData[0] = 0x1B;
-        printData[1] = 0x40;
-        System.arraycopy(receipt, 0, printData, 2, receipt.length);
-        printData[receipt.length + 2] = 0x0A;
-        printData[receipt.length + 3] = 0x0A;
-        printData[receipt.length + 4] = 0x0A;
-        printOffset = 0;
+        BluetoothManager manager = (BluetoothManager) context.getSystemService(Context.BLUETOOTH_SERVICE);
+        BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
+        if (adapter == null) return "error: Bluetooth is not available on this device";
+        if (!adapter.isEnabled()) return "error: Turn on Bluetooth, then try again";
 
+        Bitmap source = null;
+        try {
+            byte[] pngBytes = Base64.decode(encodedPng, Base64.DEFAULT);
+            source = BitmapFactory.decodeByteArray(pngBytes, 0, pngBytes.length);
+            if (source == null) return "error: Could not decode receipt image";
+            return queuePrint(adapter, createEscPosRaster(source));
+        } catch (IllegalArgumentException error) {
+            return "error: Could not decode receipt image";
+        } catch (IllegalStateException error) {
+            return "error: " + error.getMessage();
+        } finally {
+            if (source != null && !source.isRecycled()) source.recycle();
+        }
+    }
+
+    private String queuePrint(BluetoothAdapter adapter, byte[] payload) {
+        synchronized (this) {
+            if (printInProgress) return "error: A printer operation is already in progress";
+            printInProgress = true;
+        }
+        printData = payload;
+        printOffset = 0;
+        pendingChunkLength = 0;
         mainHandler.post(() -> startBleScan(adapter));
         return "printed";
+    }
+
+    private byte[] createEscPosRaster(Bitmap source) {
+        int height = Math.max(1, Math.round((float) source.getHeight() * PRINTER_WIDTH_DOTS / source.getWidth()));
+        if (height > 0xFFFF) throw new IllegalStateException("Receipt image is too tall to print");
+
+        Bitmap scaled = Bitmap.createScaledBitmap(source, PRINTER_WIDTH_DOTS, height, true);
+        int bytesPerRow = (PRINTER_WIDTH_DOTS + 7) / 8;
+        byte[] raster = new byte[8 + (bytesPerRow * height) + 5];
+        raster[0] = 0x1D;
+        raster[1] = 0x76;
+        raster[2] = 0x30;
+        raster[3] = 0x00;
+        raster[4] = (byte) (bytesPerRow & 0xFF);
+        raster[5] = (byte) ((bytesPerRow >> 8) & 0xFF);
+        raster[6] = (byte) (height & 0xFF);
+        raster[7] = (byte) ((height >> 8) & 0xFF);
+
+        int[] pixels = new int[PRINTER_WIDTH_DOTS];
+        for (int row = 0; row < height; row++) {
+            scaled.getPixels(pixels, 0, PRINTER_WIDTH_DOTS, 0, row, PRINTER_WIDTH_DOTS, 1);
+            for (int column = 0; column < PRINTER_WIDTH_DOTS; column++) {
+                int pixel = pixels[column];
+                int luminance = (Color.red(pixel) * 299 + Color.green(pixel) * 587 + Color.blue(pixel) * 114) / 1000;
+                if (luminance < 180) {
+                    int byteIndex = 8 + row * bytesPerRow + (column / 8);
+                    raster[byteIndex] |= (byte) (0x80 >> (column % 8));
+                }
+            }
+        }
+
+        int feedOffset = raster.length - 5;
+        raster[feedOffset] = 0x1B;
+        raster[feedOffset + 1] = 0x64;
+        raster[feedOffset + 2] = 0x03;
+        raster[feedOffset + 3] = 0x0A;
+        raster[feedOffset + 4] = 0x0A;
+        if (scaled != source) scaled.recycle();
+        return raster;
     }
 
     private boolean hasBluetoothPermissions() {
@@ -188,11 +270,28 @@ public final class AndroidPrinterBridge {
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 finishPrint("Could not connect to the printer (BLE error " + status + ").");
             } else if (newState == BluetoothGatt.STATE_CONNECTED) {
-                if (!currentGatt.discoverServices()) {
+                boolean mtuRequestStarted = false;
+                try {
+                    mtuRequestStarted = currentGatt.requestMtu(REQUESTED_MTU);
+                } catch (SecurityException error) {
+                    finishPrint("Bluetooth connect permission is missing.");
+                }
+                if (!mtuRequestStarted && printInProgress && !currentGatt.discoverServices()) {
                     finishPrint("Could not inspect the printer's BLE services.");
                 }
             } else if (newState == BluetoothGatt.STATE_DISCONNECTED && printInProgress) {
                 finishPrint("The printer disconnected before printing completed.");
+            }
+        }
+
+        @Override
+        public void onMtuChanged(BluetoothGatt currentGatt, int mtu, int status) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                blePayloadSize = Math.max(DEFAULT_BLE_PAYLOAD_SIZE,
+                    Math.min(mtu - 3, MAX_BLE_PAYLOAD_SIZE));
+            }
+            if (printInProgress && !currentGatt.discoverServices()) {
+                finishPrint("Could not inspect the printer's BLE services.");
             }
         }
 
@@ -208,19 +307,23 @@ public final class AndroidPrinterBridge {
                 finishPrint("The MPT-II BLE profile has no writable print characteristic.");
                 return;
             }
+            writeWithResponse = (writeCharacteristic.getProperties()
+                & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0;
             writeNextChunk();
         }
 
         @Override
         public void onCharacteristicWrite(BluetoothGatt currentGatt,
                 BluetoothGattCharacteristic characteristic, int status) {
+            if (!writeWithResponse || printData == null || characteristic != writeCharacteristic) return;
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 finishPrint("The printer rejected receipt data (BLE error " + status + ").");
                 return;
             }
-            printOffset += Math.min(BLE_CHUNK_SIZE, printData.length - printOffset);
+            printOffset += pendingChunkLength;
+            pendingChunkLength = 0;
             if (printOffset >= printData.length) {
-                finishPrint("Receipt sent to printer.");
+                mainHandler.postDelayed(() -> finishPrint("Receipt sent to printer."), PRINTER_DRAIN_DELAY_MS);
             } else {
                 writeNextChunk();
             }
@@ -230,9 +333,12 @@ public final class AndroidPrinterBridge {
     private BluetoothGattCharacteristic findWritableCharacteristic(BluetoothGatt currentGatt) {
         for (BluetoothGattService service : currentGatt.getServices()) {
             for (BluetoothGattCharacteristic characteristic : service.getCharacteristics()) {
-                int properties = characteristic.getProperties();
-                if ((properties & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0
-                    || (properties & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) {
+                if ((characteristic.getProperties() & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0) return characteristic;
+            }
+        }
+        for (BluetoothGattService service : currentGatt.getServices()) {
+            for (BluetoothGattCharacteristic characteristic : service.getCharacteristics()) {
+                if ((characteristic.getProperties() & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) {
                     return characteristic;
                 }
             }
@@ -246,7 +352,7 @@ public final class AndroidPrinterBridge {
             return;
         }
 
-        int length = Math.min(BLE_CHUNK_SIZE, printData.length - printOffset);
+        int length = Math.min(blePayloadSize, printData.length - printOffset);
         byte[] chunk = new byte[length];
         System.arraycopy(printData, printOffset, chunk, 0, length);
         int properties = writeCharacteristic.getProperties();
@@ -264,6 +370,17 @@ public final class AndroidPrinterBridge {
             started = gatt.writeCharacteristic(writeCharacteristic);
         }
         if (!started) finishPrint("Could not send receipt data to the printer.");
+        else if (!writeWithResponse) {
+            printOffset += length;
+            long delay = printOffset >= printData.length ? PRINTER_DRAIN_DELAY_MS : NO_RESPONSE_WRITE_INTERVAL_MS;
+            if (printOffset >= printData.length) {
+                mainHandler.postDelayed(() -> finishPrint("Receipt sent to printer."), delay);
+            } else {
+                mainHandler.postDelayed(this::writeNextChunk, delay);
+            }
+        } else {
+            pendingChunkLength = length;
+        }
     }
 
     private void stopScan() {
@@ -280,6 +397,7 @@ public final class AndroidPrinterBridge {
 
     private void finishPrint(String message) {
         mainHandler.post(() -> {
+            if (!printInProgress) return;
             stopScan();
             if (gatt != null) {
                 gatt.disconnect();
@@ -287,6 +405,9 @@ public final class AndroidPrinterBridge {
                 gatt = null;
             }
             writeCharacteristic = null;
+            pendingChunkLength = 0;
+            writeWithResponse = false;
+            blePayloadSize = DEFAULT_BLE_PAYLOAD_SIZE;
             printData = null;
             printInProgress = false;
             showToast(message);

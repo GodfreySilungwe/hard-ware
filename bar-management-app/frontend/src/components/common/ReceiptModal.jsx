@@ -41,9 +41,30 @@ const ReceiptModal = ({ order, onClose, businessSettings = {}, isReprint = false
   const taxRate = Number(order.taxRate ?? settings.taxRate);
   const formatReceiptPrice = (amount) => formatPriceMK(amount, settings.currency);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const nativePrinter = window.AndroidPrinter;
-    const receiptText = document.getElementById('receipt')?.innerText || '';
+    const receiptElement = document.getElementById('receipt');
+
+    if (nativePrinter && typeof nativePrinter.printImage === 'function' && receiptElement) {
+      try {
+        const { default: html2canvas } = await import('html2canvas');
+        const canvas = await html2canvas(receiptElement, {
+          backgroundColor: '#ffffff',
+          scale: 2,
+          useCORS: true,
+          logging: false
+        });
+        const imageData = canvas.toDataURL('image/png').split(',')[1];
+        const result = nativePrinter.printImage(imageData);
+        if (result === 'printed') return;
+        alert(typeof result === 'string' ? result.replace(/^error:\s*/, '') : 'Receipt image could not be sent to the printer.');
+      } catch (error) {
+        alert(error?.message || 'Could not prepare the receipt image for printing.');
+      }
+      return;
+    }
+
+    const receiptText = receiptElement?.innerText || '';
     const action = resolveReceiptPrintAction({
       nativePrinter,
       isAndroidApp: Boolean(nativePrinter),
