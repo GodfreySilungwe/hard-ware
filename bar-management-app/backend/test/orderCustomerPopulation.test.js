@@ -3,6 +3,20 @@ const assert = require('node:assert/strict');
 const Customer = require('../models/Customer');
 const orderRoutes = require('../routes/orders');
 
+test('sorts orders newest first before pagination', () => {
+  const sorted = orderRoutes.sortOrdersNewestFirst([
+    { orderNumber: 'ORD-OLD', createdAt: '2026-11-09T08:00:00.000Z' },
+    { orderNumber: 'ORD-NEW', createdAt: '2026-11-10T09:00:00.000Z' },
+    { orderNumber: 'ORD-MIDDLE', createdAt: '2026-11-09T12:00:00.000Z' }
+  ]);
+
+  assert.deepEqual(sorted.map((order) => order.orderNumber), [
+    'ORD-NEW',
+    'ORD-MIDDLE',
+    'ORD-OLD'
+  ]);
+});
+
 test('resolves saved customer details instead of the generic populate placeholder', async () => {
   const originalFindById = Customer.findById;
   Customer.findById = async (id) => ({

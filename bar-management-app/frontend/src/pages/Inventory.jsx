@@ -10,6 +10,7 @@ const Inventory = () => {
   const [adjustments, setAdjustments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
   const [formData, setFormData] = useState({
     product: '',
     type: 'wastage',
@@ -20,6 +21,15 @@ const Inventory = () => {
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const selectedProduct = products.find((product) => String(product._id || product.id) === String(formData.product));
+  const normalizedProductSearch = productSearch.trim().toLowerCase();
+  const matchingProducts = normalizedProductSearch
+    ? products.filter((product) => [
+      product.name,
+      product.sku,
+      product.code,
+      product.barcode
+    ].some((value) => String(value || '').toLowerCase().includes(normalizedProductSearch)))
+    : [];
 
   useEffect(() => {
     loadData();
@@ -47,6 +57,11 @@ const Inventory = () => {
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    if (!selectedProduct) {
+      setError('Select a product from the search results.');
+      return;
+    }
     
     try {
       await api.post('/inventory', {
@@ -57,6 +72,7 @@ const Inventory = () => {
       });
       setSuccess('✅ Adjustment created successfully!');
       setShowForm(false);
+      setProductSearch('');
       setFormData({ product: '', type: 'wastage', quantity: '', reason: '' });
       await loadData();
       setTimeout(() => setSuccess(''), 5000);
@@ -161,19 +177,55 @@ const Inventory = () => {
               <div className="form-grid" style={styles.formGrid}>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Product *</label>
-                  <select
+                  <input
+                    type="search"
                     required
                     style={styles.input}
-                    value={formData.product}
-                    onChange={(e) => setFormData({...formData, product: e.target.value})}
-                  >
-                    <option value="">Select Product</option>
-                    {products.map(p => (
-                      <option key={p._id} value={p._id}>
-                        {p.name} (Stock: {formatQuantity(p.currentStock)} {p.unit || 'piece'})
-                      </option>
-                    ))}
-                  </select>
+                    value={productSearch}
+                    onChange={(e) => {
+                      setProductSearch(e.target.value);
+                      setFormData((current) => ({ ...current, product: '' }));
+                    }}
+                    placeholder="Search by product name, SKU, or barcode"
+                    aria-label="Search for a product"
+                    aria-autocomplete="list"
+                    aria-controls="inventory-product-results"
+                    autoComplete="off"
+                  />
+                  {selectedProduct && (
+                    <div style={styles.selectedProduct}>
+                      Selected: <strong>{selectedProduct.name}</strong>
+                      {' · '}Stock: {formatQuantity(selectedProduct.currentStock)} {selectedProduct.unit || 'piece'}
+                    </div>
+                  )}
+                  {normalizedProductSearch && !selectedProduct && (
+                    <div id="inventory-product-results" style={styles.productResults} role="listbox" aria-label="Matching products">
+                      {matchingProducts.length > 0 ? matchingProducts.map((product) => {
+                        const productId = product._id || product.id;
+                        return (
+                          <button
+                            key={productId}
+                            type="button"
+                            role="option"
+                            aria-selected={String(productId) === String(formData.product)}
+                            style={styles.productResult}
+                            onClick={() => {
+                              setFormData((current) => ({ ...current, product: productId }));
+                              setProductSearch(product.name || '');
+                            }}
+                          >
+                            <strong>{product.name}</strong>
+                            <span>
+                              Stock: {formatQuantity(product.currentStock)} {product.unit || 'piece'}
+                              {(product.sku || product.code) ? ` · ${product.sku || product.code}` : ''}
+                            </span>
+                          </button>
+                        );
+                      }) : (
+                        <div style={styles.noProductResults}>No matching products found.</div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Adjustment Type *</label>
@@ -372,6 +424,41 @@ const styles = {
     border: '1px solid #ddd',
     fontSize: '14px',
     transition: 'border 0.3s ease'
+  },
+  selectedProduct: {
+    fontSize: '13px',
+    color: '#166534',
+    backgroundColor: '#f0fdf4',
+    border: '1px solid #bbf7d0',
+    borderRadius: '8px',
+    padding: '8px 10px'
+  },
+  productResults: {
+    display: 'flex',
+    flexDirection: 'column',
+    maxHeight: '240px',
+    overflowY: 'auto',
+    border: '1px solid #ddd',
+    borderRadius: '8px',
+    backgroundColor: '#fff'
+  },
+  productResult: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: '3px',
+    padding: '10px 12px',
+    border: 'none',
+    borderBottom: '1px solid #eee',
+    backgroundColor: '#fff',
+    color: '#1a1a2e',
+    textAlign: 'left',
+    cursor: 'pointer'
+  },
+  noProductResults: {
+    padding: '12px',
+    color: '#666',
+    fontSize: '13px'
   },
   formActions: {
     display: 'flex',

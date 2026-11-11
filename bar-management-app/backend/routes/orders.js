@@ -16,6 +16,13 @@ const {
   getCreditCustomerError
 } = require('../lib/paymentMethods');
 
+const sortOrdersNewestFirst = (orders) => [...orders].sort((left, right) => {
+  const leftTime = Date.parse(left?.createdAt || '');
+  const rightTime = Date.parse(right?.createdAt || '');
+  return (Number.isFinite(rightTime) ? rightTime : 0)
+    - (Number.isFinite(leftTime) ? leftTime : 0);
+});
+
 const getPaymentAccount = (paymentMethod) => {
   const normalized = String(paymentMethod || 'cash').toLowerCase().replace(/[ -]/g, '_');
   if (normalized === 'airtelmoney') return 'airtel_money';
@@ -156,6 +163,7 @@ const buildBulkReferenceMaps = async (orders = [], req) => {
 router.populateOrderItemProducts = populateOrderItemProducts;
 router.populateOrdersItemProducts = populateOrdersItemProducts;
 router.populateOrderCustomer = populateOrderCustomer;
+router.sortOrdersNewestFirst = sortOrdersNewestFirst;
 
 const parseLocalDateString = (dateString) => {
   if (!dateString || typeof dateString !== 'string') return null;
@@ -298,10 +306,10 @@ router.get('/', protect, async (req, res) => {
         .sort({ createdAt: -1 });
     }
 
-    let normalizedOrders = orders.map((order) => ({
+    let normalizedOrders = sortOrdersNewestFirst(orders.map((order) => ({
       ...order,
       paymentMethodLabel: order.paymentMethodLabel || getPaymentMethodLabel(order.paymentMethod)
-    }));
+    })));
 
     if (productName) {
       const matchingProducts = req.user?.tenantId
