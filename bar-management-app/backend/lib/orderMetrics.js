@@ -50,6 +50,69 @@ function getPaymentMethodLabel(method) {
   return String(method || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim() || 'Unknown';
 }
 
+function buildPaymentProceeds(orders = [], {
+  additionalCreditRepaymentAmount = 0,
+  additionalCreditRepaymentCount = 0
+} = {}) {
+  const paymentMethodsMap = new Map();
+  let creditRepaymentAmount = normalizeNumber(additionalCreditRepaymentAmount);
+  let creditRepaymentCount = normalizeNumber(additionalCreditRepaymentCount);
+
+  for (const order of orders || []) {
+    if (order?.status === 'reversed') continue;
+
+    const method = String(order?.paymentMethod || 'unknown');
+    const normalizedMethod = method.toLowerCase().trim();
+    const collectedMethod = normalizedMethod === 'credit' ? 'cash' : method;
+    const paymentEntry = paymentMethodsMap.get(collectedMethod) || {
+      count: 0,
+      amount: 0,
+      label: normalizedMethod === 'credit'
+        ? getPaymentMethodLabel('cash')
+        : order?.paymentMethodLabel || getPaymentMethodLabel(method)
+    };
+    if (normalizedMethod === 'credit') {
+      const paidAmount = normalizeNumber(order?.paidAmount);
+      if (paidAmount > 0) {
+        paymentEntry.count += 1;
+        paymentEntry.amount += paidAmount;
+        paymentMethodsMap.set(collectedMethod, paymentEntry);
+      }
+    } else {
+      paymentEntry.count += 1;
+      paymentEntry.amount += getOrderTotalAmount(order);
+      paymentMethodsMap.set(collectedMethod, paymentEntry);
+    }
+  }
+
+  const paymentMethods = [...paymentMethodsMap.entries()].map(([method, meta]) => ({
+    method,
+    label: meta.label,
+    count: meta.count,
+    amount: meta.amount
+  }));
+  if (creditRepaymentAmount > 0) {
+    paymentMethods.push({
+      method: 'credit_repayment',
+      label: 'Credit Repayment',
+      count: creditRepaymentCount,
+      amount: creditRepaymentAmount
+    });
+  }
+
+  const methodOrder = new Map([
+    ['cash', 0],
+    ['airtel_money', 1],
+    ['mpamba', 2],
+    ['card', 3],
+    ['credit_repayment', 4]
+  ]);
+  return paymentMethods.sort((left, right) => (
+    (methodOrder.get(left.method.toLowerCase()) ?? 5) -
+    (methodOrder.get(right.method.toLowerCase()) ?? 5)
+  ));
+}
+
 function summarizeOrders(orders = [], options = {}) {
   const includeReversed = options.includeReversed !== false;
   const filteredOrders = (orders || []).filter((order) => includeReversed || order?.status !== 'reversed');
@@ -310,6 +373,7 @@ function buildReportSummary(orders = [], options = {}) {
 
 module.exports = {
   getPaymentMethodLabel,
+  buildPaymentProceeds,
   summarizeOrders,
   buildReportSummary,
   normalizeNumber

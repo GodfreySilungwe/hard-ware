@@ -6,7 +6,13 @@ const Category = require('../models/Category');
 const Customer = require('../models/Customer');
 const { protect, isHardwareManagerOrOwner } = require('../middleware/auth');
 const { applyOrderReversal } = require('../lib/orderReversal');
-const { summarizeOrders, getPaymentMethodLabel, buildReportSummary, normalizeNumber } = require('../lib/orderMetrics');
+const {
+  summarizeOrders,
+  getPaymentMethodLabel,
+  buildPaymentProceeds,
+  buildReportSummary,
+  normalizeNumber
+} = require('../lib/orderMetrics');
 const { applyOrderToCustomerAccount, calculateDiscountedOrderTotal } = require('../lib/customerAccountSync');
 const { recordCashEntry } = require('../lib/cashLedger');
 const dynamodb = require('../lib/dynamodb');
@@ -120,6 +126,35 @@ const populateOrderCustomer = async (order, req) => {
   };
 };
 
+const populateOrdersCustomers = async (orders = [], req) => {
+  const customerIds = [...new Set(
+    orders.map((order) => getReferenceId(order?.customer)).filter(Boolean)
+  )];
+  if (customerIds.length === 0) return orders;
+
+  const customers = await Customer.find({ _id: customerIds }, req);
+  const customersById = new Map((customers || []).map((customer) => [
+    getReferenceId(customer),
+    customer
+  ]));
+
+  return orders.map((order) => {
+    const customerId = getReferenceId(order?.customer);
+    if (!customerId) return order;
+
+    const customer = customersById.get(customerId);
+    return {
+      ...order,
+      customer: customer ? {
+        _id: customer._id || customer.id || customerId,
+        id: customer.id || customer._id || customerId,
+        name: customer.name || '',
+        phone: customer.phone || ''
+      } : null
+    };
+  });
+};
+
 const buildBulkReferenceMaps = async (orders = [], req) => {
   const customerIds = new Set();
   const productIds = new Set();
@@ -163,6 +198,7 @@ const buildBulkReferenceMaps = async (orders = [], req) => {
 router.populateOrderItemProducts = populateOrderItemProducts;
 router.populateOrdersItemProducts = populateOrdersItemProducts;
 router.populateOrderCustomer = populateOrderCustomer;
+router.populateOrdersCustomers = populateOrdersCustomers;
 router.sortOrdersNewestFirst = sortOrdersNewestFirst;
 
 const parseLocalDateString = (dateString) => {
@@ -366,9 +402,13 @@ router.get('/', protect, async (req, res) => {
       const pageNumber = Math.max(Number(page), 1);
       const offset = (pageNumber - 1) * Number(limit);
       const pagedOrders = normalizedOrders.slice(offset, offset + Number(limit));
-      const populatedPagedOrders = await populateOrdersItemProducts(pagedOrders, req);
-      const normalizedPagedOrders = populatedPagedOrders.map((order) => ({
+      const [ordersWithProducts, populatedPagedOrders] = await Promise.all([
+        populateOrdersItemProducts(pagedOrders, req),
+        populateOrdersCustomers(pagedOrders, req)
+      ]);
+      const normalizedPagedOrders = ordersWithProducts.map((order, index) => ({
         ...order,
+        customer: populatedPagedOrders[index].customer,
         paymentMethodLabel: order.paymentMethodLabel || getPaymentMethodLabel(order.paymentMethod)
       }));
       const totalPages = Math.max(1, Math.ceil(commonResponse.totalCount / Number(limit)));
@@ -382,9 +422,13 @@ router.get('/', protect, async (req, res) => {
       });
     }
 
-    const populatedOrders = await populateOrdersItemProducts(normalizedOrders, req);
-    const normalizedPopulatedOrders = populatedOrders.map((order) => ({
+    const [ordersWithProducts, populatedOrders] = await Promise.all([
+      populateOrdersItemProducts(normalizedOrders, req),
+      populateOrdersCustomers(normalizedOrders, req)
+    ]);
+    const normalizedPopulatedOrders = ordersWithProducts.map((order, index) => ({
       ...order,
+      customer: populatedOrders[index].customer,
       paymentMethodLabel: order.paymentMethodLabel || getPaymentMethodLabel(order.paymentMethod)
     }));
 
@@ -438,6 +482,7 @@ router.get('/today', protect, async (req, res) => {
       totalProfit: summary.totalProfit,
       orders: summary.orders,
       paymentMethods: summary.paymentMethods,
+      paymentProceeds: buildPaymentProceeds(populatedTodayOrders),
       reversedOrders,
       totalOrders: populatedTodayOrders.length
     });

@@ -1,6 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { summarizeOrders, getPaymentMethodLabel, buildReportSummary } = require('../lib/orderMetrics');
+const {
+  summarizeOrders,
+  getPaymentMethodLabel,
+  buildPaymentProceeds,
+  buildReportSummary
+} = require('../lib/orderMetrics');
 
 test('excludes reversed orders from sales and profit totals', () => {
   const summary = summarizeOrders([
@@ -42,6 +47,28 @@ test('groups sales totals by payment method', () => {
   assert.deepEqual(summary.paymentMethods, [
     { method: 'card', label: 'Card', count: 1, amount: 200 },
     { method: 'cash', label: 'Cash', count: 2, amount: 150 }
+  ]);
+});
+
+test('counts credit-sale payments as cash and orders proceeds without including outstanding credit', () => {
+  const paymentProceeds = buildPaymentProceeds([
+    { status: 'completed', paymentMethod: 'mpamba', totalAmount: 40 },
+    { status: 'completed', paymentMethod: 'credit', totalAmount: 100, paidAmount: 25, dueAmount: 75 },
+    { status: 'completed', paymentMethod: 'card', paymentMethodLabel: 'Bank', totalAmount: 60 },
+    { status: 'completed', paymentMethod: 'airtel_money', totalAmount: 30 },
+    { status: 'completed', paymentMethod: 'cash', totalAmount: 50 },
+    { status: 'reversed', paymentMethod: 'cash', totalAmount: 999 }
+  ], {
+    additionalCreditRepaymentAmount: 15,
+    additionalCreditRepaymentCount: 1
+  });
+
+  assert.deepEqual(paymentProceeds, [
+    { method: 'cash', label: 'Cash', count: 2, amount: 75 },
+    { method: 'airtel_money', label: 'Airtel Money', count: 1, amount: 30 },
+    { method: 'mpamba', label: 'Mpamba', count: 1, amount: 40 },
+    { method: 'card', label: 'Bank', count: 1, amount: 60 },
+    { method: 'credit_repayment', label: 'Credit Repayment', count: 1, amount: 15 }
   ]);
 });
 

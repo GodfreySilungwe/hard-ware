@@ -57,3 +57,35 @@ test('returns no customer details if a linked customer no longer exists', async 
     Customer.findById = originalFindById;
   }
 });
+
+test('resolves customer IDs from paginated order queries in one customer lookup', async () => {
+  const originalFind = Customer.find;
+  const req = { user: { tenantId: 'tenant-1' } };
+  let lookup;
+  Customer.find = async (query, request) => {
+    lookup = { query, request };
+    return [{
+      _id: 'customer-1',
+      name: 'Jane Customer',
+      phone: '0999123456'
+    }];
+  };
+
+  try {
+    const orders = await orderRoutes.populateOrdersCustomers([
+      { orderNumber: 'ORD-1', paymentMethod: 'credit', customer: 'customer-1' },
+      { orderNumber: 'ORD-2', paymentMethod: 'credit', customer: { _id: 'customer-1', name: 'Customer' } },
+      { orderNumber: 'ORD-3', paymentMethod: 'cash', customer: null }
+    ], req);
+
+    assert.deepEqual(lookup, {
+      query: { _id: ['customer-1'] },
+      request: req
+    });
+    assert.equal(orders[0].customer.name, 'Jane Customer');
+    assert.equal(orders[1].customer.phone, '0999123456');
+    assert.equal(orders[2].customer, null);
+  } finally {
+    Customer.find = originalFind;
+  }
+});

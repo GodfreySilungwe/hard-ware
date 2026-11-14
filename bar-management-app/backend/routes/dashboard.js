@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
 const { protect } = require('../middleware/auth');
-const { normalizeNumber, getPaymentMethodLabel } = require('../lib/orderMetrics');
+const { normalizeNumber, buildPaymentProceeds } = require('../lib/orderMetrics');
 const dynamodb = require('../lib/dynamodb');
 const legacyGSIStatusByTenant = new Map();
 
@@ -204,10 +204,6 @@ router.get('/summary', protect, async (req, res) => {
     let posCreditCollected = 0;
     let creditSalesPeriod = 0;
     let outstandingThisPeriod = 0;
-    let creditRepaymentFromOrders = 0;
-    let creditRepaymentOrderCount = 0;
-
-    const paymentMap = new Map();
     const productMap = new Map();
     const purchaseOrderQtyMap = new Map();
     const recentLimit = Math.max(0, Math.min(100, Number(req.query.recentLimit || 10)));
@@ -245,28 +241,10 @@ router.get('/summary', protect, async (req, res) => {
         posCreditCollected += paid;
         outstandingThisPeriod += due;
         creditSalesPeriod += orderTotal;
-        if (paid > 0) {
-          creditRepaymentFromOrders += paid;
-          creditRepaymentOrderCount += 1;
-        }
       } else {
         collected += orderTotal;
         posDirect += orderTotal;
       }
-
-      // payment method breakdown (sales proceeds per method)
-      const method = String(o.paymentMethod || 'unknown');
-      const prev = paymentMap.get(method) || {
-        amount: 0,
-        count: 0,
-        label: o.paymentMethodLabel || getPaymentMethodLabel(method)
-      };
-      const addAmount = normalizedPaymentMethod === 'credit' ? paid : orderTotal;
-      paymentMap.set(method, {
-        amount: prev.amount + addAmount,
-        count: prev.count + 1,
-        label: o.paymentMethodLabel || prev.label
-      });
 
       // product aggregation
       if (Array.isArray(o.items)) {
@@ -341,24 +319,10 @@ router.get('/summary', protect, async (req, res) => {
       return sum + quantity * sellingPrice;
     }, 0);
 
-    // format payment methods
-    const paymentMethods = Array.from(paymentMap.entries()).map(([method, meta]) => ({
-      method,
-      label: meta.label,
-      amount: meta.amount,
-      count: meta.count
-    }));
-
-    const totalCreditRepaymentAmount = creditRepaymentFromOrders + settlementCashPeriod;
-    const totalCreditRepaymentCount = creditRepaymentOrderCount + settlementCountPeriod;
-    if (totalCreditRepaymentAmount > 0) {
-      paymentMethods.push({
-        method: 'credit_repayment',
-        label: 'Credit Repayment',
-        count: totalCreditRepaymentCount,
-        amount: totalCreditRepaymentAmount
-      });
-    }
+    const paymentMethods = buildPaymentProceeds(orders, {
+      additionalCreditRepaymentAmount: settlementCashPeriod,
+      additionalCreditRepaymentCount: settlementCountPeriod
+    });
 
     const productPage = Math.max(1, Number(req.query.productPage || 1));
     const productLimit = Math.min(Math.max(1, Number(req.query.productLimit || 20)), 20);
